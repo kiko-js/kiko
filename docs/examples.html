@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>示例 — kiko</title>
+    <meta
+      name="description"
+      content="kiko 官方示例：计数器、Show / For 控制流、Suspend 异步挂起、React 桥接。"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css"
+    />
+    <link rel="stylesheet" href="./assets/style.css" />
+  </head>
+  <body>
+    <header>
+      <nav>
+        <a class="logo" href="./index.html"><span></span>kiko</a>
+        <ul class="links">
+          <li><a href="./index.html">首页</a></li>
+          <li><a href="./signal.html">signal</a></li>
+          <li><a href="./dom.html">dom</a></li>
+          <li><a href="./router.html">router</a></li>
+          <li><a href="./examples.html">示例</a></li>
+          <li>
+            <a href="https://github.com/FairyScript/kiko" target="_blank" rel="noopener">GitHub</a>
+          </li>
+        </ul>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <h1>示例</h1>
+        <p>从最小计数器到控制流与 React 桥接，快速了解 kiko 的使用方式。</p>
+      </section>
+
+      <section>
+        <h2>计数器</h2>
+        <p>组件函数只执行一次，只有 <code>count</code> 文本节点会随 signal 更新。</p>
+        <div class="demo-card">
+          <div id="counter-root"></div>
+        </div>
+        <div class="code-block">
+          <pre><code class="language-tsx" data-src="./assets/snippets/counter.tsx"></code></pre>
+        </div>
+      </section>
+
+      <section>
+        <h2>Suspend 异步挂起</h2>
+        <p>在 Promise 或异步组件 resolve 之前显示 fallback。</p>
+        <p class="note">
+          kiko 组件函数只执行一次，因此 Suspend 仅适合一次性初始化。不要把 signal 作为 async
+          组件的依赖来驱动重新加载；需要响应式刷新时请使用 <code>effect</code> 配合 signal。
+        </p>
+        <div class="code-block">
+          <pre><code class="language-tsx" data-src="./assets/snippets/suspend.tsx"></code></pre>
+        </div>
+      </section>
+
+      <section>
+        <h2>Show 条件渲染</h2>
+        <p>根据 signal 布尔值切换 UI。</p>
+        <div class="code-block">
+          <pre><code class="language-tsx" data-src="./assets/snippets/show.tsx"></code></pre>
+        </div>
+      </section>
+
+      <section>
+        <h2>For 列表渲染</h2>
+        <p>列表变化时，DOM 子树会重新构建。</p>
+        <div class="code-block">
+          <pre><code class="language-tsx" data-src="./assets/snippets/for.tsx"></code></pre>
+        </div>
+      </section>
+
+      <section>
+        <h2>React 桥接</h2>
+        <p>在 kiko 树中嵌入 React 组件，实现生态兼容。</p>
+        <div class="code-block">
+          <pre><code class="language-tsx" data-src="./assets/snippets/react.tsx"></code></pre>
+        </div>
+      </section>
+
+      <section>
+        <h2>/signal effect</h2>
+        <p>使用 /signal 的 <code>effect</code> 与 <code>batch</code> 处理副作用。</p>
+        <div class="code-block">
+          <pre><code class="language-ts" data-src="./assets/snippets/effect.ts"></code></pre>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <p>kiko 使用 MIT 许可证 · 通过 GitHub Pages 部署</p>
+    </footer>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="./assets/highlight.js"></script>
+    <script type="module" src="./assets/counter.ts"></script>
+  </body>
+</html>

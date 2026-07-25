@@ -1,0 +1,8 @@
+{
+  "name": "kiko-docs",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@kikojs/dom": "workspace:*"
+  }
+}

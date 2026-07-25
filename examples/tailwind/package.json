@@ -1,0 +1,16 @@
+{
+  "name": "examples/tailwind",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run server.ts"
+  },
+  "dependencies": {
+    "@kikojs/dom": "workspace:*",
+    "@kikojs/signal": "workspace:*",
+    "tailwindcss": "^4.3.2"
+  },
+  "devDependencies": {
+    "bun-plugin-tailwind": "^0.1.2"
+  }
+}

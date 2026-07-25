@@ -1,0 +1,35 @@
+{
+  "name": "@kikojs/dom",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./jsx-runtime": "./src/jsx-runtime.ts",
+    "./jsx-dev-runtime": "./src/jsx-runtime.ts",
+    "./react-portal": "./src/react-portal.ts"
+  },
+  "scripts": {
+    "build": "bun build src/index.ts --outdir dist --target browser --format esm --external react --external react-dom --external signal-polyfill",
+    "demo": "bun run examples/demo.tsx"
+  },
+  "dependencies": {
+    "signal-polyfill": "^0.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "happy-dom": "^17"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "react-dom": ">=18"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "react-dom": {
+      "optional": true
+    }
+  }
+}

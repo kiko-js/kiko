@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@kikojs/router — kiko</title>
+    <meta name="description" content="@kikojs/router 完整 API 参考：createRouter、Router、Route、Link、Outlet、Navigate、路由守卫、hooks。" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css" />
+    <link rel="stylesheet" href="./assets/style.css" />
+  </head>
+  <body>
+    <header>
+      <nav>
+        <a class="logo" href="./index.html"><span></span>kiko</a>
+        <ul class="links">
+          <li><a href="./index.html">首页</a></li>
+          <li><a href="./signal.html">signal</a></li>
+          <li><a href="./dom.html">dom</a></li>
+          <li><a href="./router.html">router</a></li>
+          <li><a href="./examples.html">示例</a></li>
+          <li><a href="https://github.com/FairyScript/kiko" target="_blank" rel="noopener">GitHub</a></li>
+        </ul>
+      </nav>
+    </header>
+
+    <main class="api-grid">
+      <aside class="toc">
+        <h3>目录</h3>
+        <ul>
+          <li><a href="#overview">概览</a></li>
+          <li><a href="#install">安装与导入</a></li>
+          <li><a href="#createRouter">createRouter</a></li>
+          <li><a href="#components">组件</a></li>
+          <li><a href="#hooks">Hooks</a></li>
+          <li><a href="#guards">守卫</a></li>
+          <li><a href="#history">History</a></li>
+          <li><a href="#utils">工具函数</a></li>
+          <li><a href="#types">类型定义</a></li>
+          <li><a href="#example">完整示例</a></li>
+        </ul>
+      </aside>
+
+      <div>
+        <section id="overview" class="api-section">
+          <h2>@kikojs/router</h2>
+          <p>
+            基于 signal 的声明式路由库。支持 path / hash 模式、嵌套路由、路由守卫、
+            查询参数解析、编程式导航，完全与 @kikojs/dom 和 @kikojs/signal 集成。
+          </p>
+        </section>
+
+        <section id="install" class="api-section">
+          <h2>安装与导入</h2>
+          <div class="code-block">
+            <pre><code class="language-shell">bun add @kikojs/router</code></pre>
+          </div>
+          <div class="code-block">
+            <pre><code class="language-ts">import {
+  createRouter,
+  Router, Route, Link, Outlet, Navigate,
+  useRouter, useParams, useQuery, useLocation, useRoute,
+  createAuthGuard, combineGuards, createAsyncGuard,
+  redirect, redirectReplace, buildPath, getQueryValue, pathsEqual, useNavigate,
+  createPathHistory, createHashHistory,
+} from "@kikojs/router"</code></pre>
+          </div>
+        </section>
+
+        <section id="createRouter" class="api-section">
+          <h2>createRouter</h2>
+          <table>
+            <thead><tr><th>签名</th><th>说明</th></tr></thead>
+            <tbody>
+              <tr>
+                <td><code>createRouter(options: RouterOptions): Router</code></td>
+                <td>创建路由器实例，管理路由状态、导航与守卫。</td>
+              </tr>
+            </tbody>
+          </table>
+          <h4>RouterOptions</h4>
+          <table>
+            <thead><tr><th>字段</th><th>类型</th><th>默认值</th><th>说明</th></tr></thead>
+            <tbody>
+              <tr><td><code>mode</code></td><td><code>"path" | "hash"</code></td><td><code>"path"</code></td><td>路由模式。</td></tr>
+              <tr><td><code>base</code></td><td><code>string</code></td><td><code>""</code></td><td>基本路径前缀。</td></tr>
+              <tr><td><code>guards</code></td><td><code>RouteGuard[]</code></td><td><code>[]</code></td><td>全局路由守卫列表。</td></tr>
+              <tr><td><code>history</code></td><td><code>HistoryAdapter</code></td><td>—</td><td>自定义 history（覆盖 mode）。</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section id="components" class="api-section">
+          <h2>组件</h2>
+
+          <h4>Router</h4>
+          <table>
+            <thead><tr><th>Props</th><th>类型</th><th>说明</th></tr></thead>
+            <tbody>
+              <tr><td><code>router</code></td><td><code>Router</code></td><td>路由器实例。</td></tr>
+              <tr><td><code>children</code></td><td><code>Node</code></td><td>子组件（通常包含 Link、Route、Outlet）。</td></tr>
+            </tbody>
+          </table>
+
+          <h4>Route</h4>
+          <table>
+            <thead><tr><th>Props</th><th>类型</th><th>说明</th></tr></thead>
+            <tbody>
+              <tr><td><code>path</code></td><td><code>string</code></td><td>匹配路径模式，支持 <code>:param</code> 动态段。</td></tr>
+              <tr><td><code>component</code></td><td><code>Component</code></td><td>匹配时渲染的组件。</td></tr>
+              <tr><td><code>guards</code></td><td><code>RouteGuard[]</code></td><td>路由级守卫（可选）。</td></tr>
+              <tr><td><code>redirect</code></td><td><code>string</code></td><td>匹配时重定向（可选）。</td></tr>
+            </tbody>
+          </table>
+
+          <h4>Link</h4>
+          <table>
+            <thead><tr><th>Props</th><th>类型</th><th>说明</th></tr></thead>
+            <tbody>
+              <tr><td><code>to</code></td><td><code>string</code></td><td>目标路径。</td></tr>
+              <tr><td><code>replace</code></td><td><code>boolean</code></td><td>替换当前历史记录（默认 false）。</td></tr>
+              <tr><td><code>state</code></td><td><code>unknown</code></td><td>附加导航状态。</td></tr>
+              <tr><td><code>activeClass</code></td><td><code>string</code></td><td>当前路径匹配时添加的 class。</td></tr>
+              <tr><td><code>children</code></td><td><code>Node</code></td><td>链接内容。</td></tr>
+            </tbody>
+          </table>
+
+          <h4>Outlet</h4>
+          <table>
+            <thead><tr><th>Props</th><th>类型</th><th>说明</th></tr></thead>
+            <tbody>
+              <tr><td><code>router</code></td><td><code>Router</code></td><td>指定路由器（可选，默认使用最近的 Router）。</td></tr>
+            </tbody>
+          </table>
+          <p>渲染当前匹配 Route 的组件。用于嵌套路由布局。</p>
+
+          <h4>Navigate</h4>
+          <table>
+            <thead><tr><th>Props</th><th>类型</th><th>说明</th></tr></thead>
+            <tbody>
+              <tr><td><code>to</code></td><td><code>string</code></td><td>跳转目标。</td></tr>
+              <tr><td><code>replace</code></td><td><code>boolean</code></td><td>替换当前历史记录。</td></tr>
+            </tbody>
+          </table>
+          <p>渲染时立即执行导航，不渲染任何 DOM。</p>
+        </section>
+
+        <section id="hooks" class="api-section">
+          <h2>Hooks</h2>
+          <table>
+            <thead><tr><th>Hook</th><th>返回类型</th><th>说明</th></tr></thead>
+            <tbody>
+              <tr><td><code>useRouter()</code></td><td><code>Router</code></td><td>获取当前 router 实例。</td></tr>
+              <tr><td><code>useParams()</code></td><td><code>RouteParams</code></td><td>获取动态路由参数 signal。</td></tr>
+              <tr><td><code>useQuery()</code></td><td><code>RouteQuery</code></td><td>获取查询参数 signal。</td></tr>
+              <tr><td><code>useLocation()</code></td><td><code>RouteLocation</code></td><td>获取当前 location signal。</td></tr>
+              <tr><td><code>useRoute()</code></td><td><code>{ route, matched, params, query, location }</code></td><td>获取完整路由上下文 signals。</td></tr>
+              <tr><td><code>tryUseRouter()</code></td><td><code>Router | null</code></td><td>安全获取 router，Router 外返回 null。</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section id="guards" class="api-section">
+          <h2>路由守卫</h2>
+          <table>
+            <thead><tr><th>导出</th><th>签名</th><th>说明</th></tr></thead>
+            <tbody>
+              <tr>
+                <td><code>createAuthGuard</code></td>
+                <td><code>createAuthGuard(predicate, redirectTo): RouteGuard</code></td>
+                <td>认证守卫：predicate 返回 falsy 时重定向。</td>
+              </tr>
+              <tr>
+                <td><code>combineGuards</code></td>
+                <td><code>combineGuards(...guards: RouteGuard[]): RouteGuard</code></td>
+                <td>组合多个守卫，按顺序执行。</td>
+              </tr>
+              <tr>
+                <td><code>createAsyncGuard</code></td>
+                <td><code>createAsyncGuard(check, redirectTo): RouteGuard</code></td>
+                <td>异步权限校验守卫。</td>
+              </tr>
+            </tbody>
+          </table>
+          <p>守卫可以是同步或异步函数，返回 <code>true</code>（放行）、<code>false</code>（阻止）、
+          <code>string</code>（重定向路径）或 <code>RedirectDescriptor</code>。</p>
+          <div class="code-block">
+            <pre><code class="language-tsx" data-src="./assets/snippets/router-guards.tsx"></code></pre>
+          </div>
+        </section>
+
+        <section id="history" class="api-section">
+          <h2>History</h2>
+          <table>
+            <thead><tr><th>导出</th><th>说明</th></tr></thead>
+            <tbody>
+              <tr><td><code>createPathHistory()</code></td><td>创建基于 History API 的 path 模式 adapter。</td></tr>
+              <tr><td><code>createHashHistory()</code></td><td>创建基于 hashchange 的 hash 模式 adapter。</td></tr>
+            </tbody>
+          </table>
+          <p>通常不需要直接调用，<code>createRouter({ mode })</code> 会自动选择。传入自定义 adapter 可用于测试或非浏览器环境。</p>
+        </section>
+
+        <section id="utils" class="api-section">
+          <h2>工具函数</h2>
+          <table>
+            <thead><tr><th>导出</th><th>签名</th><th>说明</th></tr></thead>
+            <tbody>
+              <tr><td><code>redirect</code></td><td><code>redirect(path, state?): RedirectDescriptor</code></td><td>创建重定向描述（push）。</td></tr>
+              <tr><td><code>redirectReplace</code></td><td><code>redirectReplace(path, state?): RedirectDescriptor</code></td><td>创建重定向描述（replace）。</td></tr>
+              <tr><td><code>buildPath</code></td><td><code>buildPath(path, query?): string</code></td><td>构建带查询字符串的路径。</td></tr>
+              <tr><td><code>getQueryValue</code></td><td><code>getQueryValue(query, key): string | undefined</code></td><td>从 query 对象提取单值。</td></tr>
+              <tr><td><code>pathsEqual</code></td><td><code>pathsEqual(a, b): boolean</code></td><td>比较路径是否匹配（忽略查询串和尾部斜杠）。</td></tr>
+              <tr><td><code>useNavigate</code></td><td><code>useNavigate(router): (to, options?) => void</code></td><td>创建绑定 router 的导航函数。</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section id="types" class="api-section">
+          <h2>类型定义</h2>
+          <table>
+            <thead><tr><th>类型</th><th>说明</th></tr></thead>
+            <tbody>
+              <tr><td><code>RouteParams</code></td><td><code>Record&lt;string, string&gt;</code></td></tr>
+              <tr><td><code>RouteQuery</code></td><td><code>Record&lt;string, string | string[]&gt;</code></td></tr>
+              <tr><td><code>RouteMode</code></td><td><code>"path" | "hash"</code></td></tr>
+              <tr><td><code>RouteLocation</code></td><td><code>{ path, params, query, hash, state, key }</code></td></tr>
+              <tr><td><code>NavigateOptions</code></td><td><code>{ replace?, state? }</code></td></tr>
+              <tr><td><code>RouteRecord</code></td><td>路由配置记录：<code>{ path, component?, guards?, redirect?, children? }</code></td></tr>
+              <tr><td><code>RouteComponentProps</code></td><td>路由组件 props：<code>{ params, query, location }</code></td></tr>
+              <tr><td><code>RouteGuard</code></td><td><code>(to, from, router) => RouteGuardResult</code></td></tr>
+              <tr><td><code>RouteMatch</code></td><td>匹配结果：<code>{ route, params, query, location }</code></td></tr>
+              <tr><td><code>RouterState</code></td><td><code>{ location, params, query }</code>（signal 化）</td></tr>
+              <tr><td><code>Router</code></td><td>路由器实例接口。</td></tr>
+              <tr><td><code>RouterOptions</code></td><td><code>{ mode?, base?, guards?, history? }</code></td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section id="example" class="api-section">
+          <h2>完整示例</h2>
+          <div class="code-block">
+            <pre><code class="language-tsx" data-src="./assets/snippets/router-basic.tsx"></code></pre>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <footer>
+      <p>kiko 使用 MIT 许可证 · 通过 GitHub Pages 部署</p>
+    </footer>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="./assets/highlight.js"></script>
+  </body>
+</html>

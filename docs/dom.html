@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@kikojs/dom — kiko</title>
+    <meta name="description" content="@kikojs/dom 完整 API 参考：JSX 工厂、render、Show、For、ErrorBoundary、Suspend、ReactPortal、ref 清理。" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css" />
+    <link rel="stylesheet" href="./assets/style.css" />
+  </head>
+  <body>
+    <header>
+      <nav>
+        <a class="logo" href="./index.html"><span></span>kiko</a>
+        <ul class="links">
+          <li><a href="./index.html">首页</a></li>
+          <li><a href="./signal.html">signal</a></li>
+          <li><a href="./dom.html">dom</a></li>
+          <li><a href="./router.html">router</a></li>
+          <li><a href="./examples.html">示例</a></li>
+          <li><a href="https://github.com/FairyScript/kiko" target="_blank" rel="noopener">GitHub</a></li>
+        </ul>
+      </nav>
+    </header>
+
+    <main class="api-grid">
+      <aside class="toc">
+        <h3>目录</h3>
+        <ul>
+          <li><a href="#overview">概览</a></li>
+          <li><a href="#install">安装与配置</a></li>
+          <li><a href="#jsx">JSX 工厂</a></li>
+          <li><a href="#props">Props 规则</a></li>
+          <li><a href="#ref">ref 清理</a></li>
+          <li><a href="#render">render</a></li>
+          <li><a href="#show">Show</a></li>
+          <li><a href="#for">For</a></li>
+          <li><a href="#errorboundary">ErrorBoundary</a></li>
+          <li><a href="#suspend">Suspend</a></li>
+          <li><a href="#react">ReactPortal</a></li>
+          <li><a href="#signals">Signal 封装</a></li>
+        </ul>
+      </aside>
+
+      <div>
+        <section id="overview" class="api-section">
+          <h2>@kikojs/dom</h2>
+          <p>
+            JSX 直接编译为真实 DOM 节点——没有虚拟 DOM，没有 reconciliation。
+            组件函数只执行一次，signal 绑定细粒度驱动 DOM 更新。
+          </p>
+          <div class="note">
+            @kikojs/dom <strong>不依赖</strong> @kikojs/signal，它重新实现了自己需要的最小 signal 封装，
+            保持 DOM 包自包含。如需应用层状态管理，可同时使用 <a href="./signal.html">@kikojs/signal</a>。
+          </div>
+        </section>
+
+        <section id="install" class="api-section">
+          <h2>安装与配置</h2>
+          <div class="code-block">
+            <pre><code class="language-shell">bun add @kikojs/dom</code></pre>
+          </div>
+          <p>在 <code>tsconfig.json</code> 中设置 JSX 导入源：</p>
+          <div class="code-block">
+            <pre><code class="language-json" data-src="./assets/snippets/tsconfig.json"></code></pre>
+          </div>
+        </section>
+
+        <section id="jsx" class="api-section">
+          <h2>JSX 工厂</h2>
+          <table>
+            <thead><tr><th>导出</th><th>签名</th><th>说明</th></tr></thead>
+            <tbody>
+              <tr>
+                <td><code>jsx</code></td>
+                <td><code>jsx(tag: string | Component, props: Props | null): Node</code></td>
+                <td>JSX 工厂，创建真实 DOM 节点。</td>
+              </tr>
+              <tr>
+                <td><code>jsxs</code></td>
+                <td><code>jsxs = jsx</code></td>
+                <td>多子节点 JSX 工厂（React 兼容）。</td>
+              </tr>
+              <tr>
+                <td><code>jsxDEV</code></td>
+                <td><code>jsxDEV = jsx</code></td>
+                <td>开发环境 JSX 工厂。</td>
+              </tr>
+              <tr>
+                <td><code>Fragment</code></td>
+                <td><code>Fragment(props): DocumentFragment</code></td>
+                <td>无包裹节点容器。</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section id="props" class="api-section">
+          <h2>Props 处理规则</h2>
+          <ul style="color: var(--muted)">
+            <li><code>children</code> 为 <code>string | number</code> → 创建 Text 节点。</li>
+            <li><code>children</code> 为 <code>Signal</code> → 创建 Text 并订阅细粒度更新。</li>
+            <li><code>children</code> 为 <code>Node</code> → 直接追加。</li>
+            <li><code>children</code> 为 <code>Array</code> → 递归处理。</li>
+            <li><code>children</code> 为 <code>Signal&lt;Node | Node[]&gt;</code> → 基于 marker 的结构性子树替换。</li>
+            <li><code>onXxx</code> → 调用 <code>addEventListener</code>。</li>
+            <li><code>className</code> → 映射到 <code>class</code> 属性。</li>
+            <li><code>style: object</code> → 逐个设置 CSS 属性。</li>
+            <li><code>class</code> / <code>class: Signal</code> → 支持 signal 驱动的 class 绑定（静态 class 与 signal class 合并）。</li>
+          </ul>
+        </section>
+
+        <section id="ref" class="api-section">
+          <h2>ref 清理</h2>
+          <p>
+            <code>ref</code> 回调接收 DOM 元素。如果回调返回一个函数，该函数会被注册为清理回调：
+            当 DOM 子树被卸载（如 <code>Show</code> / structural swap / <code>dispose</code>）时自动调用。
+          </p>
+          <div class="code-block">
+            <pre><code class="language-tsx">&lt;div ref={el => {
+  const observer = new ResizeObserver(entries => console.log(entries))
+  observer.observe(el)
+  return () => observer.disconnect() // 卸载时自动清理
+}} /&gt;</code></pre>
+          </div>
+        </section>
+
+        <section id="render" class="api-section">
+          <h2>render</h2>
+          <table>
+            <thead><tr><th>签名</th><th>说明</th></tr></thead>
+            <tbody>
+              <tr>
+                <td><code>render(root: Node, container: Element): () => void</code></td>
+                <td>将 JSX 树挂载到 DOM 容器，返回 <code>dispose()</code> 用于卸载并清理所有 watcher 和事件监听。</td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="code-block">
+            <pre><code class="language-tsx" data-src="./assets/snippets/render.tsx"></code></pre>
+          </div>
+        </section>
+
+        <section id="show" class="api-section">
+          <h2>Show</h2>
+          <table>
+            <thead><tr><th>Props</th><th>类型</th><th>说明</th></tr></thead>
+            <tbody>
+              <tr><td><code>when</code></td><td><code>T | null | undefined | false</code></td><td>条件值（支持 signal）。</td></tr>
+              <tr><td><code>children</code></td><td><code>Node | ((value: T) => Node)</code></td><td>条件为真时渲染的内容。</td></tr>
+              <tr><td><code>fallback</code></td><td><code>Node</code></td><td>条件为假时渲染的内容（可选）。</td></tr>
+            </tbody>
+          </table>
+          <div class="code-block">
+            <pre><code class="language-tsx" data-src="./assets/snippets/show.tsx"></code></pre>
+          </div>
+        </section>
+
+        <section id="for" class="api-section">
+          <h2>For</h2>
+          <table>
+            <thead><tr><th>Props</th><th>类型</th><th>说明</th></tr></thead>
+            <tbody>
+              <tr><td><code>each</code></td><td><code>T[] | Signal&lt;T[]&gt;</code></td><td>列表数据。</td></tr>
+              <tr><td><code>children</code></td><td><code>(item: T, index: () => number) => Node</code></td><td>渲染函数，<code>index</code> 为访问器。</td></tr>
+            </tbody>
+          </table>
+          <p class="note">非 keyed 协调：列表变化时对比新旧并做最小 DOM 操作（复用、插入、删除）。</p>
+          <div class="code-block">
+            <pre><code class="language-tsx" data-src="./assets/snippets/for.tsx"></code></pre>
+          </div>
+        </section>
+
+        <section id="errorboundary" class="api-section">
+          <h2>ErrorBoundary</h2>
+          <table>
+            <thead><tr><th>Props</th><th>类型</th><th>说明</th></tr></thead>
+            <tbody>
+              <tr><td><code>fallback</code></td><td><code>(error: unknown) => Node</code></td><td>出错时渲染的 fallback。</td></tr>
+              <tr><td><code>children</code></td><td><code>Node</code></td><td>受保护的子树。</td></tr>
+            </tbody>
+          </table>
+          <div class="code-block">
+            <pre><code class="language-tsx" data-src="./assets/snippets/errorboundary.tsx"></code></pre>
+          </div>
+        </section>
+
+        <section id="suspend" class="api-section">
+          <h2>Suspend</h2>
+          <table>
+            <thead><tr><th>Props</th><th>类型</th><th>说明</th></tr></thead>
+            <tbody>
+              <tr><td><code>fallback</code></td><td><code>Node</code></td><td>等待时渲染的占位内容。</td></tr>
+              <tr><td><code>children</code></td><td><code>Promise&lt;Node&gt; | Promise&lt;Node&gt;[]</code></td><td>异步加载的内容。</td></tr>
+            </tbody>
+          </table>
+          <p>
+            当 <code>children</code> 为 Promise 或 Promise 数组时，先渲染 <code>fallback</code>，
+            所有 Promise resolve 后切换到实际内容。多个 Promise 通过 <code>Promise.all</code> 等待。
+          </p>
+          <div class="note">
+            与 React 不同，kiko 组件函数只执行一次，因此 Suspend 适合<strong>一次性初始化</strong>。
+            如需在 signal 变化后重新加载数据，请使用 <code>effect</code> 或 <code>Show</code> 等响应式原语。
+          </div>
+          <div class="code-block">
+            <pre><code class="language-tsx" data-src="./assets/snippets/suspend.tsx"></code></pre>
+          </div>
+        </section>
+
+        <section id="react" class="api-section">
+          <h2>ReactPortal</h2>
+          <table>
+            <thead><tr><th>签名</th><th>说明</th></tr></thead>
+            <tbody>
+              <tr>
+                <td><code>ReactPortal(props: { component: React.ComponentType, ...rest }): HTMLElement</code></td>
+                <td>将 React 组件嵌入 kiko 树。Signal prop 变化自动触发 React 重渲染。</td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="note">
+            <code>react</code> 与 <code>react-dom</code> 是 peer dependency，仅在使用 ReactPortal 时由项目提供。
+            从 <code>@kikojs/dom/react-portal</code> 子路径导入。
+          </div>
+          <div class="code-block">
+            <pre><code class="language-tsx" data-src="./assets/snippets/react.tsx"></code></pre>
+          </div>
+        </section>
+
+        <section id="signals" class="api-section">
+          <h2>Signal 封装</h2>
+          <p>@kikojs/dom 重新实现了最小 signal 子集：</p>
+          <table>
+            <thead><tr><th>导出</th><th>说明</th></tr></thead>
+            <tbody>
+              <tr><td><code>createSignal&lt;T&gt;(initial): Signal.State&lt;T&gt;</code></td><td>自包含的信号创建。</td></tr>
+              <tr><td><code>isSignal(value): value is WatchableSignal</code></td><td>Signal 类型守卫。</td></tr>
+              <tr><td><code>createWatcher(cb): Watcher</code></td><td>创建标准 watcher。</td></tr>
+            </tbody>
+          </table>
+          <p class="note">
+            对于完整的 signal 工具集（computed, effect, batch, on, emitter 等），请使用
+            <a href="./signal.html">@kikojs/signal</a>。
+          </p>
+        </section>
+      </div>
+    </main>
+
+    <footer>
+      <p>kiko 使用 MIT 许可证 · 通过 GitHub Pages 部署</p>
+    </footer>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="./assets/highlight.js"></script>
+  </body>
+</html>

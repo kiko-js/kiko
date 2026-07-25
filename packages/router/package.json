@@ -1,0 +1,21 @@
+{
+  "name": "@kikojs/router",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "bun build src/index.ts --outdir dist --target browser --format esm --external @kikojs/signal --external @kikojs/dom --external signal-polyfill",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@kikojs/dom": "workspace:*",
+    "@kikojs/signal": "workspace:*",
+    "signal-polyfill": "^0.2.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "happy-dom": "^17"
+  }
+}

@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>kiko — 细粒度响应式 DOM 库</title>
+    <meta
+      name="description"
+      content="kiko 是一个基于 signal-polyfill 的细粒度响应式 DOM 库，JSX 直接编译为真实 DOM，无需虚拟 DOM。"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css"
+    />
+    <link rel="stylesheet" href="./assets/style.css" />
+  </head>
+  <body>
+    <header>
+      <nav>
+        <a class="logo" href="./index.html"><span></span>kiko</a>
+        <ul class="links">
+          <li><a href="./index.html">首页</a></li>
+          <li><a href="./signal.html">signal</a></li>
+          <li><a href="./dom.html">dom</a></li>
+          <li><a href="./router.html">router</a></li>
+          <li><a href="./examples.html">示例</a></li>
+          <li>
+            <a href="https://github.com/FairyScript/kiko" target="_blank" rel="noopener">GitHub</a>
+          </li>
+        </ul>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <h1>kiko</h1>
+        <p>
+          基于 signal-polyfill 的细粒度响应式 DOM 库。JSX 直接编译为真实 DOM，无需虚拟
+          DOM，组件函数只执行一次。
+        </p>
+        <div class="buttons">
+          <a class="btn btn-primary" href="./api.html">快速开始</a>
+          <a class="btn btn-secondary" href="./examples.html">查看示例</a>
+        </div>
+      </section>
+
+      <section>
+        <div class="demo-card">
+          <h2>实时计数器</h2>
+          <p>下面的计数器使用 /dom 渲染，signal 更新会自动驱动 DOM 细粒度刷新。</p>
+          <div id="counter-root"></div>
+          <p class="note">无需重新执行组件函数，只有显示数字的文本节点会更新。</p>
+        </div>
+      </section>
+
+      <section>
+        <h2>核心特性</h2>
+        <div class="features">
+          <div class="card">
+            <h3>真实 DOM</h3>
+            <p>JSX 工厂直接创建 HTMLElement 与 Text 节点，没有虚拟 DOM 和 diff 开销。</p>
+          </div>
+          <div class="card">
+            <h3>标准信号</h3>
+            <p>
+              基于 signal-polyfill（TC39 Signals 提案），返回标准 Signal.State / Signal.Computed。
+            </p>
+          </div>
+          <div class="card">
+            <h3>细粒度更新</h3>
+            <p>每个 signal 绑定独立 watcher，变化时只更新对应的文本、属性或子树。</p>
+          </div>
+          <div class="card">
+            <h3>React 桥接</h3>
+            <p>ReactPortal 组件可将 React 组件嵌入 kiko 树，信号 prop 变化自动重新渲染。</p>
+          </div>
+          <div class="card">
+            <h3>控制流组件</h3>
+            <p>
+              提供 Show、For、ErrorBoundary 与 Suspend，条件渲染、列表渲染、错误边界与异步挂起均基于
+              signal 与真实 DOM。
+            </p>
+          </div>
+          <div class="card">
+            <h3>清理作用域</h3>
+            <p>onCleanup 注册 effect 清理函数，dispose 时自动卸载 watcher 与事件监听。</p>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>快速开始</h2>
+        <p>安装依赖并在 TSX 中设置 <code>@jsxImportSource</code>：</p>
+        <div class="code-block">
+          <pre><code class="language-shell" data-src="./assets/snippets/install.sh"></code></pre>
+        </div>
+        <p style="margin-top: 22px">组件示例：</p>
+        <div class="code-block">
+          <pre><code class="language-tsx" data-src="./assets/snippets/counter.tsx"></code></pre>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <p>kiko 使用 MIT 许可证 · 通过 GitHub Pages 部署</p>
+    </footer>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="./assets/highlight.js"></script>
+    <script type="module" src="./assets/counter.ts"></script>
+  </body>
+</html>

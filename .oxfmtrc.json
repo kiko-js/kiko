@@ -1,0 +1,19 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "printWidth": 100,
+  "tabWidth": 2,
+  "useTabs": false,
+  "semi": false,
+  "singleQuote": false,
+  "trailingComma": "all",
+  "arrowParens": "avoid",
+  "endOfLine": "lf",
+  "ignorePatterns": [
+    "node_modules",
+    "dist",
+    "*.lock",
+    "*.min.*",
+    "docs/assets/kiko-dom.js",
+    "docs/assets/snippets"
+  ]
+}

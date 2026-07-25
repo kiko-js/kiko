@@ -1,0 +1,33 @@
+{
+  "workspaces": [
+    "packages/*",
+    "examples/*",
+    "docs"
+  ],
+  "type": "module",
+  "module": "index.ts",
+  "scripts": {
+    "prepare": "husky",
+    "lint": "oxlint .",
+    "fmt": "oxfmt --write .",
+    "fmt:check": "oxfmt --check .",
+    "site:build": "bun run docs/build.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.8",
+    "oxfmt": "^0.59.0",
+    "oxlint": "^1.74.0",
+    "typescript": "^7.0.2"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx,mjs,cjs}": [
+      "oxfmt --write",
+      "oxlint"
+    ],
+    "*.{json,md,yml,yaml,css,html}": [
+      "oxfmt --write"
+    ]
+  }
+}

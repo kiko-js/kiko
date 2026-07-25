@@ -1,0 +1,23 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["import", "typescript"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn",
+    "perf": "warn"
+  },
+  "rules": {
+    "import/no-named-export": "off",
+    "unicorn/no-empty-file": "off",
+    "no-empty-file": "off",
+    "no-await-in-loop": "off"
+  },
+  "ignorePatterns": [
+    "node_modules",
+    "dist",
+    "*.lock",
+    "*.min.*",
+    "docs/assets/kiko-dom.js",
+    "docs/assets/snippets"
+  ]
+}
