@@ -9,7 +9,7 @@
 
 ## 文档与示例
 
-访问项目官网：**https://fairyscript.github.io/kiko**
+访问项目官网：**https://kiko-js.github.io/kiko/**
 
 官网源码位于 `docs/` 目录，使用 GitHub Actions 部署到 GitHub Pages。
 
