@@ -39,6 +39,7 @@
           <li><a href="#untrack">untrack</a></li>
           <li><a href="#on">on</a></li>
           <li><a href="#emitter">createEmitter</a></li>
+          <li><a href="#createStore">createStore</a></li>
           <li><a href="#watcher">createWatcher</a></li>
           <li><a href="#example">完整示例</a></li>
         </ul>
@@ -62,7 +63,6 @@
           <h2>安装与导入</h2>
           <div class="code-block">
             <pre><code class="language-shell">bun add @kikojs/signal</code></pre>
-          </div>
           <div class="code-block">
             <pre><code class="language-ts">import {
   createSignal, isSignal,
@@ -71,6 +71,7 @@
   batch, untrack,
   on,
   createEmitter, createWatcher,
+  createStore,
 } from "@kikojs/signal"</code></pre>
           </div>
         </section>
@@ -286,6 +287,63 @@ emitter.emit("update", 42)</code></pre>
           </div>
         </section>
 
+
+        <section id="createStore" class="api-section">
+          <h2>createStore</h2>
+          <p>
+            创建细粒度响应式对象存储。每个属性都是独立的 <code>Signal.State</code>，
+            嵌套对象递归包裹为嵌套 store，通过 <code>.get()</code> / <code>.set()</code> 读写。
+          </p>
+          <table>
+            <thead><tr><th>签名</th><th>说明</th></tr></thead>
+            <tbody>
+              <tr>
+                <td><code>createStore&lt;T&gt;(initial: T): T</code></td>
+                <td>返回一个 Proxy，其每个属性都是 <code>StoreSignal</code>（<code>Signal.State</code> 子类）。</td>
+              </tr>
+            </tbody>
+          </table>
+          <p>核心特性：</p>
+          <ul style="color: var(--muted); margin-bottom: 22px">
+            <li><strong>属性即 Signal：</strong><code>store.name</code> 返回 <code>Signal.State</code>，可直接传给 JSX 或 <code>computed</code>。</li>
+            <li><strong>细粒度订阅：</strong>只订阅被访问的属性，修改 <code>store.age</code> 不触发 <code>store.name</code> 的 watcher。</li>
+            <li><strong>嵌套 store：</strong><code>store.user.get()</code> 返回嵌套 store，其属性也是 signal。</li>
+            <li><strong>自动包裹：</strong><code>.set()</code> 传入普通对象时自动创建嵌套 store。</li>
+            <li><strong>循环引用检测：</strong>检测到循环引用时抛出 <code>TypeError</code>。</li>
+          </ul>
+          <div class="code-block">
+            <pre><code class="language-ts">const store = createStore({
+  name: "Alice",
+  user: { age: 30 },
+  tags: ["dev"],
+})
+
+// 读取 — 每个属性都是 Signal.State
+store.name.get()              // "Alice"
+store.user.get().age.get()    // 30
+
+// 写入 — 只触发该属性的 watcher
+store.name.set("Bob")         // name watcher 触发，age 不受影响
+store.user.get().age.set(31)  // user.age watcher 触发
+
+// .set() 自动包裹普通对象为嵌套 store
+store.user.set({ name: "Carol", age: 25 })
+store.user.get().name.get()   // "Carol" — 不是普通对象，是 Signal.State
+
+// 配合 computed 使用
+const greeting = computed(() =>
+  `${store.name.get()} is ${store.user.get().age.get()}`
+)
+
+// 在 JSX 中直接使用（isSignal → true，自动订阅）
+// <div>{store.name}</div>  — 仅当 name 变化时更新
+
+// 循环引用检测
+const obj: any = {}
+obj.self = obj
+createStore(obj)  // TypeError: Circular reference detected in store</code></pre>
+          </div>
+        </section>
         <section id="watcher" class="api-section">
           <h2>createWatcher</h2>
           <table>
@@ -306,6 +364,9 @@ emitter.emit("update", 42)</code></pre>
           </div>
           <div class="code-block">
             <pre><code class="language-ts" data-src="./assets/snippets/effect.ts"></code></pre>
+          </div>
+          <div class="code-block">
+            <pre><code class="language-ts" data-src="./assets/snippets/store.ts"></code></pre>
           </div>
         </section>
       </div>
