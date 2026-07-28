@@ -5,6 +5,7 @@ export { createEmitter, Emitter, type EventMap, type Listener } from "./emit"
 export { onCleanup, type CleanupFn } from "./scope"
 export { batch, untrack } from "./scheduler"
 export { on } from "./on"
+export { createStore, type SetStoreFn } from "./store"
 
 import { Signal } from "signal-polyfill"
 
