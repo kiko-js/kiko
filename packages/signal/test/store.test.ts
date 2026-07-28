@@ -3,293 +3,225 @@ import { Signal } from "signal-polyfill"
 import { createStore, computed } from "../src"
 
 describe("createStore", () => {
-  // ── basic reads ────────────────────────────────────────────────────
+  // ── basic signal API ───────────────────────────────────────────────
 
-  it("returns a tuple [store, setStore]", () => {
-    const [store, setStore] = createStore({ x: 1 })
-    expect(store.x).toBe(1)
-    expect(typeof setStore).toBe("function")
+  it("returns a store proxy whose properties are Signal.State", () => {
+    const store = createStore({ x: 1 })
+    expect(store.x instanceof Signal.State).toBe(true)
+    expect(store.x.get()).toBe(1)
   })
 
-  it("store reads like a plain object", () => {
-    const [store] = createStore({ name: "Alice", age: 30 })
-    expect(store.name).toBe("Alice")
-    expect(store.age).toBe(30)
+  it("properties have .get() and .set()", () => {
+    const store = createStore({ name: "Alice", age: 30 })
+    expect(store.name.get()).toBe("Alice")
+    expect(store.age.get()).toBe(30)
+
+    store.name.set("Bob")
+    expect(store.name.get()).toBe("Bob")
+    expect(store.age.get()).toBe(30)
   })
 
-  it("direct assignment to store throws", () => {
-    const [store] = createStore({ name: "Alice" })
-    expect(() => {
-      ;(store as Record<string, unknown>).name = "Bob"
-    }).toThrow()
+  it(".set() triggers only watchers on that property", () => {
+    const store = createStore({ name: "Alice", age: 30 })
+
+    let nameRuns = 0
+    let ageRuns = 0
+    const nameC = computed(() => { nameRuns++; return store.name.get() })
+    const ageC = computed(() => { ageRuns++; return store.age.get() })
+    const nw = new Signal.subtle.Watcher(() => {})
+    const aw = new Signal.subtle.Watcher(() => {})
+    nw.watch(nameC)
+    aw.watch(ageC)
+    nameC.get()
+    ageC.get()
+    nameRuns = 0
+    ageRuns = 0
+
+    store.name.set("Bob")
+    nameC.get()
+    ageC.get()
+    expect(nameRuns).toBe(1)
+    expect(ageRuns).toBe(0)
   })
 
-  it("direct delete on store throws", () => {
-    const [store] = createStore({ name: "Alice" })
-    expect(() => {
-      delete (store as Record<string, unknown>).name
-    }).toThrow()
+  it(".set() auto-wraps plain objects as nested stores", () => {
+    const store = createStore<Record<string, unknown>>({ data: null })
+    ;(store.data as Signal.State<unknown>).set({ x: 1, y: 2 })
+    const nested = store.data.get() as Record<string, unknown>
+    expect(nested.x instanceof Signal.State).toBe(true)
+    expect((nested.x as Signal.State<unknown>).get()).toBe(1)
+    expect((nested.y as Signal.State<unknown>).get()).toBe(2)
   })
 
   it("Object.keys iterates property names", () => {
-    const [store] = createStore({ a: 1, b: 2 })
+    const store = createStore({ a: 1, b: 2 })
     const keys = Object.keys(store)
     expect(keys).toContain("a")
     expect(keys).toContain("b")
     expect(keys.length).toBe(2)
   })
 
-  // ── setStore partial ───────────────────────────────────────────────
-
-  it("setStore partial updates a single property", () => {
-    const [store, setStore] = createStore({ name: "Alice", age: 30 })
-    setStore({ name: "Bob" })
-    expect(store.name).toBe("Bob")
-    expect(store.age).toBe(30)
+  it("'in' operator works", () => {
+    const store = createStore({ a: 1 })
+    expect("a" in store).toBe(true)
+    expect("b" in store).toBe(false)
   })
 
-  it("setStore partial updates multiple properties", () => {
-    const [store, setStore] = createStore({ x: 0, y: 0, z: 0 })
-    setStore({ x: 1, y: 2 })
-    expect(store.x).toBe(1)
-    expect(store.y).toBe(2)
-    expect(store.z).toBe(0)
-  })
-
-  it("setStore partial auto-creates signals for new keys", () => {
-    const [store, setStore] = createStore({ a: 1 })
-    setStore({ b: 2 })
-    expect(store.a).toBe(1)
-    expect((store as Record<string, unknown>).b).toBe(2)
-  })
-
-  it("setStore partial with nested object auto-creates nested store", () => {
-    const [store, setStore] = createStore<Record<string, unknown>>({ a: 1 })
-    setStore({ nested: { x: 10 } })
-    const nested = (store as Record<string, unknown>).nested as Record<string, unknown>
-    expect(nested.x).toBe(10)
-    // nested should also be reactive (proxy)
-    setStore({ nested: { x: 20 } })
-    expect(nested.x).toBe(20)
-  })
-
-  // ── setStore function (immer-like) ─────────────────────────────────
-
-  it("setStore function mutates draft and applies changes", () => {
-    const [store, setStore] = createStore({ x: 0, y: 0 })
-    setStore(draft => {
-      draft.x = 5
-      draft.y = 10
-    })
-    expect(store.x).toBe(5)
-    expect(store.y).toBe(10)
-  })
-
-  it("setStore function only triggers watchers for changed properties", () => {
-    const [store, setStore] = createStore({ name: "Alice", age: 30 })
-
-    let ageRuns = 0
-    const w = new Signal.subtle.Watcher(() => { ageRuns++ })
-    // We can't easily watch a proxy property directly — use the internal
-    // signal mechanism via a computed that reads the property
-    const ageComputed = computed(() => store.age)
-    w.watch(ageComputed)
-    ageComputed.get() // prime
-
-    setStore(draft => {
-      draft.age = 31
-      // name stays "Alice" — unchanged
-    })
-
-    expect(ageRuns).toBe(1)
-  })
-
-  it("setStore function can add new properties", () => {
-    const [store, setStore] = createStore<Record<string, unknown>>({ a: 1 })
-    setStore(draft => {
-      ;(draft as Record<string, unknown>).b = 2
-    })
-    expect(store.a).toBe(1)
-    expect((store as Record<string, unknown>).b).toBe(2)
-  })
-
-  it("setStore function can delete properties", () => {
-    const [store, setStore] = createStore<Record<string, unknown>>({ a: 1, b: 2 })
-    setStore(draft => {
-      delete (draft as Record<string, unknown>).b
-    })
-    expect(store.a).toBe(1)
-    expect((store as Record<string, unknown>).b).toBeUndefined()
+  it("delete removes the property signal", () => {
+    const store = createStore<Record<string, unknown>>({ a: 1, b: 2 })
+    delete store.b
+    expect(store.a.get()).toBe(1)
+    expect("b" in store).toBe(false)
   })
 
   // ── fine-grained reactivity ────────────────────────────────────────
 
   it("computed subscribes only to properties it reads", () => {
-    const [store, setStore] = createStore({ a: 1, b: 2, c: 3 })
+    const store = createStore({ a: 1, b: 2, c: 3 })
 
     let runs = 0
     const sum = computed(() => {
       runs++
-      return (store.a as number) + (store.b as number)
+      return (store.a.get() as number) + (store.b.get() as number)
     })
 
     expect(sum.get()).toBe(3)
     expect(runs).toBe(1)
 
-    // Change a watched property
-    setStore({ a: 10 })
+    store.a.set(10)
     expect(sum.get()).toBe(12)
     expect(runs).toBe(2)
 
-    // Change an unwatched property — should NOT re-evaluate
-    setStore({ c: 99 })
+    store.c.set(99)
     expect(sum.get()).toBe(12)
     expect(runs).toBe(2)
-  })
-
-  it("watcher on a single property only fires when that property changes", () => {
-    const [store, setStore] = createStore({ name: "Alice", age: 30 })
-
-    let nameRuns = 0
-    let ageRuns = 0
-
-    // Create computeds that each read a single property
-    const nameC = computed(() => { nameRuns++; return store.name })
-    const ageC = computed(() => { ageRuns++; return store.age })
-
-    // Prime them under watchers
-    const nameW = new Signal.subtle.Watcher(() => {})
-    const ageW = new Signal.subtle.Watcher(() => {})
-    nameW.watch(nameC)
-    ageW.watch(ageC)
-    nameC.get()
-    ageC.get()
-
-    // Reset counters (the initial .get() incremented them)
-    nameRuns = 0
-    ageRuns = 0
-
-    setStore({ name: "Bob" })
-
-    // Computed is lazy — trigger re-evaluation
-    nameC.get()
-    ageC.get()
-
-    // name computed should re-evaluate, age should not
-    expect(nameRuns).toBe(1)
-    expect(ageRuns).toBe(0)
   })
 
   // ── nested stores ──────────────────────────────────────────────────
 
-  it("nested objects are wrapped as reactive stores", () => {
-    const [store, setStore] = createStore({
-      user: { name: "Alice", age: 30 },
-    })
+  it("nested store properties accessed via .get() are signals", () => {
+    const store = createStore({ user: { name: "Alice", age: 30 } })
 
-    expect(store.user.name).toBe("Alice")
-    expect(store.user.age).toBe(30)
+    const userStore = store.user.get()
+    expect(userStore.name instanceof Signal.State).toBe(true)
+    expect(userStore.name.get()).toBe("Alice")
+    expect(userStore.age.get()).toBe(30)
   })
 
-  it("nested store updates are fine-grained", () => {
-    const [store, setStore] = createStore({
-      user: { name: "Alice", age: 30 },
-    })
+  it("nested store .set() updates are fine-grained", () => {
+    const store = createStore({ user: { name: "Alice", age: 30 } })
 
     let nameRuns = 0
     let ageRuns = 0
-
-    const nameC = computed(() => { nameRuns++; return store.user.name })
-    const ageC = computed(() => { ageRuns++; return store.user.age })
-
-    const nameW = new Signal.subtle.Watcher(() => {})
-    const ageW = new Signal.subtle.Watcher(() => {})
-    nameW.watch(nameC)
-    ageW.watch(ageC)
+    const userStore = store.user.get()
+    const nameC = computed(() => { nameRuns++; return userStore.name.get() })
+    const ageC = computed(() => { ageRuns++; return userStore.age.get() })
+    const nw = new Signal.subtle.Watcher(() => {})
+    const aw = new Signal.subtle.Watcher(() => {})
+    nw.watch(nameC)
+    aw.watch(ageC)
     nameC.get()
     ageC.get()
-
     nameRuns = 0
     ageRuns = 0
 
-    // Update only name — age watcher should not fire
-    setStore({ user: { name: "Bob" } })
+    userStore.name.set("Bob")
 
-    // Computed is lazy — trigger re-evaluation
     nameC.get()
     ageC.get()
-
     expect(nameRuns).toBe(1)
     expect(ageRuns).toBe(0)
-    expect(store.user.name).toBe("Bob")
-    expect(store.user.age).toBe(30)
+    expect(userStore.name.get()).toBe("Bob")
+    expect(userStore.age.get()).toBe(30)
   })
 
-  it("setStore function with nested draft", () => {
-    const [store, setStore] = createStore({
-      user: { name: "Alice", age: 30 },
-    })
+  it("deeply nested stores work (3 levels)", () => {
+    const store = createStore({ a: { b: { c: 1 } } })
 
-    setStore(draft => {
-      draft.user.name = "Bob"
-    })
-
-    expect(store.user.name).toBe("Bob")
-    expect(store.user.age).toBe(30)
-  })
-
-  it("deeply nested stores work", () => {
-    const [store, setStore] = createStore({
-      a: { b: { c: 1 } },
-    })
-
-    expect(store.a.b.c).toBe(1)
+    const bStore = store.a.get()
+    const cSignal = bStore.b.get().c as Signal.State<number>
+    expect(cSignal.get()).toBe(1)
 
     let runs = 0
-    const c = computed(() => { runs++; return store.a.b.c as number })
-
+    const comp = computed(() => { runs++; return cSignal.get() })
     const w = new Signal.subtle.Watcher(() => {})
-    w.watch(c)
-    c.get()
+    w.watch(comp)
+    comp.get()
     runs = 0
 
-    setStore({ a: { b: { c: 2 } } })
-
-    // Computed is lazy — trigger re-evaluation
-    c.get()
-
+    cSignal.set(2)
+    comp.get()
     expect(runs).toBe(1)
-    expect(store.a.b.c).toBe(2)
+    expect(cSignal.get()).toBe(2)
+  })
+
+  it("replacing entire nested object via .set() auto-wraps", () => {
+    const store = createStore({ user: { name: "Alice", age: 30 } as Record<string, unknown> })
+
+    store.user.set({ name: "Bob" })
+    // .set() auto-wraps → the new object becomes a nested store
+    const newUser = store.user.get()
+    expect(newUser.name instanceof Signal.State).toBe(true)
+    expect(newUser.name.get()).toBe("Bob")
+    // age was not in the replacement, so it's gone
+    expect("age" in newUser).toBe(false)
   })
 
   // ── edge cases ─────────────────────────────────────────────────────
 
   it("empty object", () => {
-    const [store, setStore] = createStore({})
+    const store = createStore<Record<string, unknown>>({})
     expect(Object.keys(store).length).toBe(0)
-    setStore({ x: 1 })
-    expect((store as Record<string, unknown>).x).toBe(1)
+    store.x = 1 // convenience assignment via proxy set trap
+    expect((store.x as Signal.State<unknown>).get()).toBe(1)
   })
 
-  it("arrays are stored as plain values (not deeply wrapped)", () => {
-    const [store, setStore] = createStore({ items: [1, 2, 3] })
-    expect(Array.isArray(store.items)).toBe(true)
-    expect(store.items).toEqual([1, 2, 3])
-
-    setStore({ items: [4, 5] })
-    expect(store.items).toEqual([4, 5])
+  it("arrays are stored as-is (not deeply wrapped)", () => {
+    const store = createStore({ items: [1, 2, 3] })
+    expect(Array.isArray(store.items.get())).toBe(true)
+    expect(store.items.get()).toEqual([1, 2, 3])
+    store.items.set([4, 5])
+    expect(store.items.get()).toEqual([4, 5])
   })
 
   it("null / undefined values", () => {
-    const [store, setStore] = createStore<Record<string, unknown>>({
-      a: null,
-      b: undefined,
-    })
-    expect(store.a).toBeNull()
-    expect(store.b).toBeUndefined()
+    const store = createStore<Record<string, unknown>>({ a: null, b: undefined })
+    expect(store.a.get()).toBeNull()
+    expect(store.b.get()).toBeUndefined()
+    store.a.set("hello")
+    store.b.set(42)
+    expect(store.a.get()).toBe("hello")
+    expect(store.b.get()).toBe(42)
+  })
 
-    setStore({ a: "hello", b: 42 })
-    expect(store.a).toBe("hello")
-    expect(store.b).toBe(42)
+  // ── circular reference detection ───────────────────────────────────
+
+  it("throws on self-referencing object in createStore", () => {
+    const obj: Record<string, unknown> = { name: "x" }
+    obj.self = obj
+    expect(() => createStore(obj)).toThrow("Circular reference detected")
+  })
+
+  it("throws on mutual circular reference in createStore", () => {
+    const a: Record<string, unknown> = { name: "a" }
+    const b: Record<string, unknown> = { name: "b" }
+    a.child = b
+    b.parent = a
+    expect(() => createStore({ root: a })).toThrow("Circular reference detected")
+  })
+
+  it("throws on circular reference via .set()", () => {
+    const store = createStore<Record<string, unknown>>({ data: null })
+    const obj: Record<string, unknown> = {}
+    obj.self = obj
+    expect(() => {
+      ;(store.data as Signal.State<unknown>).set(obj)
+    }).toThrow("Circular reference detected")
+  })
+
+  it("allows shared (non-circular) object references", () => {
+    const child = { name: "shared" }
+    // Same object referenced twice — diamond, not cycle
+    expect(() => createStore({ a: child, b: child })).not.toThrow()
   })
 })

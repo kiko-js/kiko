@@ -1,21 +1,42 @@
 import { Signal } from "signal-polyfill"
-import { batch } from "./scheduler"
 
 /**
- * Fine-grained reactive store: each property is backed by an independent
- * `Signal.State`, with nested objects recursively wrapped as nested stores.
+ * A `Signal.State` subclass whose `.set()` automatically wraps plain objects
+ * as nested store nodes, so `store.user.set({ name: "Bob" })` creates a
+ * reactive nested store instead of storing a plain object.
+ */
+class StoreSignal<T> extends Signal.State<T> {
+  override set(value: T): void {
+    if (isPlainObject(value)) {
+      super.set(createNode(value as Record<string, unknown>) as unknown as T)
+    } else {
+      super.set(value)
+    }
+  }
+}
+
+/**
+ * Fine-grained reactive store: each property is a `StoreSignal` (which is
+ * a `Signal.State`). Nested plain objects are recursively wrapped as nested
+ * stores, so `store.user.get().name` is also a signal.
  *
  * ```ts
- * const [store, setStore] = createStore({ name: "Alice", age: 30 })
+ * const store = createStore({ name: "Alice", user: { age: 30 } })
  *
- * // Read like a plain object — subscribes to just the accessed properties
- * effect(() => console.log(store.name, store.age))
+ * // Every property is a Signal.State — read/write via .get() / .set()
+ * store.name.get()               // "Alice"
+ * store.name.set("Bob")          // only "name" watchers fire
  *
- * // Partial update — only "name" watchers fire, "age" is undisturbed
- * setStore({ name: "Bob" })
+ * // Nested stores: store.user.get() returns the nested store proxy
+ * store.user.get().age.get()     // 30
+ * store.user.get().age.set(31)   // only user.age watchers fire
  *
- * // Immer-style producer — only changed properties trigger watchers
- * setStore(draft => { draft.age += 1 })
+ * // .set() auto-wraps plain objects as nested stores
+ * const s = createStore({ data: null as unknown })
+ * ;(s.data as StoreSignal<unknown>).set({ x: 1 })  // becomes nested store
+ *
+ * // In JSX, signals are auto-detected (instanceof Signal.State):
+ * //   <div>{store.name}</div>   — subscribes to name, updates on change
  * ```
  */
 
@@ -31,161 +52,94 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
   return v !== null && typeof v === "object" && !Array.isArray(v)
 }
 
-function isStoreNode(v: unknown): v is StoreNode {
-  return v !== null && typeof v === "object" && $signals in v
+/** Objects currently being wrapped — used to detect circular references. */
+const wrapping = new WeakSet<object>()
+
+/**
+ * Wrap a value for storage in a signal. Plain objects become nested store
+ * nodes; everything else passes through.
+ */
+function wrap(value: unknown): unknown {
+  return isPlainObject(value) ? createNode(value as Record<string, unknown>) : value
 }
 
 /**
- * Recursively create a proxy store node. Each property of `initial` becomes
- * a `Signal.State`. Nested plain objects become nested store nodes so that
- * `store.user.name` subscribes independently from `store.user.age`.
+ * Recursively create a proxy store node. Each property of `initial` is
+ * backed by a `StoreSignal`. Nested plain objects become nested store nodes.
+ *
+ * Throws `TypeError` if a circular reference is detected.
  */
 function createNode(initial: Record<string, unknown>): StoreNode {
-  const signals: SignalMap = new Map()
+  if (wrapping.has(initial)) {
+    throw new TypeError("Circular reference detected in store")
+  }
+  wrapping.add(initial)
 
-  for (const [key, value] of Object.entries(initial)) {
-    if (isPlainObject(value)) {
-      signals.set(key, new Signal.State(createNode(value)))
-    } else {
-      signals.set(key, new Signal.State(value))
+  try {
+    const signals: SignalMap = new Map()
+
+    for (const [key, value] of Object.entries(initial)) {
+      signals.set(key, new StoreSignal(wrap(value)))
     }
-  }
 
-  const target = { [$signals]: signals } as StoreNode
+    const target = { [$signals]: signals } as StoreNode
 
-  return new Proxy(target, {
-    get(_target, prop, _receiver) {
-      if (prop === $signals) return signals
-      const s = signals.get(prop)
-      if (s !== undefined) return s.get()
-      return undefined
-    },
+    const proxy = new Proxy(target, {
+      get(_target, prop, _receiver) {
+        if (prop === $signals) return signals
+        const s = signals.get(prop)
+        if (s !== undefined) return s
+        return undefined
+      },
 
-    set(_target, prop, _value) {
-      throw new Error(
-        `Cannot assign to "${String(prop)}" on a store. Use setStore() to update.`,
-      )
-    },
+      set(_target, prop, value, _receiver) {
+        if (prop === $signals) return false
+        const key = prop as string
+        const existing = signals.get(key)
+        if (existing) {
+          existing.set(value)
+        } else {
+          signals.set(key, new StoreSignal(wrap(value)))
+        }
+        return true
+      },
 
-    deleteProperty(_target, prop) {
-      throw new Error(
-        `Cannot delete "${String(prop)}" on a store. Use setStore() to update.`,
-      )
-    },
+      deleteProperty(_target, prop) {
+        if (prop === $signals) return false
+        return signals.delete(prop as string)
+      },
 
-    ownKeys(_target) {
-      return Array.from(signals.keys())
-    },
+      ownKeys(_target) {
+        return Array.from(signals.keys())
+      },
 
-    getOwnPropertyDescriptor(_target, prop) {
-      if (signals.has(prop as string)) {
-        return { enumerable: true, configurable: true }
-      }
-      return undefined
-    },
+      getOwnPropertyDescriptor(_target, prop) {
+        if (signals.has(prop as string)) {
+          return { enumerable: true, configurable: true }
+        }
+        return undefined
+      },
 
-    has(_target, prop) {
-      return prop === $signals || signals.has(prop as string)
-    },
-  }) as unknown as StoreNode
-}
+      has(_target, prop) {
+        return prop === $signals || signals.has(prop as string)
+      },
+    }) as unknown as StoreNode
 
-// ── snapshot / diff / merge ──────────────────────────────────────────
-
-/** Deep snapshot: recursively extract plain values from a store node. */
-function snapshot(node: StoreNode): Record<string, unknown> {
-  const result: Record<string, unknown> = {}
-  for (const [key, s] of node[$signals]) {
-    const val = s.get()
-    result[key as string] = isStoreNode(val) ? snapshot(val) : val
-  }
-  return result
-}
-
-/**
- * Apply a diff between `draft` (plain object) and the current store state.
- * Only properties whose value actually changed are written to their signals.
- * Keys not in the draft are deleted from the store.
- */
-function applyDiff(node: StoreNode, draft: Record<string, unknown>): void {
-  const signals = node[$signals]
-
-  for (const [key, value] of Object.entries(draft)) {
-    const existing = signals.get(key)
-    const current = existing?.get()
-
-    if (isStoreNode(current) && isPlainObject(value)) {
-      applyDiff(current, value)
-    } else if (existing) {
-      if (current !== value) existing.set(value)
-    } else {
-      signals.set(
-        key,
-        new Signal.State(isPlainObject(value) ? createNode(value) : value),
-      )
-    }
-  }
-
-  for (const key of signals.keys()) {
-    if (!(key as string in draft)) signals.delete(key)
+    return proxy
+  } finally {
+    wrapping.delete(initial)
   }
 }
 
 /**
- * Deep-merge `partial` into a store node. Existing nested stores are
- * recursively merged; new keys auto-create signals; existing primitives
- * are replaced. Keys not mentioned in `partial` are left alone.
- */
-function deepMerge(node: StoreNode, partial: Record<string, unknown>): void {
-  const signals = node[$signals]
-
-  for (const [key, value] of Object.entries(partial)) {
-    const existing = signals.get(key)
-    const current = existing?.get()
-
-    if (isStoreNode(current) && isPlainObject(value)) {
-      deepMerge(current, value)
-    } else if (existing) {
-      existing.set(isPlainObject(value) ? createNode(value) : value)
-    } else {
-      signals.set(
-        key,
-        new Signal.State(isPlainObject(value) ? createNode(value) : value),
-      )
-    }
-  }
-}
-
-// ── public API ───────────────────────────────────────────────────────
-
-export type SetStoreFn<T> = (recipe: Partial<T> | ((draft: T) => void)) => void
-
-/**
- * Create a fine-grained reactive store.
+ * Create a fine-grained reactive store. Returns a proxy where every
+ * property is a `StoreSignal` (subclass of `Signal.State`).
  *
- * Returns a tuple `[store, setStore]`:
- * - `store` — a Proxy that reads like a plain object. Each property access
- *   subscribes the active consumer to that property's signal.
- * - `setStore` — the mutation API. Accepts either a partial object (shallow
- *   merge) or a function receiving a mutable draft (Immer-style). Both run
- *   inside a `batch`. Nested objects are auto-wrapped as nested stores.
+ * - Read: `store.name.get()`, `store.user.get().age.get()`
+ * - Write: `store.name.set("Bob")`, `store.user.get().age.set(31)`
+ * - `.set()` auto-wraps plain objects as nested stores
+ * - JSX auto-detects signals via `instanceof Signal.State`
  */
-export function createStore<T extends Record<string, unknown>>(
-  initial: T,
-): [T, SetStoreFn<T>] {
-  const root = createNode(initial)
-
-  function setStore(recipe: Partial<T> | ((draft: T) => void)): void {
-    batch(() => {
-      if (typeof recipe === "function") {
-        const draft = snapshot(root) as T
-        ;(recipe as (draft: T) => void)(draft)
-        applyDiff(root, draft as Record<string, unknown>)
-      } else {
-        deepMerge(root, recipe as Record<string, unknown>)
-      }
-    })
-  }
-
-  return [root as unknown as T, setStore]
+export function createStore<T extends Record<string, unknown>>(initial: T): T {
+  return createNode(initial) as unknown as T
 }
