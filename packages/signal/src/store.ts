@@ -1,145 +1,233 @@
 import { Signal } from "signal-polyfill"
 
-/**
- * A `Signal.State` subclass whose `.set()` automatically wraps plain objects
- * as nested store nodes, so `store.user.set({ name: "Bob" })` creates a
- * reactive nested store instead of storing a plain object.
- */
-class StoreSignal<T> extends Signal.State<T> {
-  override set(value: T): void {
-    if (isPlainObject(value)) {
-      super.set(createNode(value as Record<string, unknown>) as unknown as T)
-    } else {
-      super.set(value)
+export const REF = Symbol("ref")
+
+export type PathKey = string | number | symbol
+
+export interface Ref<T> {
+  readonly [REF]: true
+  readonly value: T
+}
+
+type UnwrapRef<T> = T extends Ref<infer U> ? U : T
+
+export type Store<T> = StoreNode<T> &
+  (T extends Ref<infer U>
+    ? { readonly [K in keyof U]: Store<U[K]> }
+    : T extends Array<infer U>
+      ? { readonly length: Store<number> } & { readonly [K: number]: Store<U> }
+      : T extends object
+        ? { readonly [K in keyof T]: Store<T[K]> }
+        : unknown)
+
+interface StoreNode<T> {
+  get(): UnwrapRef<T>
+  set(value: UnwrapRef<T> | T): void
+  /** Internal signal for this exact path. Undefined when the node is under a ref. */
+  readonly signal: Signal.State<UnwrapRef<T>> | undefined
+}
+
+interface SignalEntry<T> {
+  path: PathKey[]
+  signal: Signal.State<T>
+}
+
+interface SignalTrieNode {
+  entry?: SignalEntry<unknown>
+  children: Map<PathKey, SignalTrieNode>
+}
+
+interface StoreContext {
+  root: unknown
+  signals: SignalTrieNode
+}
+
+export function ref<T>(value: T): Ref<T> {
+  return { [REF]: true, value }
+}
+
+export function isRef<T>(value: unknown): value is Ref<T> {
+  return (
+    value !== null && typeof value === "object" && (value as Record<symbol, unknown>)[REF] === true
+  )
+}
+
+function readPath(
+  root: unknown,
+  path: PathKey[],
+): { value: unknown; isRef: boolean; underRef: boolean } {
+  let current = root
+  let underRef = false
+  for (const key of path) {
+    if (current === null || current === undefined)
+      return { value: undefined, isRef: false, underRef }
+    if (isRef(current)) {
+      current = current.value
+      underRef = true
+    }
+    current = (current as Record<PathKey, unknown>)[key]
+  }
+  if (current !== null && current !== undefined && isRef(current)) {
+    return { value: (current as Ref<unknown>).value, isRef: true, underRef }
+  }
+  return { value: current, isRef: false, underRef }
+}
+
+function setValueAtPath(root: unknown, path: PathKey[], value: unknown): unknown {
+  if (path.length === 0) {
+    return value
+  }
+  const key = path[0] as PathKey
+  const rest = path.slice(1)
+  const currentValue =
+    root !== null && typeof root === "object" ? (root as Record<PathKey, unknown>)[key] : undefined
+  const nextChild = setValueAtPath(currentValue, rest, value)
+  if (Object.is(currentValue, nextChild)) {
+    return root
+  }
+  if (Array.isArray(root)) {
+    const next = root.slice()
+    const idx = typeof key === "number" ? key : Number(key)
+    next[idx] = nextChild
+    return next
+  }
+  if (root !== null && typeof root === "object") {
+    return { ...root, [key]: nextChild }
+  }
+  const container: Record<PathKey, unknown> =
+    typeof key === "number" ? ([] as unknown as Record<PathKey, unknown>) : {}
+  container[key] = nextChild
+  return container
+}
+
+function getTrieNode(root: SignalTrieNode, path: PathKey[], create: true): SignalTrieNode
+function getTrieNode(
+  root: SignalTrieNode,
+  path: PathKey[],
+  create: false,
+): SignalTrieNode | undefined
+function getTrieNode(
+  root: SignalTrieNode,
+  path: PathKey[],
+  create: boolean,
+): SignalTrieNode | undefined {
+  let node = root
+  for (const key of path) {
+    let child = node.children.get(key)
+    if (!child) {
+      if (!create) return undefined
+      child = { children: new Map() }
+      node.children.set(key, child)
+    }
+    node = child
+  }
+  return node
+}
+
+function collectAffected(root: SignalTrieNode, path: PathKey[]): SignalEntry<unknown>[] {
+  const affected: SignalEntry<unknown>[] = []
+  let node: SignalTrieNode | undefined = root
+  for (let i = 0; i <= path.length; i++) {
+    if (!node) break
+    if (node.entry) affected.push(node.entry)
+    if (i < path.length) node = node.children.get(path[i]!)
+  }
+  if (!node) return affected
+  const stack: SignalTrieNode[] = [node]
+  while (stack.length > 0) {
+    const n = stack.pop()!
+    if (n.entry) affected.push(n.entry)
+    for (const child of n.children.values()) stack.push(child)
+  }
+  return affected
+}
+
+function getSignal<T>(context: StoreContext, path: PathKey[]): Signal.State<T> {
+  const node = getTrieNode(context.signals, path, true)
+  if (!node.entry) {
+    const { value } = readPath(context.root, path)
+    node.entry = {
+      path: path.slice(),
+      signal: new Signal.State(value) as Signal.State<unknown>,
     }
   }
+  return node.entry.signal as Signal.State<T>
 }
 
-/**
- * Fine-grained reactive store: each property is a `StoreSignal` (which is
- * a `Signal.State`). Nested plain objects are recursively wrapped as nested
- * stores, so `store.user.get().name` is also a signal.
- *
- * ```ts
- * const store = createStore({ name: "Alice", user: { age: 30 } })
- *
- * // Every property is a Signal.State — read/write via .get() / .set()
- * store.name.get()               // "Alice"
- * store.name.set("Bob")          // only "name" watchers fire
- *
- * // Nested stores: store.user.get() returns the nested store proxy
- * store.user.get().age.get()     // 30
- * store.user.get().age.set(31)   // only user.age watchers fire
- *
- * // .set() auto-wraps plain objects as nested stores
- * const s = createStore({ data: null as unknown })
- * ;(s.data as StoreSignal<unknown>).set({ x: 1 })  // becomes nested store
- *
- * // In JSX, signals are auto-detected (instanceof Signal.State):
- * //   <div>{store.name}</div>   — subscribes to name, updates on change
- * ```
- */
-
-const $signals = Symbol("$signals")
-
-type SignalMap = Map<string | symbol, Signal.State<unknown>>
-
-interface StoreNode {
-  [$signals]: SignalMap
-}
-
-function isPlainObject(v: unknown): v is Record<string, unknown> {
-  return v !== null && typeof v === "object" && !Array.isArray(v)
-}
-
-/** Objects currently being wrapped — used to detect circular references. */
-const wrapping = new WeakSet<object>()
-
-/**
- * Wrap a value for storage in a signal. Plain objects become nested store
- * nodes; everything else passes through.
- */
-function wrap(value: unknown): unknown {
-  return isPlainObject(value) ? createNode(value as Record<string, unknown>) : value
-}
-
-/**
- * Recursively create a proxy store node. Each property of `initial` is
- * backed by a `StoreSignal`. Nested plain objects become nested store nodes.
- *
- * Throws `TypeError` if a circular reference is detected.
- */
-function createNode(initial: Record<string, unknown>): StoreNode {
-  if (wrapping.has(initial)) {
-    throw new TypeError("Circular reference detected in store")
-  }
-  wrapping.add(initial)
-
-  try {
-    const signals: SignalMap = new Map()
-
-    for (const [key, value] of Object.entries(initial)) {
-      signals.set(key, new StoreSignal(wrap(value)))
-    }
-
-    const target = { [$signals]: signals } as StoreNode
-
-    const proxy = new Proxy(target, {
-      get(_target, prop, _receiver) {
-        if (prop === $signals) return signals
-        const s = signals.get(prop)
-        if (s !== undefined) return s
-        return undefined
-      },
-
-      set(_target, prop, value, _receiver) {
-        if (prop === $signals) return false
-        const key = prop as string
-        const existing = signals.get(key)
-        if (existing) {
-          existing.set(value)
-        } else {
-          signals.set(key, new StoreSignal(wrap(value)))
+function createProxyNode<T>(context: StoreContext, path: PathKey[]): Store<T> {
+  const node = new Proxy(function () {} as unknown as StoreNode<T>, {
+    get(_target, prop) {
+      if (prop === "get") {
+        return (): T => {
+          const { value, underRef } = readPath(context.root, path)
+          if (underRef) return value as T
+          return getSignal<T>(context, path).get()
         }
-        return true
-      },
-
-      deleteProperty(_target, prop) {
-        if (prop === $signals) return false
-        return signals.delete(prop as string)
-      },
-
-      ownKeys(_target) {
-        return Array.from(signals.keys())
-      },
-
-      getOwnPropertyDescriptor(_target, prop) {
-        if (signals.has(prop as string)) {
-          return { enumerable: true, configurable: true }
+      }
+      if (prop === "set") {
+        return (value: T): void => {
+          const { underRef } = readPath(context.root, path)
+          if (underRef) return
+          setNodeValue(context, path, value)
         }
+      }
+      if (prop === "signal") {
+        const { underRef } = readPath(context.root, path)
+        if (underRef) return undefined
+        return getSignal<T>(context, path)
+      }
+      if (prop === Symbol.toPrimitive || prop === "toString" || prop === "valueOf") {
+        return () => String(readPath(context.root, path).value)
+      }
+      if (typeof prop === "symbol") {
         return undefined
-      },
+      }
+      return createProxyNode(context, [...path, prop])
+    },
+    set() {
+      return false
+    },
+    apply() {
+      const { value, underRef } = readPath(context.root, path)
+      if (underRef) return value
+      return getSignal<T>(context, path).get()
+    },
+    ownKeys() {
+      const { value } = readPath(context.root, path)
+      if (value === null || value === undefined || typeof value !== "object") return []
+      return Reflect.ownKeys(value)
+    },
+    getOwnPropertyDescriptor(_target, prop) {
+      const { value } = readPath(context.root, path)
+      if (value === null || value === undefined || typeof value !== "object") return undefined
+      const desc = Reflect.getOwnPropertyDescriptor(value, prop)
+      if (desc) desc.configurable = true
+      return desc
+    },
+    has(_target, prop) {
+      const { value } = readPath(context.root, path)
+      if (value === null || value === undefined || typeof value !== "object") return false
+      return prop in value
+    },
+  })
+  return node as Store<T>
+}
 
-      has(_target, prop) {
-        return prop === $signals || signals.has(prop as string)
-      },
-    }) as unknown as StoreNode
-
-    return proxy
-  } finally {
-    wrapping.delete(initial)
+function setNodeValue(context: StoreContext, path: PathKey[], value: unknown): void {
+  const { underRef } = readPath(context.root, path)
+  if (underRef) return
+  const nextRoot = setValueAtPath(context.root, path, value)
+  if (Object.is(context.root, nextRoot)) return
+  context.root = nextRoot
+  for (const entry of collectAffected(context.signals, path)) {
+    entry.signal.set(readPath(context.root, entry.path).value)
   }
 }
 
-/**
- * Create a fine-grained reactive store. Returns a proxy where every
- * property is a `StoreSignal` (subclass of `Signal.State`).
- *
- * - Read: `store.name.get()`, `store.user.get().age.get()`
- * - Write: `store.name.set("Bob")`, `store.user.get().age.set(31)`
- * - `.set()` auto-wraps plain objects as nested stores
- * - JSX auto-detects signals via `instanceof Signal.State`
- */
-export function createStore<T extends Record<string, unknown>>(initial: T): T {
-  return createNode(initial) as unknown as T
+export function createStore<T>(initialState: T): Store<T> {
+  const context: StoreContext = {
+    root: initialState,
+    signals: { children: new Map() },
+  }
+  return createProxyNode<T>(context, [])
 }

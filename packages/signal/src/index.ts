@@ -5,8 +5,8 @@ export { createEmitter, Emitter, type EventMap, type Listener } from "./emit"
 export { onCleanup, type CleanupFn } from "./scope"
 export { batch, untrack } from "./scheduler"
 export { on } from "./on"
-export { createStore } from "./store"
-
+export { createStore, ref, isRef, REF } from "./store"
+export type { Store, PathKey, Ref } from "./store"
 import { Signal } from "signal-polyfill"
 
 export type Watcher = Signal.subtle.Watcher

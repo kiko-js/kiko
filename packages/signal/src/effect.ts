@@ -3,7 +3,11 @@ import { scheduleEffect } from "./scheduler"
 import { flushScope, runInScope, type CleanupFn } from "./scope"
 
 export type EffectCleanup = () => void
-export type EffectFn = () => void | EffectCleanup
+/**
+ * An effect callback. Any return value is accepted; only a function return is
+ * treated as a cleanup and run before the next re-run / on dispose.
+ */
+export type EffectFn = () => unknown
 
 /**
  * Run `fn` once, then re-run it whenever any signal it read changes. The
@@ -26,7 +30,10 @@ export function effect(fn: EffectFn): EffectCleanup {
       cleanup = undefined
     }
     flushScope(scope)
-    cleanup = runInScope(scope, fn)
+    const result = runInScope(scope, fn)
+    // Only a function return is a cleanup; other values (e.g. a number from
+    // an expression-bodied effect) are discarded.
+    if (typeof result === "function") cleanup = result as EffectCleanup
   })
 
   const watcher = new Signal.subtle.Watcher(() => {

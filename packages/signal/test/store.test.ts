@@ -1,227 +1,246 @@
-import { describe, it, expect } from "bun:test"
-import { Signal } from "signal-polyfill"
-import { createStore, computed } from "../src"
+import { test, expect } from "bun:test"
+import { createStore, effect, computed, ref, isRef, REF } from "../src/index.ts"
 
-describe("createStore", () => {
-  // ── basic signal API ───────────────────────────────────────────────
+function flush(): Promise<void> {
+  const { promise, resolve } = Promise.withResolvers<void>()
+  queueMicrotask(resolve)
+  return promise
+}
 
-  it("returns a store proxy whose properties are Signal.State", () => {
-    const store = createStore({ x: 1 })
-    expect(store.x instanceof Signal.State).toBe(true)
-    expect(store.x.get()).toBe(1)
+test("get returns current value", () => {
+  const store = createStore({ a: { b: { c: 1 } } })
+  expect(store.a.b.c.get()).toBe(1)
+  expect(store.a.b.get()).toEqual({ c: 1 })
+  expect(store.get()).toEqual({ a: { b: { c: 1 } } })
+})
+
+test("set updates value immutably", () => {
+  const store = createStore({ a: { b: { c: 1 } } })
+  const before = store.get()
+  store.a.b.c.set(2)
+  const after = store.get()
+  expect(after).toEqual({ a: { b: { c: 2 } } })
+  expect(after).not.toBe(before)
+  expect(after.a).not.toBe(before.a)
+  expect(after.a.b).not.toBe(before.a.b)
+  expect(store.a.b.c.get()).toBe(2)
+})
+
+test("parent signals fire when child changes, siblings do not", async () => {
+  const store = createStore({ a: { b: { c: 1, d: 2 } } })
+  const ab = store.a.b
+  const abc = store.a.b.c
+  const abd = store.a.b.d
+
+  const log: string[] = []
+  effect(() => {
+    log.push(`ab:${JSON.stringify(ab.get())}`)
+  })
+  effect(() => {
+    log.push(`abc:${abc.get()}`)
+  })
+  effect(() => {
+    log.push(`abd:${abd.get()}`)
   })
 
-  it("properties have .get() and .set()", () => {
-    const store = createStore({ name: "Alice", age: 30 })
-    expect(store.name.get()).toBe("Alice")
-    expect(store.age.get()).toBe(30)
+  // initial runs
+  expect(log).toContain('ab:{"c":1,"d":2}')
+  expect(log).toContain("abc:1")
+  expect(log).toContain("abd:2")
 
-    store.name.set("Bob")
-    expect(store.name.get()).toBe("Bob")
-    expect(store.age.get()).toBe(30)
+  log.length = 0
+  abc.set(10)
+  await flush()
+
+  expect(log).toContain('ab:{"c":10,"d":2}')
+  expect(log).toContain("abc:10")
+  expect(log).not.toContain("abd:2")
+  expect(log).not.toContain("abd:10")
+})
+
+test("setting parent triggers descendant signal reads", async () => {
+  const store = createStore({ a: { b: { c: 1, d: 2 } } })
+  const abc = store.a.b.c
+  const abd = store.a.b.d
+
+  const log: string[] = []
+  effect(() => log.push(`abc:${abc.get()}`))
+  effect(() => log.push(`abd:${abd.get()}`))
+
+  log.length = 0
+  store.a.b.set({ c: 100, d: 200 })
+  await flush()
+
+  expect(log).toContain("abc:100")
+  expect(log).toContain("abd:200")
+})
+
+test("computed derives from store values", () => {
+  const store = createStore({ a: { b: { c: 1, d: 2 } } })
+  const sum = computed(() => store.a.b.c.get() + store.a.b.d.get())
+  expect(sum.get()).toBe(3)
+  store.a.b.c.set(5)
+  expect(sum.get()).toBe(7)
+})
+
+test("array index access works", () => {
+  const store = createStore({ items: [1, 2, 3] })
+  expect(store.items[1]!.get()).toBe(2)
+  store.items[1]!.set(20)
+  expect(store.items.get()).toEqual([1, 20, 3])
+})
+
+test("root set replaces whole state", () => {
+  const store = createStore({ a: 1 })
+  const a = store.a
+  effect(() => a.get())
+  store.set({ a: 2 })
+  expect(a.get()).toBe(2)
+})
+
+test("ref is a terminal node", async () => {
+  const store = createStore({ a: ref({ b: 1, c: 2 }) })
+  expect(isRef(store.a.get())).toBe(false)
+  expect(store.a.get()).toEqual({ b: 1, c: 2 })
+  expect(store.a.b.get()).toBe(1)
+
+  const log: string[] = []
+  effect(() => log.push(`a:${JSON.stringify(store.a.get())}`))
+  effect(() => log.push(`ab:${store.a.b.get()}`))
+
+  log.length = 0
+  store.a.set(ref({ b: 10, c: 20 }))
+  await flush()
+
+  expect(log).toContain('a:{"b":10,"c":20}')
+  // under ref, child reads are not reactive
+  expect(log).not.toContain("ab:10")
+  expect(store.a.b.get()).toBe(10)
+})
+
+test("mutating ref child does not trigger reactive updates", () => {
+  const inner = { b: 1 }
+  const store = createStore({ a: ref(inner) })
+  const a = store.a
+
+  const log: string[] = []
+  effect(() => log.push(`a:${JSON.stringify(a.get())}`))
+
+  log.length = 0
+  inner.b = 2
+  expect(a.get()).toEqual({ b: 2 })
+  expect(log.length).toBe(0)
+})
+
+test("ref marker symbol is exposed", () => {
+  const r = ref(1)
+  expect(r[REF]).toBe(true)
+  expect(r.value).toBe(1)
+})
+
+test("ref preserves special objects and does not break them", async () => {
+  class ThreeLike {
+    position = { x: 0, y: 0 }
+    render() {
+      return "rendered"
+    }
+  }
+  const obj = new ThreeLike()
+  const store = createStore({ model: ref(obj) })
+
+  // get returns same reference
+  expect(store.model.get()).toBe(obj)
+  expect(store.model.get().render()).toBe("rendered")
+
+  // child access is raw, does not track
+  const log: string[] = []
+  effect(() => log.push(`x:${store.model.position.x.get()}`))
+  effect(() => log.push(`model:${store.model.get().render()}`))
+
+  log.length = 0
+  obj.position.x = 5
+  await flush()
+  expect(log.length).toBe(0)
+
+  // whole replacement triggers update
+  const next = new ThreeLike()
+  log.length = 0
+  store.model.set(ref(next))
+  await flush()
+  expect(store.model.get()).toBe(next)
+  expect(log).toContain("model:rendered")
+})
+
+test("effect self-cycle is bounded", async () => {
+  const store = createStore({ a: 1 })
+  effect(() => {
+    store.a.set(store.a.get() + 1)
   })
+  await flush()
+  expect(store.a.get()).toBe(2)
+})
 
-  it(".set() triggers only watchers on that property", () => {
-    const store = createStore({ name: "Alice", age: 30 })
+test("effect cross-cycle is bounded", async () => {
+  const store = createStore({ a: 1, b: 1 })
+  effect(() => store.a.set(store.b.get() + 1))
+  effect(() => store.b.set(store.a.get() + 1))
+  await flush()
+  expect(typeof store.a.get()).toBe("number")
+  expect(typeof store.b.get()).toBe("number")
+})
 
-    let nameRuns = 0
-    let ageRuns = 0
-    const nameC = computed(() => { nameRuns++; return store.name.get() })
-    const ageC = computed(() => { ageRuns++; return store.age.get() })
-    const nw = new Signal.subtle.Watcher(() => {})
-    const aw = new Signal.subtle.Watcher(() => {})
-    nw.watch(nameC)
-    aw.watch(ageC)
-    nameC.get()
-    ageC.get()
-    nameRuns = 0
-    ageRuns = 0
+test("circular references do not cause infinite loops", () => {
+  type Circular = { a: number; self?: Circular }
+  const circular: Circular = { a: 1 }
+  circular.self = circular
+  const store = createStore({ data: circular })
 
-    store.name.set("Bob")
-    nameC.get()
-    ageC.get()
-    expect(nameRuns).toBe(1)
-    expect(ageRuns).toBe(0)
-  })
+  expect(store.data.get()).toBe(circular)
+  expect(store.data.self!.get()).toBe(circular)
 
-  it(".set() auto-wraps plain objects as nested stores", () => {
-    const store = createStore<Record<string, unknown>>({ data: null })
-    ;(store.data as Signal.State<unknown>).set({ x: 1, y: 2 })
-    const nested = store.data.get() as Record<string, unknown>
-    expect(nested.x instanceof Signal.State).toBe(true)
-    expect((nested.x as Signal.State<unknown>).get()).toBe(1)
-    expect((nested.y as Signal.State<unknown>).get()).toBe(2)
-  })
+  store.data.a.set(2)
+  expect(store.data.a.get()).toBe(2)
+  expect(store.data.self!.get()).toBe(circular)
+})
 
-  it("Object.keys iterates property names", () => {
-    const store = createStore({ a: 1, b: 2 })
-    const keys = Object.keys(store)
-    expect(keys).toContain("a")
-    expect(keys).toContain("b")
-    expect(keys.length).toBe(2)
-  })
+test("self-referencing store path is handled", () => {
+  const store = createStore<{ data: unknown }>({ data: null })
+  store.data.set(store)
+  expect(store.data.get()).toBe(store)
+  // accessing a child on the proxy returns another proxy without hanging
+  expect(typeof (store.data as unknown as Record<string, unknown>).data).toBeOneOf([
+    "object",
+    "function",
+  ])
+})
 
-  it("'in' operator works", () => {
-    const store = createStore({ a: 1 })
-    expect("a" in store).toBe(true)
-    expect("b" in store).toBe(false)
-  })
+test("ref with circular value stays opaque", async () => {
+  const circular: Record<string, unknown> = { value: 1 }
+  circular.self = circular
+  const store = createStore({ model: ref(circular) })
 
-  it("delete removes the property signal", () => {
-    const store = createStore<Record<string, unknown>>({ a: 1, b: 2 })
-    delete store.b
-    expect(store.a.get()).toBe(1)
-    expect("b" in store).toBe(false)
-  })
+  const log: string[] = []
+  effect(() => log.push(`model:${store.model.get() === circular}`))
 
-  // ── fine-grained reactivity ────────────────────────────────────────
+  log.length = 0
+  circular.value = 2
+  await flush()
+  expect(log.length).toBe(0)
 
-  it("computed subscribes only to properties it reads", () => {
-    const store = createStore({ a: 1, b: 2, c: 3 })
+  const next: Record<string, unknown> = { value: 3 }
+  next.self = next
+  store.model.set(ref(next))
+  await flush()
+  expect(store.model.get()).toBe(next)
+  expect(log).toContain("model:false")
+})
 
-    let runs = 0
-    const sum = computed(() => {
-      runs++
-      return (store.a.get() as number) + (store.b.get() as number)
-    })
-
-    expect(sum.get()).toBe(3)
-    expect(runs).toBe(1)
-
-    store.a.set(10)
-    expect(sum.get()).toBe(12)
-    expect(runs).toBe(2)
-
-    store.c.set(99)
-    expect(sum.get()).toBe(12)
-    expect(runs).toBe(2)
-  })
-
-  // ── nested stores ──────────────────────────────────────────────────
-
-  it("nested store properties accessed via .get() are signals", () => {
-    const store = createStore({ user: { name: "Alice", age: 30 } })
-
-    const userStore = store.user.get()
-    expect(userStore.name instanceof Signal.State).toBe(true)
-    expect(userStore.name.get()).toBe("Alice")
-    expect(userStore.age.get()).toBe(30)
-  })
-
-  it("nested store .set() updates are fine-grained", () => {
-    const store = createStore({ user: { name: "Alice", age: 30 } })
-
-    let nameRuns = 0
-    let ageRuns = 0
-    const userStore = store.user.get()
-    const nameC = computed(() => { nameRuns++; return userStore.name.get() })
-    const ageC = computed(() => { ageRuns++; return userStore.age.get() })
-    const nw = new Signal.subtle.Watcher(() => {})
-    const aw = new Signal.subtle.Watcher(() => {})
-    nw.watch(nameC)
-    aw.watch(ageC)
-    nameC.get()
-    ageC.get()
-    nameRuns = 0
-    ageRuns = 0
-
-    userStore.name.set("Bob")
-
-    nameC.get()
-    ageC.get()
-    expect(nameRuns).toBe(1)
-    expect(ageRuns).toBe(0)
-    expect(userStore.name.get()).toBe("Bob")
-    expect(userStore.age.get()).toBe(30)
-  })
-
-  it("deeply nested stores work (3 levels)", () => {
-    const store = createStore({ a: { b: { c: 1 } } })
-
-    const bStore = store.a.get()
-    const cSignal = bStore.b.get().c as Signal.State<number>
-    expect(cSignal.get()).toBe(1)
-
-    let runs = 0
-    const comp = computed(() => { runs++; return cSignal.get() })
-    const w = new Signal.subtle.Watcher(() => {})
-    w.watch(comp)
-    comp.get()
-    runs = 0
-
-    cSignal.set(2)
-    comp.get()
-    expect(runs).toBe(1)
-    expect(cSignal.get()).toBe(2)
-  })
-
-  it("replacing entire nested object via .set() auto-wraps", () => {
-    const store = createStore({ user: { name: "Alice", age: 30 } as Record<string, unknown> })
-
-    store.user.set({ name: "Bob" })
-    // .set() auto-wraps → the new object becomes a nested store
-    const newUser = store.user.get()
-    expect(newUser.name instanceof Signal.State).toBe(true)
-    expect(newUser.name.get()).toBe("Bob")
-    // age was not in the replacement, so it's gone
-    expect("age" in newUser).toBe(false)
-  })
-
-  // ── edge cases ─────────────────────────────────────────────────────
-
-  it("empty object", () => {
-    const store = createStore<Record<string, unknown>>({})
-    expect(Object.keys(store).length).toBe(0)
-    store.x = 1 // convenience assignment via proxy set trap
-    expect((store.x as Signal.State<unknown>).get()).toBe(1)
-  })
-
-  it("arrays are stored as-is (not deeply wrapped)", () => {
-    const store = createStore({ items: [1, 2, 3] })
-    expect(Array.isArray(store.items.get())).toBe(true)
-    expect(store.items.get()).toEqual([1, 2, 3])
-    store.items.set([4, 5])
-    expect(store.items.get()).toEqual([4, 5])
-  })
-
-  it("null / undefined values", () => {
-    const store = createStore<Record<string, unknown>>({ a: null, b: undefined })
-    expect(store.a.get()).toBeNull()
-    expect(store.b.get()).toBeUndefined()
-    store.a.set("hello")
-    store.b.set(42)
-    expect(store.a.get()).toBe("hello")
-    expect(store.b.get()).toBe(42)
-  })
-
-  // ── circular reference detection ───────────────────────────────────
-
-  it("throws on self-referencing object in createStore", () => {
-    const obj: Record<string, unknown> = { name: "x" }
-    obj.self = obj
-    expect(() => createStore(obj)).toThrow("Circular reference detected")
-  })
-
-  it("throws on mutual circular reference in createStore", () => {
-    const a: Record<string, unknown> = { name: "a" }
-    const b: Record<string, unknown> = { name: "b" }
-    a.child = b
-    b.parent = a
-    expect(() => createStore({ root: a })).toThrow("Circular reference detected")
-  })
-
-  it("throws on circular reference via .set()", () => {
-    const store = createStore<Record<string, unknown>>({ data: null })
-    const obj: Record<string, unknown> = {}
-    obj.self = obj
-    expect(() => {
-      ;(store.data as Signal.State<unknown>).set(obj)
-    }).toThrow("Circular reference detected")
-  })
-
-  it("allows shared (non-circular) object references", () => {
-    const child = { name: "shared" }
-    // Same object referenced twice — diamond, not cycle
-    expect(() => createStore({ a: child, b: child })).not.toThrow()
-  })
+test("array index access and array replacement", () => {
+  const store = createStore({ items: [1, 2, 3] })
+  expect(store.items[1]!.get()).toBe(2)
+  expect(store.items.length.get()).toBe(3)
+  store.items[1]!.set(20)
+  expect(store.items.get()).toEqual([1, 20, 3])
+  store.items.set([4, 5])
+  expect(store.items.get()).toEqual([4, 5])
 })

@@ -20,6 +20,8 @@ const untrackFn: <U>(cb: () => U) => U = Signal.subtle["untrack"]
 let batchDepth = 0
 let flushScheduled = false
 let pendingEffects: Set<EffectRun> = new Set()
+let flushDepth = 0
+const MAX_FLUSH_DEPTH = 100
 
 /** Enqueue `run` for the next flush. Idempotent within a flush cycle. */
 export function scheduleEffect(run: EffectRun): void {
@@ -32,7 +34,20 @@ export function scheduleEffect(run: EffectRun): void {
 
 function flushEffects(): void {
   flushScheduled = false
-  if (pendingEffects.size === 0) return
+  if (pendingEffects.size === 0) {
+    flushDepth = 0
+    return
+  }
+  // Safety net for circular effect dependencies: each round that re-schedules
+  // work advances the depth, so a pathological cycle is stopped instead of
+  // queueing microtasks forever. Normal flows drain `pendingEffects` and reset.
+  if (flushDepth > MAX_FLUSH_DEPTH) {
+    pendingEffects = new Set()
+    flushDepth = 0
+    console.error("Circular dependency detected in effects")
+    return
+  }
+  flushDepth++
   const effects = pendingEffects
   pendingEffects = new Set()
   for (const run of effects) {
@@ -44,6 +59,7 @@ function flushEffects(): void {
       reportError(err)
     }
   }
+  if (pendingEffects.size === 0) flushDepth = 0
 }
 
 /**
