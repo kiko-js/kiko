@@ -1,0 +1,15 @@
+{
+  "name": "@kikojs/benchmark",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "bench": "bun run store-vs-immer.bench.ts"
+  },
+  "dependencies": {
+    "@kikojs/signal": "workspace:*",
+    "immer": "^11.1.15"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}

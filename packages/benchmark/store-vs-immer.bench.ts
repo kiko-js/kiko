@@ -4,11 +4,11 @@
  * Compares read performance, write performance, and create cost
  * for nested object structures.
  *
- * Usage: bun run benchmark/store-vs-immer.bench.ts
+ * Usage: bun run bench (in packages/@kikojs/benchmark)
  */
 
 import { produce, setAutoFreeze } from "immer"
-import { createStore } from "../packages/signal/src/store"
+import { createStore } from "@kikojs/signal"
 
 setAutoFreeze(false)
 
