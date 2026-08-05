@@ -1,7 +1,7 @@
 export interface HistoryAdapter {
-  /** 获取当前路径（不含 base，path 模式不带 #） */
+  /** 获取当前路由路径：不含 base、不含 # 片段，包含 query（两种模式语义一致） */
   getPath(): string
-  /** 获取当前 hash（hash 模式下包含 # 后的内容） */
+  /** 获取当前 hash 片段：不含 #，无片段则为空字符串（两种模式语义一致） */
   getHash(): string
   /** 导航到指定路径 */
   push(path: string, state?: unknown): void
@@ -38,16 +38,15 @@ export function createPathHistory(
 ): HistoryAdapter {
   const normalizedBase = base.replace(/\/$/, "")
 
-  function getFullPath(): string {
-    const { pathname, search, hash } = env.location
-    return pathname + search + hash
-  }
-
   function getPath(): string {
-    const full = getFullPath()
+    const full = env.location.pathname + env.location.search
     return normalizedBase && full.startsWith(normalizedBase)
       ? full.slice(normalizedBase.length) || "/"
       : full || "/"
+  }
+
+  function getHash(): string {
+    return env.location.hash.slice(1)
   }
 
   function buildFullPath(path: string): string {
@@ -72,7 +71,7 @@ export function createPathHistory(
 
   return {
     getPath,
-    getHash: () => env.location.hash.slice(1),
+    getHash,
     push,
     replace,
     go: (delta: number) => env.history.go(delta),
@@ -83,12 +82,16 @@ export function createPathHistory(
 
 /** hash 模式 history 适配器 */
 export function createHashHistory(env: BrowserHistoryEnv = getBrowserEnv()): HistoryAdapter {
-  function getHash(): string {
-    return env.location.hash.slice(1) || "/"
+  function getPath(): string {
+    const raw = env.location.hash.slice(1) || "/"
+    const hashIndex = raw.indexOf("#")
+    return hashIndex >= 0 ? raw.slice(0, hashIndex) : raw
   }
 
-  function getPath(): string {
-    return getHash().split("?")[0] ?? "/"
+  function getHash(): string {
+    const raw = env.location.hash.slice(1)
+    const hashIndex = raw.indexOf("#")
+    return hashIndex >= 0 ? raw.slice(hashIndex + 1) : ""
   }
 
   function push(path: string, state?: unknown): void {

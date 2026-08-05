@@ -432,6 +432,10 @@
           </table>
           <p>
             adapter 接口：<code>getPath / getHash / push / replace / go / listen / dispose</code>。
+            两种 adapter 的方法语义完全一致，只有实现不同（path 模式基于 <code>popstate</code> +
+            History API，hash 模式基于 <code>hashchange</code>）： <code>getPath()</code> 返回路径 +
+            query（不含 base、不含 <code>#</code> 片段）， <code>getHash()</code> 返回
+            <code>#</code> 片段（无片段为空字符串）。
           </p>
           <div class="code-block">
             <pre><code class="language-ts" data-src="./assets/snippets/router-history.ts"></code></pre>

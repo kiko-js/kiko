@@ -67,6 +67,13 @@ export function createRouter(options: RouterOptions): Router {
   const base = options.base ?? ""
   const history: HistoryAdapter = mode === "hash" ? createHashHistory() : createPathHistory(base)
 
+  /** 从 adapter 读取当前完整路径（路径 + query + # 片段），两种模式语义一致 */
+  function currentPath(): string {
+    const path = history.getPath()
+    const hash = history.getHash()
+    return path + (hash ? "#" + hash : "")
+  }
+
   const routes = options.routes
   const matcher = createMatcher(routes)
 
@@ -78,9 +85,7 @@ export function createRouter(options: RouterOptions): Router {
   const globalAfter: ((to: RouteLocation, from: RouteLocation | null) => void)[] =
     options.afterEach ?? []
 
-  const location = createSignal<RouteLocation>(
-    resolveLocation(history.getPath(), undefined, nextKey()),
-  )
+  const location = createSignal<RouteLocation>(resolveLocation(currentPath(), undefined, nextKey()))
 
   const matched = new Signal.Computed(() => {
     const loc = location.get()
@@ -235,11 +240,8 @@ export function createRouter(options: RouterOptions): Router {
 
   // 监听浏览器前进/后退
   const unlisten = history.listen(() => {
-    const path = history.getPath()
-    const hash = history.getHash()
-    const full = mode === "hash" ? "#" + hash : path + (hash ? "#" + hash : "")
     const from = location.get()
-    const to = resolveLocation(full, undefined, nextKey())
+    const to = resolveLocation(currentPath(), undefined, nextKey())
     runGuards(to, from).then(outcome => {
       if (outcome === false) {
         // 被阻止时回退到上一个历史记录
@@ -251,7 +253,7 @@ export function createRouter(options: RouterOptions): Router {
         updateLocation(outcome.path, outcome.state, nextKey())
         return
       }
-      updateLocation(full, undefined, to.key)
+      updateLocation(to.fullPath, undefined, to.key)
     })
   })
 
