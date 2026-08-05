@@ -5,9 +5,11 @@ export {
   jsxDEV,
   jsxs,
   Fragment,
+  Style,
   type Props,
   type Component,
   type AsyncComponent,
+  type StyleProps,
 } from "./jsx-runtime"
 export { render } from "./render"
 export { Show, For, ErrorBoundary, Suspend } from "./flow"

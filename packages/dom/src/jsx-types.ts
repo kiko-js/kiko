@@ -239,7 +239,7 @@ export interface HTMLIntrinsicElements {
   source: HTMLProps<HTMLSourceElement>
   span: HTMLProps<HTMLSpanElement>
   strong: HTMLProps<HTMLElement>
-  style: HTMLProps<HTMLStyleElement>
+  style: HTMLProps<HTMLStyleElement> & { scoped?: boolean }
   sub: HTMLProps<HTMLElement>
   summary: HTMLProps<HTMLElement>
   sup: HTMLProps<HTMLElement>

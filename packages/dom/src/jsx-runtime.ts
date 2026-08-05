@@ -1,6 +1,14 @@
 import { Signal } from "signal-polyfill"
 import { createWatcher, isSignal } from "./signal"
 import type { WatchableSignal, Watcher } from "./signal"
+import {
+  createScopeAttr,
+  createSheet,
+  rewriteScopedCss,
+  supportsConstructable,
+  adoptSheet,
+  unadoptSheet,
+} from "./style"
 
 export type Props = Record<string, unknown> & { children?: unknown }
 export type Component<P = Props> = (props: P) => Node
@@ -12,6 +20,9 @@ export type { JSX } from "./jsx-types"
 const nodeWatchers = new WeakMap<Node, Set<Watcher>>()
 // Track arbitrary cleanup callbacks per node (e.g. React root unmount)
 const nodeCleanups = new WeakMap<Node, Set<() => void>>()
+// Sheets owned by scoped-style anchors, so a re-inserted anchor (Show/For
+// remount after cleanup) re-adopts its sheet instead of silently losing css.
+const scopeSheets = new WeakMap<Node, CSSStyleSheet>()
 
 export function trackWatcher(node: Node, watcher: Watcher): void {
   let set = nodeWatchers.get(node)
@@ -30,6 +41,47 @@ export function trackCleanup(node: Node, fn: () => void): void {
     nodeCleanups.set(node, set)
   }
   set.add(fn)
+}
+
+// Scoped-style anchors are comment nodes whose text carries the scope attr
+// (`kiko-scope:data-kiko-v1`). The scope ROOT is the nearest ancestor element
+// of the anchor, so the attribute is applied when the anchor is inserted.
+const SCOPE_PREFIX = "kiko-scope:"
+
+function scopeAttrOf(node: Node): string | null {
+  if (node.nodeType !== Node.COMMENT_NODE) return null
+  const text = node.textContent ?? ""
+  return text.startsWith(SCOPE_PREFIX) ? text.slice(SCOPE_PREFIX.length) : null
+}
+
+/**
+ * Apply the scope attribute to `parent` for every scoped-style anchor inside
+ * `child` (the anchor itself, or anchors flattened out of a fragment). Must
+ * run before the node is moved so fragment children are still inspectable.
+ * Vue stamps every element via its compiler; kiko has no compiler, so the
+ * scope attribute lands on the single containing element and the rewritten
+ * css matches its descendants — reactive swaps are covered for free.
+ */
+export function applyScopeRoots(child: Node, parent: Node): void {
+  if (child.nodeType === Node.DOCUMENT_FRAGMENT_NODE) {
+    for (const c of Array.from(child.childNodes)) applyScopeRoots(c, parent)
+    return
+  }
+  const attr = scopeAttrOf(child)
+  if (attr === null || parent.nodeType !== Node.ELEMENT_NODE) return
+  const host = parent as Element
+  if (!host.hasAttribute(attr)) host.setAttribute(attr, "")
+  // Re-adopt the sheet when the anchor was inserted after its subtree was
+  // cleaned up (e.g. a Show branch that unmounted and remounted).
+  const sheet = scopeSheets.get(child)
+  if (sheet !== undefined && !isAdopted(sheet)) {
+    adoptSheet(sheet, document)
+    trackCleanup(child, () => unadoptSheet(sheet, document))
+  }
+}
+
+function isAdopted(sheet: CSSStyleSheet): boolean {
+  return (document.adoptedStyleSheets as unknown as CSSStyleSheet[]).includes(sheet)
 }
 
 export function cleanupWatchers(root: Node): void {
@@ -88,7 +140,10 @@ export function swapNodes(marker: Node, old: Node[], next: Node[]): Node[] {
     parent.removeChild(n)
   }
   const ref = marker.nextSibling
-  for (const n of next) parent.insertBefore(n, ref)
+  for (const n of next) {
+    applyScopeRoots(n, parent)
+    parent.insertBefore(n, ref)
+  }
   return next
 }
 
@@ -104,7 +159,10 @@ function appendChild(parent: Node, child: unknown): void {
     // insertion order. Re-reading marker.nextSibling each iteration would
     // place each node before the previous one, reversing the array.
     const ref = marker.nextSibling
-    for (const n of current) parent.insertBefore(n, ref)
+    for (const n of current) {
+      applyScopeRoots(n, parent)
+      parent.insertBefore(n, ref)
+    }
 
     const render = (): void => {
       current = swapNodes(marker, current, toNodes(signal.get()))
@@ -130,6 +188,7 @@ function appendChild(parent: Node, child: unknown): void {
     return
   }
   if (child instanceof Node) {
+    applyScopeRoots(child, parent)
     parent.appendChild(child)
     return
   }
@@ -373,6 +432,11 @@ export function jsx(tag: string | Component<any>, props: Props | null): Node {
     return tag(p)
   }
 
+  // `<style scoped>` is the intrinsic spelling of the Style component.
+  if (tag === "style" && p.scoped) {
+    return Style(p as StyleProps)
+  }
+
   const el = SVG_TAGS.has(tag) ? document.createElementNS(SVG_NS, tag) : document.createElement(tag)
   for (const key of Object.keys(p)) {
     setProp(el, key, p[key])
@@ -385,6 +449,124 @@ export function Fragment(props: Props): DocumentFragment {
   const frag = document.createDocumentFragment()
   appendChild(frag, props.children)
   return frag
+}
+
+export interface StyleProps {
+  /** CSS text: a string, a signal of CSS text, or nested arrays of those. */
+  children?: unknown
+  /**
+   * Rewrite the selectors and scope them to the nearest ancestor element
+   * (Vue-style scoped CSS). Without `scoped`, the css is injected globally.
+   */
+  scoped?: boolean
+  /** CSP nonce for the fallback `<style>` element (ignored with constructable sheets). */
+  nonce?: string
+}
+
+function extractCssText(children: unknown): string {
+  const parts: string[] = []
+  const visit = (value: unknown): void => {
+    if (value == null || value === false || value === true) return
+    if (isSignal(value)) {
+      visit((value as WatchableSignal<unknown>).get())
+      return
+    }
+    if (Array.isArray(value)) {
+      for (const c of value) visit(c)
+      return
+    }
+    parts.push(String(value))
+  }
+  visit(children)
+  return parts.join("\n")
+}
+
+function collectCssSignals(children: unknown): WatchableSignal<unknown>[] {
+  const out: WatchableSignal<unknown>[] = []
+  const visit = (value: unknown): void => {
+    if (value == null || value === false || value === true) return
+    if (isSignal(value)) {
+      out.push(value as WatchableSignal<unknown>)
+      const inner = (value as WatchableSignal<unknown>).get()
+      if (Array.isArray(inner)) for (const c of inner) visit(c)
+      return
+    }
+    if (Array.isArray(value)) for (const c of value) visit(c)
+  }
+  visit(children)
+  return out
+}
+
+/**
+ * `<Style>` — a css-in-JS style element built on constructable stylesheets.
+ *
+ * `children` is the css text (string, signal, or arrays of those). With
+ * `scoped`, selectors are rewritten to match the nearest ancestor element of
+ * the style anchor (the element that contains the `<Style>` in the DOM) and
+ * that element gets a unique scope attribute — Vue-style scoped css without a
+ * template compiler, and reactive subtrees are covered automatically because
+ * scoping matches by descendant. Without `scoped`, the css is adopted
+ * globally.
+ *
+ * Rendering uses `new CSSStyleSheet()` + `document.adoptedStyleSheets` when
+ * available (Chrome 73+, Firefox 101+, Safari 16.4+); otherwise it falls back
+ * to a real `<style>` element carrying the (rewritten) css text. The returned
+ * node is a comment anchor (adopted mode) or a fragment of anchor + `<style>`
+ * element (fallback mode); the sheet is un-adopted when the anchor's subtree
+ * is disposed via `cleanupWatchers`.
+ */
+export function Style(props: StyleProps): Node {
+  const scoped = Boolean(props.scoped)
+  const attr = scoped ? createScopeAttr() : null
+  const constructable = supportsConstructable()
+
+  const anchor: Node = constructable
+    ? document.createComment(scoped ? SCOPE_PREFIX + attr : "kiko-style")
+    : (() => {
+        const frag = document.createDocumentFragment()
+        frag.appendChild(document.createComment(scoped ? SCOPE_PREFIX + attr : "kiko-style"))
+        const el = document.createElement("style")
+        if (props.nonce) el.setAttribute("nonce", props.nonce)
+        frag.appendChild(el)
+        return frag
+      })()
+
+  const sheet = constructable ? createSheet() : null
+
+  const render = (): void => {
+    const css = extractCssText(props.children)
+    const rewritten = attr === null ? css : rewriteScopedCss(css, attr)
+    if (sheet !== null) {
+      sheet.replaceSync(rewritten)
+    } else {
+      // fallback mode: the anchor fragment's last child is the <style> element
+      const el = anchor.lastChild as HTMLStyleElement | null
+      if (el !== null) el.textContent = rewritten
+    }
+  }
+
+  render()
+
+  if (sheet !== null) {
+    scopeSheets.set(anchor, sheet)
+    adoptSheet(sheet, document)
+    const adopted = sheet
+    trackCleanup(anchor, () => unadoptSheet(adopted, document))
+  }
+
+  const signals = collectCssSignals(props.children)
+  if (signals.length > 0) {
+    const watcher = createWatcher(() => {
+      queueMicrotask(() => {
+        render()
+        watcher.watch(...signals)
+      })
+    })
+    watcher.watch(...signals)
+    trackWatcher(anchor, watcher)
+  }
+
+  return anchor
 }
 
 export const jsxDEV = jsx

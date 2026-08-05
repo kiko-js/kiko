@@ -1,7 +1,14 @@
 import { Signal } from "signal-polyfill"
 import { createWatcher, isSignal } from "./signal"
 import type { WatchableSignal } from "./signal"
-import { cleanupWatchers, swapNodes, toNodes, trackCleanup, trackWatcher } from "./jsx-runtime"
+import {
+  applyScopeRoots,
+  cleanupWatchers,
+  swapNodes,
+  toNodes,
+  trackCleanup,
+  trackWatcher,
+} from "./jsx-runtime"
 
 /**
  * Structural-reactivity helpers: `Show` and `For` are optional control-flow
@@ -180,7 +187,10 @@ export function For<T>(props: {
     }
     if (parent) {
       const ref = marker.nextSibling
-      for (const n of next) parent.insertBefore(n, ref)
+      for (const n of next) {
+        applyScopeRoots(n, parent)
+        parent.insertBefore(n, ref)
+      }
     }
     current = next
     entries = nextEntries
