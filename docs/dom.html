@@ -63,7 +63,7 @@
             </ul>
           </li>
           <li><a href="#style">Style — scoped css</a></li>
-          <li><a href="#htm">htm 模板字符串</a></li>
+          <li><a href="#htm">结合 htm（无构建 JSX）</a></li>
           <li><a href="#react">ReactPortal</a></li>
           <li><a href="#signals">Signal 封装</a></li>
         </ul>
@@ -461,15 +461,23 @@
         </section>
 
         <section id="htm" class="api-section">
-          <h2>htm 模板字符串</h2>
+          <h2>结合 htm — 无构建 JSX</h2>
           <p>
-            <code>dom</code>（别名 <code>htm</code>）是基于
-            <a href="https://github.com/developit/htm" target="_blank" rel="noopener">htm</a>
-            的标签模板运行时：在不支持 JSX 的环境（纯浏览器、无构建脚本、REPL）中，用类似 JSX 的
-            模板字符串语法编写 UI。模板在运行时解析，产出的元素走与 JSX 编译完全相同的
-            <code>jsx</code> 工厂——组件、信号、<code>&lt;style&gt;</code> 作用域、Show / For
-            行为全部一致。
+            kiko 不内置 htm 适配器。<a
+              href="https://github.com/developit/htm"
+              target="_blank"
+              rel="noopener"
+              >htm</a
+            >
+            是一个零依赖的标签模板运行时，在不支持 JSX 的环境（纯浏览器、无构建脚本、REPL）中，把
+            类似 JSX 的模板字符串翻译成 <code>h(tag, props, ...children)</code> 调用——与 JSX
+            编译产物的形式一致。自行安装 htm 并写约 10 行胶水代码接到 kiko 的
+            <code>jsx</code> 工厂即可，之后的一切（组件、信号、
+            <code>&lt;style&gt;</code> 作用域、Show / For）都是 kiko 已有的能力：
           </p>
+          <div class="code-block">
+            <pre><code class="language-shell">bun add htm</code></pre>
+          </div>
           <div class="code-block">
             <pre><code class="language-ts" data-src="./assets/snippets/htm.ts"></code></pre>
           </div>

@@ -248,10 +248,15 @@
         <section id="htm" class="api-section">
           <h2>无构建环境</h2>
           <p>
-            没有 JSX 编译器（纯浏览器、无构建脚本、REPL）？用 <code>dom</code>（别名
-            <code>htm</code>）标签模板在<strong>运行时</strong>完成同样的翻译——产出的元素走与 JSX
-            编译完全相同的 <code>jsx</code> 工厂，组件、信号、scoped 样式、Show / For 行为完全一致：
+            没有 JSX 编译器（纯浏览器、无构建脚本、REPL）？可以结合
+            <a href="https://github.com/developit/htm" target="_blank" rel="noopener">htm</a>
+            在<strong>运行时</strong>完成同样的翻译。kiko 不内置 htm 适配器：自行安装 htm，写约 10
+            行胶水代码把它接到 <code>jsx</code> 工厂，产出的元素与 JSX 编译完全等价——组件、
+            信号、scoped 样式、Show / For 行为完全一致：
           </p>
+          <div class="code-block">
+            <pre><code class="language-shell">bun add htm</code></pre>
+          </div>
           <div class="code-block">
             <pre><code class="language-ts" data-src="./assets/snippets/htm.ts"></code></pre>
           </div>

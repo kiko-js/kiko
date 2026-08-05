@@ -8,6 +8,7 @@
     "@kikojs/signal": "workspace:*"
   },
   "devDependencies": {
-    "@types/react": "^19"
+    "@types/react": "^19",
+    "htm": "^3.1.1"
   }
 }

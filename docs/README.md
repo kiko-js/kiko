@@ -29,7 +29,8 @@ docs/
 - **代码示例统一放在 `assets/snippets/`**，页面用
   `<pre><code class="language-tsx" data-src="./assets/snippets/foo.tsx">` 引用。
   片段是真实 TS/TSX 文件，会被 `bunx tsc --noEmit -p docs/tsconfig.json` 类型检查，
-  保证文档代码始终与真实 API 一致。
+  保证文档代码始终与真实 API 一致。片段用到可选依赖（如 htm）时，把该依赖加到
+  `docs/package.json` 的 devDependencies。
 - 单行 shell 命令（如 `bun add ...`）直接内联，不走 data-src。
 - 页面导航使用 `aria-current="page"` 标记当前页（样式见 style.css）。
 - 所有 HTML 必须是可解析的闭合标记（oxfmt 会在提交钩子中格式化）。
