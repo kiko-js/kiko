@@ -266,6 +266,7 @@ section > p {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow-x: auto;
+  margin: 22px 0;
 }
 
 .code-block pre {
