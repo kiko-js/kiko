@@ -37,7 +37,7 @@ describe("Style — constructable stylesheets", () => {
   it("adopts a sheet and scopes selectors to the containing element", () => {
     const el = (
       <div>
-        <Style scoped>{`.card { color: red }`}</Style>
+        <Style>{`.card { color: red }`}</Style>
         <p class="card">x</p>
       </div>
     ) as HTMLElement
@@ -47,10 +47,10 @@ describe("Style — constructable stylesheets", () => {
     expect(el.hasAttribute(scopeAttrIn(rule!))).toBe(true)
   })
 
-  it("scopes via the intrinsic <style scoped> spelling", () => {
+  it("scopes via the intrinsic <style> spelling", () => {
     const el = (
       <div>
-        <style scoped>{`.title { font-weight: bold }`}</style>
+        <style>{`.title { font-weight: bold }`}</style>
         <p class="title">t</p>
       </div>
     ) as HTMLElement
@@ -61,10 +61,10 @@ describe("Style — constructable stylesheets", () => {
     expect(el.hasAttribute(scopeAttrIn(rule!))).toBe(true)
   })
 
-  it("injects global css unchanged without scoped", () => {
+  it("injects global css unchanged with global", () => {
     const el = (
       <div>
-        <Style>{`body { margin: 0 }`}</Style>
+        <Style global>{`body { margin: 0 }`}</Style>
       </div>
     ) as HTMLElement
     expect(adoptedRules()).toEqual(["body { margin: 0px; }"])
@@ -74,8 +74,8 @@ describe("Style — constructable stylesheets", () => {
   it("gives each scoped style its own scope attribute", () => {
     const el = (
       <div>
-        <Style scoped>{`.a { color: red }`}</Style>
-        <Style scoped>{`.b { color: blue }`}</Style>
+        <Style>{`.a { color: red }`}</Style>
+        <Style>{`.b { color: blue }`}</Style>
       </div>
     ) as HTMLElement
     const [a, b] = adoptedRules()
@@ -89,7 +89,7 @@ describe("Style — constructable stylesheets", () => {
   it("rewrites & and pierces :deep / :global", () => {
     const el = (
       <div>
-        <Style scoped>{`
+        <Style>{`
           & .sub { color: blue }
           :deep(input) { border: 0 }
           :global(.legacy) { color: gray }
@@ -106,7 +106,7 @@ describe("Style — constructable stylesheets", () => {
   it("recurses into @media but leaves @keyframes alone", () => {
     const el = (
       <div>
-        <Style scoped>{`
+        <Style>{`
           .a { color: red }
           @media (max-width: 600px) {
             .b { color: blue }
@@ -131,7 +131,7 @@ describe("Style — constructable stylesheets", () => {
     const css = createSignal(".a { color: red }")
     const el = (
       <div>
-        <Style scoped>{css}</Style>
+        <Style>{css}</Style>
       </div>
     ) as HTMLElement
     const sheet = Array.from(document.adoptedStyleSheets)[0]!
@@ -147,7 +147,7 @@ describe("Style — constructable stylesheets", () => {
     const container = document.createElement("div")
     const dispose = render(
       <div>
-        <Style scoped>{`.a { color: red }`}</Style>
+        <Style>{`.a { color: red }`}</Style>
       </div>,
       container,
     )
@@ -161,7 +161,7 @@ describe("Style — constructable stylesheets", () => {
     const el = (
       <div>
         <Show when={show}>
-          <Style scoped>{`.item { color: red }`}</Style>
+          <Style>{`.item { color: red }`}</Style>
         </Show>
         <p class="item">x</p>
       </div>
@@ -186,7 +186,7 @@ describe("Style — constructable stylesheets", () => {
     ])
     const el = (
       <div>
-        <Style scoped>{`.row { color: red }`}</Style>
+        <Style>{`.row { color: red }`}</Style>
         <For each={items} getKey={item => item.id}>
           {item => <p class="row">{item().name}</p>}
         </For>
@@ -212,7 +212,7 @@ describe("Style — fallback", () => {
       view.CSSStyleSheet = undefined
       const el = (
         <div>
-          <Style scoped>{`.a { color: red }`}</Style>
+          <Style>{`.a { color: red }`}</Style>
         </div>
       ) as HTMLElement
       const styleEl = el.querySelector("style")!
@@ -225,17 +225,16 @@ describe("Style — fallback", () => {
   })
 })
 
-describe("regression — plain <style>", () => {
-  it("still creates an HTMLStyleElement without scoped", () => {
+describe("regression — intrinsic <style global>", () => {
+  it("adopts global css unscoped", () => {
     const el = (
       <div>
-        <style>{`body { margin: 0 }`}</style>
+        <style global>{`body { margin: 0 }`}</style>
       </div>
     ) as HTMLElement
-    const styleEl = el.querySelector("style")!
-    expect(styleEl).toBeInstanceOf(HTMLElement)
-    expect(styleEl.tagName).toBe("STYLE")
-    expect(styleEl.textContent).toBe("body { margin: 0 }")
-    expect(document.adoptedStyleSheets.length).toBe(0)
+    // intercepted — no <style> element in the DOM, only the adopted sheet
+    expect(el.querySelector("style")).toBeNull()
+    expect(adoptedRules()).toEqual(["body { margin: 0px; }"])
+    expect(el.getAttributeNames()).toHaveLength(0)
   })
 })

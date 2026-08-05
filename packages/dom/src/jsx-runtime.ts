@@ -432,8 +432,9 @@ export function jsx(tag: string | Component<any>, props: Props | null): Node {
     return tag(p)
   }
 
-  // `<style scoped>` is the intrinsic spelling of the Style component.
-  if (tag === "style" && p.scoped) {
+  // `<style>` is the intrinsic spelling of the Style component: scoped by
+  // default, `<style global>` opts into global (unscoped) css.
+  if (tag === "style") {
     return Style(p as StyleProps)
   }
 
@@ -455,10 +456,11 @@ export interface StyleProps {
   /** CSS text: a string, a signal of CSS text, or nested arrays of those. */
   children?: unknown
   /**
-   * Rewrite the selectors and scope them to the nearest ancestor element
-   * (Vue-style scoped CSS). Without `scoped`, the css is injected globally.
+   * Opt out of scoping: adopt the css globally, without selector rewriting.
+   * By default (no `global`), selectors are rewritten and scoped to the
+   * nearest ancestor element — Vue-style scoped CSS.
    */
-  scoped?: boolean
+  global?: boolean
   /** CSP nonce for the fallback `<style>` element (ignored with constructable sheets). */
   nonce?: string
 }
@@ -500,13 +502,12 @@ function collectCssSignals(children: unknown): WatchableSignal<unknown>[] {
 /**
  * `<Style>` — a css-in-JS style element built on constructable stylesheets.
  *
- * `children` is the css text (string, signal, or arrays of those). With
- * `scoped`, selectors are rewritten to match the nearest ancestor element of
- * the style anchor (the element that contains the `<Style>` in the DOM) and
- * that element gets a unique scope attribute — Vue-style scoped css without a
- * template compiler, and reactive subtrees are covered automatically because
- * scoping matches by descendant. Without `scoped`, the css is adopted
- * globally.
+ * `children` is the css text (string, signal, or arrays of those). By default
+ * selectors are rewritten to match the nearest ancestor element of the style
+ * anchor (the element that contains the `<Style>` in the DOM) and that element
+ * gets a unique scope attribute — Vue-style scoped css without a template
+ * compiler, and reactive subtrees are covered automatically because scoping
+ * matches by descendant. Pass `global` to adopt the css unscoped.
  *
  * Rendering uses `new CSSStyleSheet()` + `document.adoptedStyleSheets` when
  * available (Chrome 73+, Firefox 101+, Safari 16.4+); otherwise it falls back
@@ -516,7 +517,7 @@ function collectCssSignals(children: unknown): WatchableSignal<unknown>[] {
  * is disposed via `cleanupWatchers`.
  */
 export function Style(props: StyleProps): Node {
-  const scoped = Boolean(props.scoped)
+  const scoped = !props.global
   const attr = scoped ? createScopeAttr() : null
   const constructable = supportsConstructable()
 
