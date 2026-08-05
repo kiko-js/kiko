@@ -77,6 +77,20 @@
       </section>
 
       <section>
+        <h2>htm 模板字符串（无构建 JSX）</h2>
+        <p>
+          没有 JSX 编译器？<code>dom</code> 标签模板在运行时完成相同的翻译——组件、信号、 scoped
+          css、Show / For 行为完全一致。可在纯浏览器中直接使用。
+        </p>
+        <div class="demo-card">
+          <div id="htm-root"></div>
+        </div>
+        <div class="code-block">
+          <pre><code class="language-ts" data-src="./assets/snippets/htm.ts"></code></pre>
+        </div>
+      </section>
+
+      <section>
         <h2>React 桥接</h2>
         <p>在 kiko 树中嵌入 React 组件，实现生态兼容。</p>
         <div class="code-block">
@@ -100,5 +114,6 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
     <script src="./assets/highlight.js"></script>
     <script type="module" src="./assets/counter.ts"></script>
+    <script type="module" src="./assets/htm.ts"></script>
   </body>
 </html>

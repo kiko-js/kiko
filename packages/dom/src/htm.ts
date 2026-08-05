@@ -30,13 +30,15 @@ import htmFactory from "htm"
 import { jsx, Fragment } from "./jsx-runtime"
 import type { Component } from "./jsx-runtime"
 
-// htm calls h(tag, props, ...children); kiko's jsx factory carries children
-// in `props.children` — the adapter is the only glue needed.
+// htm calls h(tag, props, ...children) with children always as an array; a
+// JSX compiler passes a single expression directly and only wraps multiple
+// children in an array. Unwrap to match — component children that are
+// functions (`<${For}>${fn}</${For}>`) and single text/nodes rely on it.
 const h = (
   tag: string | Component<any>,
   props: Record<string, unknown> | null,
   ...children: unknown[]
-): Node => jsx(tag, { ...(props ?? {}), children })
+): Node => jsx(tag, { ...(props ?? {}), children: children.length === 1 ? children[0] : children })
 
 const render = htmFactory.bind(h)
 

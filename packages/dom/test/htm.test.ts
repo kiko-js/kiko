@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, beforeEach } from "bun:test"
 import { dom, htm } from "../src/htm"
 import { Fragment } from "../src/jsx-runtime"
+import { For, Show } from "../src/flow"
 import { createSignal } from "../src/signal"
 
 beforeAll(async () => {
@@ -119,6 +120,20 @@ describe("dom tagged template", () => {
     expect(clicks).toBe(1)
     const el = dom`<div style=${{ color: "red" }}/>` as HTMLElement
     expect(el.style.color).toBe("red")
+  })
+
+  it("passes single function children through to components (For/Show)", async () => {
+    const items = createSignal(["a", "b"])
+    const ul =
+      dom`<ul><${For} each=${items}>${(item: string) => dom`<li>${item}</li>`}</${For}></ul>` as HTMLElement
+    expect(ul.querySelectorAll("li").length).toBe(2)
+
+    const show = createSignal(true)
+    const box = dom`<div><${Show} when=${show}>${dom`<p>shown</p>`}</${Show}></div>` as HTMLElement
+    expect(box.querySelector("p")?.textContent).toBe("shown")
+    show.set(false)
+    await flush()
+    expect(box.querySelector("p")).toBeNull()
   })
 
   it("skips comments", () => {

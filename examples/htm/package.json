@@ -1,0 +1,11 @@
+{
+  "name": "htm",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run server.ts"
+  },
+  "dependencies": {
+    "@kikojs/dom": "workspace:*"
+  }
+}
