@@ -11,5 +11,6 @@ export {
   type AsyncComponent,
   type StyleProps,
 } from "./jsx-runtime"
+export { dom, htm } from "./htm"
 export { render } from "./render"
 export { Show, For, ErrorBoundary, Suspend } from "./flow"

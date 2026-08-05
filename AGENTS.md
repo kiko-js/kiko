@@ -41,6 +41,7 @@ The monorepo contains two packages, both depending on `signal-polyfill` directly
 | `jsx-types.ts`    | `JSX` namespace (`IntrinsicElements` for HTML+SVG, `Element`, etc.) and generic `Component<P>` — pure types                             |
 | `flow.ts`         | `Show` / `For` control-flow components (optional; built on signals + markers)                                                           |
 | `render.ts`       | `render(root, container)` — mounts a JSX tree, returns `dispose()` for cleanup                                                          |
+| `htm.ts`          | `dom` / `htm` — htm tagged-template runtime (runtime JSX compiler → same `jsx` factory; buildless)                                      |
 | `react-portal.ts` | `ReactPortal(component, props)` — bridges React components into kiko trees                                                              |
 | `index.ts`        | Barrel re-exports                                                                                                                       |
 
@@ -78,7 +79,9 @@ jsx(tag: string | Component<any>, props: Props | null): Node
 jsxs = jsx; jsxDEV = jsx
 Fragment(props): DocumentFragment
 render(root: Node, container: Element): () => void
-Show<T>(props): DocumentFragment                         // conditional render
+dom`<div class=${cls}>${children}</div>`: Node          // htm runtime JSX (buildless); htm = alias
+Style(props): Node                                     // scoped css (default) / <style global> global
+Show<T>(props): DocumentFragment                       // conditional render
 For<T>(props): DocumentFragment                          // list render
 // JSX namespace: IntrinsicElements (HTML+SVG), Element, ElementChildrenAttribute, …
 
@@ -116,6 +119,7 @@ kiko/
 │       │   ├── jsx-types.ts         JSX namespace + generic Component<P> (types only)
 │       │   ├── flow.ts              Show / For control flow
 │       │   ├── render.ts            Mount entry point + dispose lifecycle
+│       │   ├── htm.ts               dom/htm tagged-template runtime (buildless JSX)
 │       │   └── react-portal.ts      React ↔ kiko bridge
 │       ├── test/                     *.test.ts(x) (bun:test, happy-dom)
 │       └── package.json             exports ".", "./jsx-runtime", "./jsx-dev-runtime", "./react-portal"
@@ -218,6 +222,7 @@ bunx tsc --noEmit -p examples/basic/tsconfig.json
 | `packages/@kikojs/dom/src/flow.ts`         | `Show` / `For` control flow                                         |
 | `packages/@kikojs/dom/src/signal.ts`       | Thin signal-polyfill wrappers (self-contained)                      |
 | `packages/@kikojs/dom/src/render.ts`       | Mount entry point + dispose lifecycle                               |
+| `packages/@kikojs/dom/src/htm.ts`          | `dom` / `htm` tagged-template runtime → `jsx` factory (buildless)   |
 | `packages/@kikojs/dom/src/react-portal.ts` | React ↔ kiko bridge                                                 |
 | `packages/@kikojs/dom/package.json`        | Library exports, build config, deps                                 |
 | `tsconfig.json`                            | Shared TypeScript base config                                       |
