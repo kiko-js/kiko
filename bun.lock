@@ -17,6 +17,11 @@
       "name": "kiko-docs",
       "dependencies": {
         "@kikojs/dom": "workspace:*",
+        "@kikojs/router": "workspace:*",
+        "@kikojs/signal": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/react": "^19",
       },
     },
     "examples/basic": {

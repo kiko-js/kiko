@@ -6,7 +6,7 @@
     <title>@kikojs/signal — kiko</title>
     <meta
       name="description"
-      content="@kikojs/signal 完整 API 参考：createSignal、computed、effect、batch、untrack、on、onCleanup、Emitter、createStore。"
+      content="@kikojs/signal 完整 API 参考：createSignal、computed、effect、batch、untrack、on、onCleanup、createStore、createEmitter、createWatcher。"
     />
     <link
       rel="stylesheet"
@@ -20,7 +20,8 @@
         <a class="logo" href="./index.html"><span></span>kiko</a>
         <ul class="links">
           <li><a href="./index.html">首页</a></li>
-          <li><a href="./signal.html">signal</a></li>
+          <li><a href="./guide.html">指南</a></li>
+          <li><a href="./signal.html" aria-current="page">signal</a></li>
           <li><a href="./dom.html">dom</a></li>
           <li><a href="./router.html">router</a></li>
           <li><a href="./examples.html">示例</a></li>
@@ -37,25 +38,45 @@
         <ul>
           <li><a href="#overview">概览</a></li>
           <li><a href="#install">安装与导入</a></li>
-          <li><a href="#createSignal">createSignal</a></li>
-          <li><a href="#isSignal">isSignal</a></li>
-          <li><a href="#computed">computed / derived</a></li>
-          <li><a href="#toSignalValue">toSignalValue / watchValue</a></li>
-          <li><a href="#effect">effect</a></li>
-          <li><a href="#onCleanup">onCleanup</a></li>
-          <li><a href="#batch">batch</a></li>
-          <li><a href="#untrack">untrack</a></li>
-          <li><a href="#on">on</a></li>
-          <li><a href="#emitter">createEmitter</a></li>
-          <li><a href="#createStore">createStore</a></li>
-          <li><a href="#watcher">createWatcher</a></li>
+          <li>
+            <a href="#basic">基础</a>
+            <ul>
+              <li><a href="#createsignal">createSignal</a></li>
+              <li><a href="#issignal">isSignal</a></li>
+            </ul>
+          </li>
+          <li>
+            <a href="#derive">派生计算</a>
+            <ul>
+              <li><a href="#computed">computed / derived</a></li>
+              <li><a href="#watch">toSignalValue / watchValue</a></li>
+            </ul>
+          </li>
+          <li>
+            <a href="#effects">副作用</a>
+            <ul>
+              <li><a href="#effect">effect</a></li>
+              <li><a href="#oncleanup">onCleanup</a></li>
+              <li><a href="#batch">batch</a></li>
+              <li><a href="#untrack">untrack</a></li>
+              <li><a href="#on">on</a></li>
+            </ul>
+          </li>
+          <li><a href="#state">状态管理 — createStore</a></li>
+          <li>
+            <a href="#lowlevel">事件与底层</a>
+            <ul>
+              <li><a href="#emitter">createEmitter</a></li>
+              <li><a href="#watcher">createWatcher</a></li>
+            </ul>
+          </li>
           <li><a href="#example">完整示例</a></li>
         </ul>
       </aside>
 
       <div>
         <section id="overview" class="api-section">
-          <h2>@kikojs/signal</h2>
+          <h2>概览</h2>
           <p>
             基于
             <a
@@ -65,12 +86,13 @@
               >signal-polyfill</a
             >
             的信号工具集。所有 API 返回标准 <code>Signal.State</code> /
-            <code>Signal.Computed</code> 对象， 与 TC39 Signals
+            <code>Signal.Computed</code> 对象，与 TC39 Signals
             提案兼容，任何消费标准信号的库均可互操作。
           </p>
           <div class="note">
             <strong>适用场景：</strong>应用层状态管理、派生计算、副作用协调。<br />
-            如需 JSX / DOM 渲染，请使用 <a href="./dom.html">@kikojs/dom</a>。
+            如需 JSX / DOM 渲染，请使用 <a href="./dom.html">@kikojs/dom</a>；组合使用见
+            <a href="./guide.html">指南</a>。
           </div>
         </section>
 
@@ -80,20 +102,14 @@
             <pre><code class="language-shell">bun add @kikojs/signal</code></pre>
           </div>
           <div class="code-block">
-            <pre><code class="language-ts">import {
-  createSignal, isSignal,
-  computed, derived,
-  effect, onCleanup,
-  batch, untrack,
-  on,
-  createEmitter, createWatcher,
-  createStore,
-} from "@kikojs/signal"</code></pre>
+            <pre><code class="language-ts" data-src="./assets/snippets/signal-install.ts"></code></pre>
           </div>
         </section>
 
-        <section id="createSignal" class="api-section">
-          <h2>createSignal</h2>
+        <section id="basic" class="api-section">
+          <h2>基础</h2>
+
+          <h3 id="createsignal">createSignal</h3>
           <table>
             <thead>
               <tr>
@@ -109,14 +125,10 @@
             </tbody>
           </table>
           <div class="code-block">
-            <pre><code class="language-ts">const count = createSignal(0)
-count.set(count.get() + 1)
-console.log(count.get()) // 1</code></pre>
+            <pre><code class="language-ts" data-src="./assets/snippets/signal-basic.ts"></code></pre>
           </div>
-        </section>
 
-        <section id="isSignal" class="api-section">
-          <h2>isSignal</h2>
+          <h3 id="issignal">isSignal</h3>
           <table>
             <thead>
               <tr>
@@ -127,14 +139,16 @@ console.log(count.get()) // 1</code></pre>
             <tbody>
               <tr>
                 <td><code>isSignal(value): value is Signal.State | Signal.Computed</code></td>
-                <td>类型守卫，判断值是否为 signal。</td>
+                <td>类型守卫，判断值是否为 signal（State 或 Computed）。</td>
               </tr>
             </tbody>
           </table>
         </section>
 
-        <section id="computed" class="api-section">
-          <h2>computed / derived</h2>
+        <section id="derive" class="api-section">
+          <h2>派生计算</h2>
+
+          <h3 id="computed">computed / derived</h3>
           <table>
             <thead>
               <tr>
@@ -146,27 +160,21 @@ console.log(count.get()) // 1</code></pre>
             <tbody>
               <tr>
                 <td><code>computed</code></td>
-                <td><code>computed&lt;T&gt;(fn: () => T): Signal.Computed&lt;T&gt;</code></td>
-                <td>创建只读派生信号，自动追踪依赖。</td>
+                <td><code>computed&lt;T&gt;(fn: () =&gt; T): Signal.Computed&lt;T&gt;</code></td>
+                <td>创建只读派生信号，自动追踪依赖；依赖变化时按需重算。</td>
               </tr>
               <tr>
                 <td><code>derived</code></td>
-                <td><code>derived&lt;T&gt;(fn: () => T): Signal.Computed&lt;T&gt;</code></td>
+                <td><code>derived&lt;T&gt;(fn: () =&gt; T): Signal.Computed&lt;T&gt;</code></td>
                 <td><code>computed</code> 的别名。</td>
               </tr>
             </tbody>
           </table>
           <div class="code-block">
-            <pre><code class="language-ts">const count = createSignal(1)
-const doubled = computed(() => count.get() * 2)
-console.log(doubled.get()) // 2
-count.set(5)
-console.log(doubled.get()) // 10</code></pre>
+            <pre><code class="language-ts" data-src="./assets/snippets/signal-computed.ts"></code></pre>
           </div>
-        </section>
 
-        <section id="toSignalValue" class="api-section">
-          <h2>toSignalValue / watchValue</h2>
+          <h3 id="watch">toSignalValue / watchValue</h3>
           <table>
             <thead>
               <tr>
@@ -178,20 +186,29 @@ console.log(doubled.get()) // 10</code></pre>
             <tbody>
               <tr>
                 <td><code>toSignalValue</code></td>
-                <td><code>toSignalValue&lt;T&gt;(signal): T</code></td>
-                <td>读取 signal 当前值。</td>
+                <td><code>toSignalValue&lt;T&gt;(value | signal): T</code></td>
+                <td>读取 signal 当前值；普通值直接返回（不订阅）。</td>
               </tr>
               <tr>
                 <td><code>watchValue</code></td>
-                <td><code>watchValue&lt;T&gt;(signal, fn)</code></td>
-                <td>监听 signal 变化，自动追踪。</td>
+                <td><code>watchValue(value | signal, cb): Watcher | null</code></td>
+                <td>监听变化并自动追踪；对普通值立即回调一次并返回 <code>null</code>。</td>
               </tr>
             </tbody>
           </table>
+          <p class="note">
+            <code>watchValue</code> 对 signal 只在<strong>变化后</strong>回调（不立即执行）；返回值
+            是标准 <code>Signal.subtle.Watcher</code>，由调用方负责 <code>unwatch</code> 管理。
+          </p>
+          <div class="code-block">
+            <pre><code class="language-ts" data-src="./assets/snippets/signal-watch.ts"></code></pre>
+          </div>
         </section>
 
-        <section id="effect" class="api-section">
-          <h2>effect</h2>
+        <section id="effects" class="api-section">
+          <h2>副作用</h2>
+
+          <h3 id="effect">effect</h3>
           <table>
             <thead>
               <tr>
@@ -201,10 +218,10 @@ console.log(doubled.get()) // 10</code></pre>
             </thead>
             <tbody>
               <tr>
-                <td><code>effect(fn: () => void | (() => void)): () => void</code></td>
+                <td><code>effect(fn: () =&gt; void | (() =&gt; void)): () =&gt; void</code></td>
                 <td>
-                  创建副作用，自动追踪 signal 依赖并重新运行。 返回
-                  <code>dispose()</code> 函数用于手动停止。
+                  创建副作用，自动追踪 signal 依赖并在变化后重新运行。 返回
+                  <code>dispose()</code> 用于手动停止。
                 </td>
               </tr>
             </tbody>
@@ -214,22 +231,15 @@ console.log(doubled.get()) // 10</code></pre>
             <li><strong>批处理：</strong>多次 signal 写入合并为一次微任务刷新。</li>
             <li><strong>错误隔离：</strong>单个 effect 抛出异常不影响其他 effect 或后续重跑。</li>
             <li>
-              <strong>清理作用域：</strong>支持
-              <code>onCleanup</code> 注册清理回调，重跑前逆序执行。
+              <strong>清理作用域：</strong>支持 <code>onCleanup</code>
+              注册清理回调，重跑前逆序执行。
             </li>
           </ul>
           <div class="code-block">
-            <pre><code class="language-ts">const count = createSignal(0)
-const dispose = effect(() => {
-  console.log("count:", count.get())
-})
-count.set(1) // 微任务后打印 "count: 1"
-dispose()     // 停止追踪</code></pre>
+            <pre><code class="language-ts" data-src="./assets/snippets/signal-effect.ts"></code></pre>
           </div>
-        </section>
 
-        <section id="onCleanup" class="api-section">
-          <h2>onCleanup</h2>
+          <h3 id="oncleanup">onCleanup</h3>
           <table>
             <thead>
               <tr>
@@ -239,21 +249,16 @@ dispose()     // 停止追踪</code></pre>
             </thead>
             <tbody>
               <tr>
-                <td><code>onCleanup(fn: () => void): void</code></td>
+                <td><code>onCleanup(fn: () =&gt; void): void</code></td>
                 <td>在当前 effect 作用域注册清理函数。重跑前逆序执行，dispose 时也执行。</td>
               </tr>
             </tbody>
           </table>
           <div class="code-block">
-            <pre><code class="language-ts">effect(() => {
-  const timer = setInterval(() => tick(), 1000)
-  onCleanup(() => clearInterval(timer)) // 重跑 / dispose 时清除
-})</code></pre>
+            <pre><code class="language-ts" data-src="./assets/snippets/signal-cleanup.ts"></code></pre>
           </div>
-        </section>
 
-        <section id="batch" class="api-section">
-          <h2>batch</h2>
+          <h3 id="batch">batch</h3>
           <table>
             <thead>
               <tr>
@@ -263,26 +268,16 @@ dispose()     // 停止追踪</code></pre>
             </thead>
             <tbody>
               <tr>
-                <td><code>batch&lt;T&gt;(fn: () => T): T</code></td>
-                <td>合并 fn 内所有 signal 写入，统一在结束时刷新。</td>
+                <td><code>batch&lt;T&gt;(fn: () =&gt; T): T</code></td>
+                <td>合并 fn 内所有 signal 写入，统一在结束时刷新一次。</td>
               </tr>
             </tbody>
           </table>
           <div class="code-block">
-            <pre><code class="language-ts">const a = createSignal(1)
-const b = createSignal(2)
-effect(() => console.log(a.get(), b.get()))
-
-batch(() => {
-  a.set(10)
-  b.set(20)
-})
-// 只打印一次 "10 20"</code></pre>
+            <pre><code class="language-ts" data-src="./assets/snippets/signal-batch.ts"></code></pre>
           </div>
-        </section>
 
-        <section id="untrack" class="api-section">
-          <h2>untrack</h2>
+          <h3 id="untrack">untrack</h3>
           <table>
             <thead>
               <tr>
@@ -292,21 +287,16 @@ batch(() => {
             </thead>
             <tbody>
               <tr>
-                <td><code>untrack&lt;T&gt;(fn: () => T): T</code></td>
+                <td><code>untrack&lt;T&gt;(fn: () =&gt; T): T</code></td>
                 <td>在 fn 内读取 signal 不建立订阅关系。</td>
               </tr>
             </tbody>
           </table>
           <div class="code-block">
-            <pre><code class="language-ts">effect(() => {
-  const v = untrack(() => a.get()) // 读取但不订阅 a
-  console.log(v, b.get())           // 只在 b 变化时重跑
-})</code></pre>
+            <pre><code class="language-ts" data-src="./assets/snippets/signal-untrack.ts"></code></pre>
           </div>
-        </section>
 
-        <section id="on" class="api-section">
-          <h2>on</h2>
+          <h3 id="on">on</h3>
           <table>
             <thead>
               <tr>
@@ -318,52 +308,29 @@ batch(() => {
               <tr>
                 <td><code>on(deps, fn, { defer? }): EffectFn</code></td>
                 <td>
-                  显式依赖 effect 辅助器。仅当 <code>deps</code> 中指定的 signal 变化时才执行
-                  <code>fn</code>；fn 内的其他 signal 读取不会建立依赖。
+                  显式依赖辅助器：仅当 <code>deps</code> 中声明的依赖变化时执行 <code>fn</code>，fn
+                  内的其他读取不建立依赖。返回的 <code>EffectFn</code> 需配合
+                  <code>effect(on(...))</code> 使用。
                 </td>
               </tr>
             </tbody>
           </table>
+          <p class="note">
+            <code>fn</code> 收到上一次的依赖值（首跑为 <code>undefined</code>，除非
+            <code>defer: true</code> 跳过首跑）。<code>deps</code> 是 getter 函数（或 getter
+            数组），例如 <code>() =&gt; store.age.get()</code>。
+          </p>
           <div class="code-block">
-            <pre><code class="language-ts">const source = createSignal(0)
-const other = createSignal(0)
-
-on(source, (v) => {
-  console.log(v, untrack(() => other.get())) // other 变化不触发
-})</code></pre>
+            <pre><code class="language-ts" data-src="./assets/snippets/signal-on.ts"></code></pre>
           </div>
         </section>
 
-        <section id="emitter" class="api-section">
-          <h2>createEmitter</h2>
-          <table>
-            <thead>
-              <tr>
-                <th>签名</th>
-                <th>说明</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td><code>createEmitter&lt;Events&gt;(): Emitter&lt;Events&gt;</code></td>
-                <td>创建类型化事件发射器。</td>
-              </tr>
-            </tbody>
-          </table>
-          <div class="code-block">
-            <pre><code class="language-ts">type Events = { update: [id: number]; delete: [id: number] }
-const emitter = createEmitter&lt;Events&gt;()
-emitter.on("update", (id) => console.log("updated", id))
-emitter.emit("update", 42)</code></pre>
-          </div>
-        </section>
-
-        <section id="createStore" class="api-section">
-          <h2>createStore</h2>
+        <section id="state" class="api-section">
+          <h2>状态管理 — createStore</h2>
           <p>
-            创建细粒度响应式对象存储。基于浅克隆（shallow-copy-on-read）， 每层都是代理节点（proxy
-            node），通过
-            <code>a.b.c.get()</code> 链式访问深层属性；底层信号经 <code>node.signal</code> 暴露。
+            创建细粒度响应式对象存储。基于浅克隆（shallow-copy-on-read），每层都是代理节点 （proxy
+            node），通过 <code>a.b.c.get()</code> 链式访问深层属性；底层信号经
+            <code>node.signal</code> 暴露。
           </p>
           <table>
             <thead>
@@ -374,15 +341,22 @@ emitter.emit("update", 42)</code></pre>
             </thead>
             <tbody>
               <tr>
-                <td><code>createStore&lt;T&gt;(initial: T): StoreRecord&lt;T&gt;</code></td>
+                <td><code>createStore&lt;T&gt;(initial: T): Store&lt;T&gt;</code></td>
                 <td>
                   返回嵌套响应式代理，每个节点暴露底层
                   <code>Signal.State</code>（<code>node.signal</code>）。
                 </td>
               </tr>
+              <tr>
+                <td><code>ref(value)</code> / <code>isRef(value)</code></td>
+                <td>
+                  <code>ref()</code>
+                  包裹的值是<strong>终结点</strong>：不会被代理（保持原引用恒等），
+                  适合类实例、自引用结构等；写入时用 <code>.set(ref(next))</code>。
+                </td>
+              </tr>
             </tbody>
           </table>
-
           <h3>核心特性</h3>
           <ul style="color: var(--muted); margin-bottom: 22px">
             <li>
@@ -403,50 +377,22 @@ emitter.emit("update", 42)</code></pre>
               <code>store.user</code> 的 watcher。
             </li>
             <li>
-              <strong>自动包裹：</strong
-              ><code>.set()</code> 传入普通对象后，深层属性同样可链式访问。
+              <strong>自动包裹：</strong><code>.set()</code> 传入普通对象后，深层属性同样可链式访问
+              （类型层面仍按初始形状约束）。
             </li>
             <li>
               <strong>旧引用保持有效：</strong>读取始终经过实时根节点，父级替换后旧引用读到新值。
             </li>
           </ul>
-
           <div class="code-block">
-            <pre><code class="language-ts">const store = createStore({
-  name: "Alice",
-  user: { age: 30 },
-  tags: ["dev"],
-})
-
-// 读取
-store.name.get()       // "Alice"
-store.user.age.get()   // 30
-store.user.get()       // { age: 30 }  获取原始值
-
-// 写入 — 只触发该属性的 watcher
-store.name.set("Bob")          // name watcher 触发
-store.user.age.set(31)         // user.age watcher 触发，user watcher 也触发
-
-// .set() 自动包裹普通对象为嵌套 store
-store.user.set({ name: "Carol", age: 25 })
-store.user.name.get()  // "Carol"
-
-// JSX 中使用 — 通过 .signal 桥接
-// &lt;span&gt;{store.user.name.signal}&lt;/span&gt;
-
-// 旧引用保持有效 — 读取实时根节点
-const oldUser = store.user
-store.user.set({ name: "Bob" })
-oldUser.name.get()     // "Bob"
-
-// 循环引用安全 — 自引用结构不导致无限循环
-const obj = { name: "x" }
-obj.self = obj
-createStore({ data: obj })  // 不抛错，store.data.self 保持原引用</code></pre>
+            <pre><code class="language-ts" data-src="./assets/snippets/signal-store.ts"></code></pre>
           </div>
         </section>
-        <section id="watcher" class="api-section">
-          <h2>createWatcher</h2>
+
+        <section id="lowlevel" class="api-section">
+          <h2>事件与底层</h2>
+
+          <h3 id="emitter">createEmitter</h3>
           <table>
             <thead>
               <tr>
@@ -456,23 +402,44 @@ createStore({ data: obj })  // 不抛错，store.data.self 保持原引用</code
             </thead>
             <tbody>
               <tr>
-                <td><code>createWatcher(cb: () => void): Signal.subtle.Watcher</code></td>
-                <td>创建标准 watcher，用于底层 signal 监听。</td>
+                <td><code>createEmitter&lt;Events&gt;(): Emitter&lt;Events&gt;</code></td>
+                <td>创建类型化事件发射器（on / once / off / emit / hasListeners / clear）。</td>
               </tr>
             </tbody>
           </table>
+          <div class="code-block">
+            <pre><code class="language-ts" data-src="./assets/snippets/signal-emitter.ts"></code></pre>
+          </div>
+
+          <h3 id="watcher">createWatcher</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>签名</th>
+                <th>说明</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>createWatcher(cb: () =&gt; void): Signal.subtle.Watcher</code></td>
+                <td>创建标准 watcher，手动 <code>watch</code> / <code>unwatch</code> 信号。</td>
+              </tr>
+            </tbody>
+          </table>
+          <p class="note">
+            通常不需要直接使用 watcher——<code>effect</code> 与 JSX 绑定已经封装了订阅管理。
+            当你需要手动控制订阅生命周期时才用到它。
+          </p>
+          <div class="code-block">
+            <pre><code class="language-ts" data-src="./assets/snippets/signal-watcher.ts"></code></pre>
+          </div>
         </section>
 
         <section id="example" class="api-section">
           <h2>完整示例</h2>
+          <p>综合使用 createSignal、computed、effect、batch、onCleanup 与 on 的购物车示例：</p>
           <div class="code-block">
-            <pre><code class="language-ts" data-src="./assets/snippets/signal.ts"></code></pre>
-          </div>
-          <div class="code-block">
-            <pre><code class="language-ts" data-src="./assets/snippets/effect.ts"></code></pre>
-          </div>
-          <div class="code-block">
-            <pre><code class="language-ts" data-src="./assets/snippets/store.ts"></code></pre>
+            <pre><code class="language-ts" data-src="./assets/snippets/signal-complete.ts"></code></pre>
           </div>
         </section>
       </div>

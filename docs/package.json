@@ -3,6 +3,11 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@kikojs/dom": "workspace:*"
+    "@kikojs/dom": "workspace:*",
+    "@kikojs/router": "workspace:*",
+    "@kikojs/signal": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/react": "^19"
   }
 }

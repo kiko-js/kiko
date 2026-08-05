@@ -6,7 +6,7 @@
     <title>@kikojs/dom — kiko</title>
     <meta
       name="description"
-      content="@kikojs/dom 完整 API 参考：JSX 工厂、render、Show、For、Style scoped css、ErrorBoundary、Suspend、ReactPortal、htm 模板字符串、ref 清理。"
+      content="@kikojs/dom 完整 API 参考：JSX 工厂、render、Show / For / ErrorBoundary / Suspend、Style scoped css、htm 模板字符串、ref 清理、ReactPortal。"
     />
     <link
       rel="stylesheet"
@@ -20,8 +20,9 @@
         <a class="logo" href="./index.html"><span></span>kiko</a>
         <ul class="links">
           <li><a href="./index.html">首页</a></li>
+          <li><a href="./guide.html">指南</a></li>
           <li><a href="./signal.html">signal</a></li>
-          <li><a href="./dom.html">dom</a></li>
+          <li><a href="./dom.html" aria-current="page">dom</a></li>
           <li><a href="./router.html">router</a></li>
           <li><a href="./examples.html">示例</a></li>
           <li>
@@ -37,16 +38,32 @@
         <ul>
           <li><a href="#overview">概览</a></li>
           <li><a href="#install">安装与配置</a></li>
-          <li><a href="#jsx">JSX 工厂</a></li>
-          <li><a href="#props">Props 规则</a></li>
-          <li><a href="#ref">ref 清理</a></li>
-          <li><a href="#render">render</a></li>
-          <li><a href="#show">Show</a></li>
-          <li><a href="#for">For</a></li>
-          <li><a href="#style">Style（scoped css）</a></li>
+          <li>
+            <a href="#jsx">JSX 工厂</a>
+            <ul>
+              <li><a href="#jsxfactory">jsx / jsxs / jsxDEV</a></li>
+              <li><a href="#fragment">Fragment</a></li>
+              <li><a href="#props">Props 处理规则</a></li>
+            </ul>
+          </li>
+          <li>
+            <a href="#render">渲染</a>
+            <ul>
+              <li><a href="#renderapi">render</a></li>
+              <li><a href="#ref">ref 清理</a></li>
+            </ul>
+          </li>
+          <li>
+            <a href="#flow">控制流</a>
+            <ul>
+              <li><a href="#show">Show</a></li>
+              <li><a href="#for">For</a></li>
+              <li><a href="#errorboundary">ErrorBoundary</a></li>
+              <li><a href="#suspend">Suspend</a></li>
+            </ul>
+          </li>
+          <li><a href="#style">Style — scoped css</a></li>
           <li><a href="#htm">htm 模板字符串</a></li>
-          <li><a href="#errorboundary">ErrorBoundary</a></li>
-          <li><a href="#suspend">Suspend</a></li>
           <li><a href="#react">ReactPortal</a></li>
           <li><a href="#signals">Signal 封装</a></li>
         </ul>
@@ -54,15 +71,15 @@
 
       <div>
         <section id="overview" class="api-section">
-          <h2>@kikojs/dom</h2>
+          <h2>概览</h2>
           <p>
             JSX 直接编译为真实 DOM 节点——没有虚拟 DOM，没有 reconciliation。
             组件函数只执行一次，signal 绑定细粒度驱动 DOM 更新。
           </p>
           <div class="note">
             @kikojs/dom <strong>不依赖</strong> @kikojs/signal，它重新实现了自己需要的最小 signal
-            封装， 保持 DOM 包自包含。如需应用层状态管理，可同时使用
-            <a href="./signal.html">@kikojs/signal</a>。
+            封装，保持 DOM 包自包含。如需应用层状态管理，可同时使用
+            <a href="./signal.html">@kikojs/signal</a>（二者可直接互操作）。
           </div>
         </section>
 
@@ -71,7 +88,10 @@
           <div class="code-block">
             <pre><code class="language-shell">bun add @kikojs/dom</code></pre>
           </div>
-          <p>在 <code>tsconfig.json</code> 中设置 JSX 导入源：</p>
+          <p>
+            在 <code>tsconfig.json</code> 中设置 JSX 导入源（或使用
+            <code>@jsxImportSource</code> 注释）：
+          </p>
           <div class="code-block">
             <pre><code class="language-json" data-src="./assets/snippets/tsconfig.json"></code></pre>
           </div>
@@ -79,6 +99,8 @@
 
         <section id="jsx" class="api-section">
           <h2>JSX 工厂</h2>
+
+          <h3 id="jsxfactory">jsx / jsxs / jsxDEV</h3>
           <table>
             <thead>
               <tr>
@@ -103,54 +125,14 @@
                 <td><code>jsxDEV = jsx</code></td>
                 <td>开发环境 JSX 工厂。</td>
               </tr>
-              <tr>
-                <td><code>Fragment</code></td>
-                <td><code>Fragment(props): DocumentFragment</code></td>
-                <td>无包裹节点容器。</td>
-              </tr>
             </tbody>
           </table>
-        </section>
-
-        <section id="props" class="api-section">
-          <h2>Props 处理规则</h2>
-          <ul style="color: var(--muted)">
-            <li><code>children</code> 为 <code>string | number</code> → 创建 Text 节点。</li>
-            <li><code>children</code> 为 <code>Signal</code> → 创建 Text 并订阅细粒度更新。</li>
-            <li><code>children</code> 为 <code>Node</code> → 直接追加。</li>
-            <li><code>children</code> 为 <code>Array</code> → 递归处理。</li>
-            <li>
-              <code>children</code> 为 <code>Signal&lt;Node | Node[]&gt;</code> → 基于 marker
-              的结构性子树替换。
-            </li>
-            <li><code>onXxx</code> → 调用 <code>addEventListener</code>。</li>
-            <li><code>className</code> → 映射到 <code>class</code> 属性。</li>
-            <li><code>style: object</code> → 逐个设置 CSS 属性。</li>
-            <li>
-              <code>class</code> / <code>class: Signal</code> → 支持 signal 驱动的 class 绑定（静态
-              class 与 signal class 合并）。
-            </li>
-          </ul>
-        </section>
-
-        <section id="ref" class="api-section">
-          <h2>ref 清理</h2>
-          <p>
-            <code>ref</code> 回调接收 DOM 元素。如果回调返回一个函数，该函数会被注册为清理回调： 当
-            DOM 子树被卸载（如 <code>Show</code> / structural swap /
-            <code>dispose</code>）时自动调用。
-          </p>
+          <p>没有 JSX 编译器时可以直接调用工厂（htm 标签模板走的也是这条路）：</p>
           <div class="code-block">
-            <pre><code class="language-tsx">&lt;div ref={el => {
-  const observer = new ResizeObserver(entries => console.log(entries))
-  observer.observe(el)
-  return () => observer.disconnect() // 卸载时自动清理
-}} /&gt;</code></pre>
+            <pre><code class="language-ts" data-src="./assets/snippets/dom-jsx.ts"></code></pre>
           </div>
-        </section>
 
-        <section id="render" class="api-section">
-          <h2>render</h2>
+          <h3 id="fragment">Fragment</h3>
           <table>
             <thead>
               <tr>
@@ -160,7 +142,90 @@
             </thead>
             <tbody>
               <tr>
-                <td><code>render(root: Node, container: Element): () => void</code></td>
+                <td><code>Fragment(props): DocumentFragment</code></td>
+                <td>无包裹节点的多根内容容器。</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h3 id="props">Props 处理规则</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>prop</th>
+                <th>行为</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>children</code> 为 <code>string | number</code></td>
+                <td>创建 Text 节点。</td>
+              </tr>
+              <tr>
+                <td><code>children</code> 为 <code>Signal</code></td>
+                <td>创建 Text 并订阅细粒度更新。</td>
+              </tr>
+              <tr>
+                <td><code>children</code> 为 <code>Node</code></td>
+                <td>直接追加。</td>
+              </tr>
+              <tr>
+                <td><code>children</code> 为 <code>Array</code></td>
+                <td>递归处理。</td>
+              </tr>
+              <tr>
+                <td><code>children</code> 为 <code>Signal&lt;Node | Node[]&gt;</code></td>
+                <td>基于 marker 的结构性子树替换（Show / For 的底层机制）。</td>
+              </tr>
+              <tr>
+                <td>任意 prop 值为 <code>Signal</code></td>
+                <td>创建 watcher，值变化时细粒度更新该属性（class、style、onXxx、data-* 等）。</td>
+              </tr>
+              <tr>
+                <td><code>onXxx</code></td>
+                <td>
+                  调用 <code>addEventListener</code>；值为 signal 时变化自动替换监听器（不泄漏）。
+                </td>
+              </tr>
+              <tr>
+                <td><code>className</code></td>
+                <td>映射到 <code>class</code> 属性。</td>
+              </tr>
+              <tr>
+                <td><code>style</code> 为 <code>string | object</code></td>
+                <td>字符串直接设置；对象逐个设置 CSS 属性。</td>
+              </tr>
+              <tr>
+                <td>布尔属性（<code>disabled</code>、<code>checked</code> 等）</td>
+                <td>按存在性渲染，<code>false</code> / <code>null</code> 时移除。</td>
+              </tr>
+              <tr>
+                <td><code>ref</code></td>
+                <td>
+                  回调接收元素；返回函数则注册为卸载清理回调（见 <a href="#ref">ref 清理</a>）。
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="code-block">
+            <pre><code class="language-tsx" data-src="./assets/snippets/dom-props.tsx"></code></pre>
+          </div>
+        </section>
+
+        <section id="render" class="api-section">
+          <h2>渲染</h2>
+
+          <h3 id="renderapi">render</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>签名</th>
+                <th>说明</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>render(root: Node, container: Element): () =&gt; void</code></td>
                 <td>
                   将 JSX 树挂载到 DOM 容器，返回 <code>dispose()</code> 用于卸载并清理所有 watcher
                   和事件监听。
@@ -169,12 +234,25 @@
             </tbody>
           </table>
           <div class="code-block">
-            <pre><code class="language-tsx" data-src="./assets/snippets/render.tsx"></code></pre>
+            <pre><code class="language-tsx" data-src="./assets/snippets/dom-render.tsx"></code></pre>
+          </div>
+
+          <h3 id="ref">ref 清理</h3>
+          <p>
+            <code>ref</code> 回调接收 DOM 元素。如果回调返回一个函数，该函数会被注册为清理回调： 当
+            DOM 子树被卸载（如 <code>Show</code> / structural swap / <code>dispose</code>）时自动
+            调用。
+          </p>
+          <div class="code-block">
+            <pre><code class="language-tsx" data-src="./assets/snippets/dom-ref.tsx"></code></pre>
           </div>
         </section>
 
-        <section id="show" class="api-section">
-          <h2>Show</h2>
+        <section id="flow" class="api-section">
+          <h2>控制流</h2>
+          <p>条件与列表通过组件表达，内部基于信号 + marker 做真实 DOM 的最小操作。</p>
+
+          <h3 id="show">Show — 条件渲染</h3>
           <table>
             <thead>
               <tr>
@@ -186,12 +264,12 @@
             <tbody>
               <tr>
                 <td><code>when</code></td>
-                <td><code>T | null | undefined | false</code></td>
-                <td>条件值（支持 signal）。</td>
+                <td><code>T | null | undefined | false</code>（支持 signal）</td>
+                <td>条件值。</td>
               </tr>
               <tr>
                 <td><code>children</code></td>
-                <td><code>Node | ((value: T) => Node)</code></td>
+                <td><code>Node | ((value: T) =&gt; Node)</code></td>
                 <td>条件为真时渲染的内容。</td>
               </tr>
               <tr>
@@ -202,12 +280,10 @@
             </tbody>
           </table>
           <div class="code-block">
-            <pre><code class="language-tsx" data-src="./assets/snippets/show.tsx"></code></pre>
+            <pre><code class="language-tsx" data-src="./assets/snippets/dom-show.tsx"></code></pre>
           </div>
-        </section>
 
-        <section id="for" class="api-section">
-          <h2>For</h2>
+          <h3 id="for">For — 列表渲染</h3>
           <table>
             <thead>
               <tr>
@@ -219,21 +295,103 @@
             <tbody>
               <tr>
                 <td><code>each</code></td>
-                <td><code>T[] | Signal&lt;T[]&gt;</code></td>
+                <td><code>readonly T[] | Signal&lt;readonly T[]&gt;</code></td>
                 <td>列表数据。</td>
               </tr>
               <tr>
                 <td><code>children</code></td>
-                <td><code>(item: T, index: () => number) => Node</code></td>
+                <td><code>(item: T, index: () =&gt; number) =&gt; unknown</code></td>
                 <td>渲染函数，<code>index</code> 为访问器。</td>
+              </tr>
+              <tr>
+                <td><code>getKey</code></td>
+                <td><code>(item: T, index: number) =&gt; unknown</code></td>
+                <td>
+                  可选。提供后进入 <strong>keyed 模式</strong>：按 key 复用 DOM 节点，children 的
+                  <code>item</code> 变为访问器 <code>() =&gt; T</code>，原位更新不重跑渲染函数。
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="code-block">
+            <pre><code class="language-tsx" data-src="./assets/snippets/dom-for.tsx"></code></pre>
+          </div>
+
+          <h3 id="errorboundary">ErrorBoundary — 错误边界</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Props</th>
+                <th>类型</th>
+                <th>说明</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>children</code></td>
+                <td><code>() =&gt; unknown</code></td>
+                <td>延迟求值的渲染函数，其同步错误（初始渲染与 signal 驱动的重渲染）会被捕获。</td>
+              </tr>
+              <tr>
+                <td><code>fallback</code></td>
+                <td><code>unknown | ((error: unknown) =&gt; unknown)</code></td>
+                <td>出错时渲染的内容；函数形式接收捕获的错误。</td>
+              </tr>
+              <tr>
+                <td><code>onError</code></td>
+                <td><code>(error: unknown) =&gt; void</code></td>
+                <td>错误回调（可选）。</td>
+              </tr>
+              <tr>
+                <td><code>resetSignal</code> / <code>errorSignal</code></td>
+                <td><code>Signal.State&lt;unknown&gt;</code></td>
+                <td>由调用方持有的重试 / 错误信号（可选）。</td>
               </tr>
             </tbody>
           </table>
           <p class="note">
-            非 keyed 协调：列表变化时对比新旧并做最小 DOM 操作（复用、插入、删除）。
+            只捕获渲染路径中的同步错误；事件处理器等异步回调中的错误通过宿主
+            <code>reportError</code> 上报，不会被捕获。
           </p>
           <div class="code-block">
-            <pre><code class="language-tsx" data-src="./assets/snippets/for.tsx"></code></pre>
+            <pre><code class="language-tsx" data-src="./assets/snippets/dom-errorboundary.tsx"></code></pre>
+          </div>
+
+          <h3 id="suspend">Suspend — 异步挂起</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Props</th>
+                <th>类型</th>
+                <th>说明</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>children</code></td>
+                <td><code>Promise&lt;Node&gt; | (Promise&lt;Node&gt; | Node)[] | Node</code></td>
+                <td>异步加载的内容。</td>
+              </tr>
+              <tr>
+                <td><code>fallback</code></td>
+                <td><code>Node</code></td>
+                <td>等待时渲染的占位内容。</td>
+              </tr>
+            </tbody>
+          </table>
+          <p>
+            当 <code>children</code> 为 Promise（或包含 Promise 的数组）时，先渲染
+            <code>fallback</code>，全部 resolve 后切换到实际内容；多个 Promise 通过
+            <code>Promise.all</code> 等待，任一 reject 时通过 <code>reportError</code> 上报并保持
+            fallback。
+          </p>
+          <div class="note">
+            与 React 不同，kiko 组件函数只执行一次，因此 Suspend 适合<strong>一次性初始化</strong>。
+            如需在 signal 变化后重新加载数据，请使用 <code>effect</code> 或
+            <code>Show</code> 等响应式原语。
+          </div>
+          <div class="code-block">
+            <pre><code class="language-tsx" data-src="./assets/snippets/dom-suspend.tsx"></code></pre>
           </div>
         </section>
 
@@ -243,13 +401,10 @@
             <code>&lt;style&gt;</code> 默认启用 scoped 模式（Vue 风格）：选择器被改写并限定到
             <strong>最近祖先元素</strong>（包含该 style 的元素），该元素会获得唯一的
             <code>data-kiko-vN</code> 作用域属性。无需模板编译器——作用域通过后代组合器匹配， Show /
-            For 动态插入的节点自动覆盖。添加 <code>global</code> 属性则不改写选择器，直接全局注入。
+            For 动态插入的节点自动覆盖。添加 <code>global</code> 属性则不改写选择器， 直接全局注入。
           </p>
           <div class="code-block">
-            <pre><code class="language-tsx">&lt;div class="card"&gt;
-  &lt;style&gt;{`.card { border: 1px solid; } .title { font-weight: 700; }`}&lt;/style&gt;
-  &lt;p class="title"&gt;kiko&lt;/p&gt;
-&lt;/div&gt;</code></pre>
+            <pre><code class="language-tsx" data-src="./assets/snippets/dom-style.tsx"></code></pre>
           </div>
           <table>
             <thead>
@@ -298,10 +453,10 @@
           </ul>
           <p>
             实现基于构造式样式表：<code>new CSSStyleSheet()</code> +
-            <code>document.adoptedStyleSheets</code>
-            （Chrome 73+ / Firefox 101+ / Safari 16.4+）；不支持时自动降级为携带改写后文本的真实
-            <code>&lt;style&gt;</code> 元素。卸载时（dispose / Show 切换）自动从 adoptedStyleSheets
-            移除； 子树重新挂载时 sheet 会被重新 adopt。
+            <code>document.adoptedStyleSheets</code>（Chrome 73+ / Firefox 101+ / Safari
+            16.4+）；不支持时自动降级为携带改写后文本的真实 <code>&lt;style&gt;</code>
+            元素。卸载时（dispose / Show 切换）自动从 adoptedStyleSheets 移除；子树重新挂载时 sheet
+            会被重新 adopt。
           </p>
         </section>
 
@@ -320,10 +475,8 @@
           </div>
           <ul style="color: var(--muted)">
             <li>
-              插值位置：文本、属性值、引号内属性值（字符串化）、标签（<code>&lt;${Component}&gt;</code>）、<code
-                >...${props}</code
-              >
-              展开。
+              插值位置：文本、属性值、引号内属性值（字符串化）、标签（<code>&lt;${Component}&gt;</code>）、
+              <code>...${props}</code> 展开。
             </li>
             <li>空白规则与 JSX 一致：换行锚定的纯空白文本节点被剔除。</li>
             <li>多根模板返回 <code>DocumentFragment</code>。</li>
@@ -332,71 +485,6 @@
               限制）；动态标签名必须是完整插值（<code>&lt;${Tag}&gt;</code>）。
             </li>
           </ul>
-        </section>
-
-        <section id="errorboundary" class="api-section">
-          <h2>ErrorBoundary</h2>
-          <table>
-            <thead>
-              <tr>
-                <th>Props</th>
-                <th>类型</th>
-                <th>说明</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td><code>fallback</code></td>
-                <td><code>(error: unknown) => Node</code></td>
-                <td>出错时渲染的 fallback。</td>
-              </tr>
-              <tr>
-                <td><code>children</code></td>
-                <td><code>Node</code></td>
-                <td>受保护的子树。</td>
-              </tr>
-            </tbody>
-          </table>
-          <div class="code-block">
-            <pre><code class="language-tsx" data-src="./assets/snippets/errorboundary.tsx"></code></pre>
-          </div>
-        </section>
-
-        <section id="suspend" class="api-section">
-          <h2>Suspend</h2>
-          <table>
-            <thead>
-              <tr>
-                <th>Props</th>
-                <th>类型</th>
-                <th>说明</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td><code>fallback</code></td>
-                <td><code>Node</code></td>
-                <td>等待时渲染的占位内容。</td>
-              </tr>
-              <tr>
-                <td><code>children</code></td>
-                <td><code>Promise&lt;Node&gt; | Promise&lt;Node&gt;[]</code></td>
-                <td>异步加载的内容。</td>
-              </tr>
-            </tbody>
-          </table>
-          <p>
-            当 <code>children</code> 为 Promise 或 Promise 数组时，先渲染 <code>fallback</code>，
-            所有 Promise resolve 后切换到实际内容。多个 Promise 通过 <code>Promise.all</code> 等待。
-          </p>
-          <div class="note">
-            与 React 不同，kiko 组件函数只执行一次，因此 Suspend 适合<strong>一次性初始化</strong>。
-            如需在 signal 变化后重新加载数据，请使用 <code>effect</code> 或
-            <code>Show</code> 等响应式原语。
-          </div>
-          <div class="code-block">
-            <pre><code class="language-tsx" data-src="./assets/snippets/suspend.tsx"></code></pre>
-          </div>
         </section>
 
         <section id="react" class="api-section">
@@ -422,16 +510,16 @@
           </table>
           <div class="note">
             <code>react</code> 与 <code>react-dom</code> 是 peer dependency，仅在使用 ReactPortal
-            时由项目提供。 从 <code>@kikojs/dom/react-portal</code> 子路径导入。
+            时由项目提供。从 <code>@kikojs/dom/react-portal</code> 子路径导入。
           </div>
           <div class="code-block">
-            <pre><code class="language-tsx" data-src="./assets/snippets/react.tsx"></code></pre>
+            <pre><code class="language-tsx" data-src="./assets/snippets/dom-react.tsx"></code></pre>
           </div>
         </section>
 
         <section id="signals" class="api-section">
           <h2>Signal 封装</h2>
-          <p>@kikojs/dom 重新实现了最小 signal 子集：</p>
+          <p>@kikojs/dom 重新实现了最小 signal 子集（自包含，不依赖 @kikojs/signal）：</p>
           <table>
             <thead>
               <tr>
@@ -454,6 +542,9 @@
               </tr>
             </tbody>
           </table>
+          <div class="code-block">
+            <pre><code class="language-ts" data-src="./assets/snippets/dom-signals.ts"></code></pre>
+          </div>
           <p class="note">
             对于完整的 signal 工具集（computed, effect, batch, on, emitter 等），请使用
             <a href="./signal.html">@kikojs/signal</a>。

@@ -1,1 +1,1 @@
-bun add @kikojs/dom signal-polyfill
+bun add @kikojs/signal @kikojs/dom

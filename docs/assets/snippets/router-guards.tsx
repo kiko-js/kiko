@@ -1,18 +1,20 @@
-import { createRouter, Router, Route, createAuthGuard } from "@kikojs/router"
+/** @jsxImportSource @kikojs/dom */
+import { createRouter, Router, Outlet, createAuthGuard } from "@kikojs/router"
 
 const isLoggedIn = () => !!localStorage.getItem("token")
-const authGuard = createAuthGuard(isLoggedIn, "/login")
 
+// 守卫返回 false 时重定向到 /login
 const router = createRouter({
   mode: "path",
-  guards: [authGuard],
+  routes: [
+    { path: "/login", component: () => <h1>登录</h1> },
+    { path: "/dashboard", component: () => <h1>控制台</h1> },
+  ],
+  beforeEach: createAuthGuard(isLoggedIn, "/login"),
 })
 
-function App() {
-  return (
-    <Router router={router}>
-      <Route path="/login" component={Login} />
-      <Route path="/dashboard" component={Dashboard} />
-    </Router>
-  )
-}
+const app = (
+  <Router router={router}>
+    <Outlet />
+  </Router>
+)

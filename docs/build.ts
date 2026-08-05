@@ -15,9 +15,17 @@ await Bun.$`rm -rf ${dist}`
 await mkdir(dist, { recursive: true })
 
 // Build HTML entrypoints — Bun resolves script/link tags, bundles TS/JS/CSS
-const htmlEntries = ["index.html", "signal.html", "dom.html", "router.html", "api.html", "examples.html"]
+const htmlEntries = [
+  "index.html",
+  "guide.html",
+  "signal.html",
+  "dom.html",
+  "router.html",
+  "api.html",
+  "examples.html",
+]
 const result = await Bun.build({
-  entrypoints: htmlEntries.map((f) => `${docs}/${f}`),
+  entrypoints: htmlEntries.map(f => `${docs}/${f}`),
   outdir: dist,
   target: "browser",
 })

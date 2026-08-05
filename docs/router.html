@@ -4,8 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>@kikojs/router — kiko</title>
-    <meta name="description" content="@kikojs/router 完整 API 参考：createRouter、Router、Route、Link、Outlet、Navigate、路由守卫、hooks。" />
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css" />
+    <meta
+      name="description"
+      content="@kikojs/router 完整 API 参考：createRouter、路由表、Router / Link / Outlet 组件、hooks、守卫、History、工具函数。"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css"
+    />
     <link rel="stylesheet" href="./assets/style.css" />
   </head>
   <body>
@@ -14,11 +20,14 @@
         <a class="logo" href="./index.html"><span></span>kiko</a>
         <ul class="links">
           <li><a href="./index.html">首页</a></li>
+          <li><a href="./guide.html">指南</a></li>
           <li><a href="./signal.html">signal</a></li>
           <li><a href="./dom.html">dom</a></li>
-          <li><a href="./router.html">router</a></li>
+          <li><a href="./router.html" aria-current="page">router</a></li>
           <li><a href="./examples.html">示例</a></li>
-          <li><a href="https://github.com/FairyScript/kiko" target="_blank" rel="noopener">GitHub</a></li>
+          <li>
+            <a href="https://github.com/FairyScript/kiko" target="_blank" rel="noopener">GitHub</a>
+          </li>
         </ul>
       </nav>
     </header>
@@ -29,8 +38,17 @@
         <ul>
           <li><a href="#overview">概览</a></li>
           <li><a href="#install">安装与导入</a></li>
-          <li><a href="#createRouter">createRouter</a></li>
-          <li><a href="#components">组件</a></li>
+          <li><a href="#createrouter">createRouter</a></li>
+          <li>
+            <a href="#components">组件</a>
+            <ul>
+              <li><a href="#router">Router</a></li>
+              <li><a href="#route">Route</a></li>
+              <li><a href="#link">Link</a></li>
+              <li><a href="#outlet">Outlet</a></li>
+              <li><a href="#navigate">Navigate</a></li>
+            </ul>
+          </li>
           <li><a href="#hooks">Hooks</a></li>
           <li><a href="#guards">守卫</a></li>
           <li><a href="#history">History</a></li>
@@ -42,11 +60,17 @@
 
       <div>
         <section id="overview" class="api-section">
-          <h2>@kikojs/router</h2>
+          <h2>概览</h2>
           <p>
-            基于 signal 的声明式路由库。支持 path / hash 模式、嵌套路由、路由守卫、
-            查询参数解析、编程式导航，完全与 @kikojs/dom 和 @kikojs/signal 集成。
+            基于 signal 的声明式路由库。路由表（<code>RouteRecord[]</code>）+ 组件（Router / Link /
+            Outlet）+ hooks 的模型，支持 path / hash 模式、嵌套路由、动态参数、路由守卫、重定向与
+            编程式导航，完全与 <a href="./dom.html">@kikojs/dom</a> 和
+            <a href="./signal.html">@kikojs/signal</a> 集成。
           </p>
+          <div class="note">
+            路由状态（location / params / query 等）本身就是标准信号（
+            <code>router.location</code> 等），可以直接放进 JSX 或 <code>computed</code>。
+          </div>
         </section>
 
         <section id="install" class="api-section">
@@ -55,21 +79,19 @@
             <pre><code class="language-shell">bun add @kikojs/router</code></pre>
           </div>
           <div class="code-block">
-            <pre><code class="language-ts">import {
-  createRouter,
-  Router, Route, Link, Outlet, Navigate,
-  useRouter, useParams, useQuery, useLocation, useRoute,
-  createAuthGuard, combineGuards, createAsyncGuard,
-  redirect, redirectReplace, buildPath, getQueryValue, pathsEqual, useNavigate,
-  createPathHistory, createHashHistory,
-} from "@kikojs/router"</code></pre>
+            <pre><code class="language-ts" data-src="./assets/snippets/router-install.ts"></code></pre>
           </div>
         </section>
 
-        <section id="createRouter" class="api-section">
+        <section id="createrouter" class="api-section">
           <h2>createRouter</h2>
           <table>
-            <thead><tr><th>签名</th><th>说明</th></tr></thead>
+            <thead>
+              <tr>
+                <th>签名</th>
+                <th>说明</th>
+              </tr>
+            </thead>
             <tbody>
               <tr>
                 <td><code>createRouter(options: RouterOptions): Router</code></td>
@@ -77,14 +99,84 @@
               </tr>
             </tbody>
           </table>
-          <h4>RouterOptions</h4>
+          <h3>RouterOptions</h3>
           <table>
-            <thead><tr><th>字段</th><th>类型</th><th>默认值</th><th>说明</th></tr></thead>
+            <thead>
+              <tr>
+                <th>字段</th>
+                <th>类型</th>
+                <th>默认值</th>
+                <th>说明</th>
+              </tr>
+            </thead>
             <tbody>
-              <tr><td><code>mode</code></td><td><code>"path" | "hash"</code></td><td><code>"path"</code></td><td>路由模式。</td></tr>
-              <tr><td><code>base</code></td><td><code>string</code></td><td><code>""</code></td><td>基本路径前缀。</td></tr>
-              <tr><td><code>guards</code></td><td><code>RouteGuard[]</code></td><td><code>[]</code></td><td>全局路由守卫列表。</td></tr>
-              <tr><td><code>history</code></td><td><code>HistoryAdapter</code></td><td>—</td><td>自定义 history（覆盖 mode）。</td></tr>
+              <tr>
+                <td><code>routes</code></td>
+                <td><code>RouteRecord[]</code></td>
+                <td>—（必填）</td>
+                <td>路由表，支持嵌套、动态参数、守卫与重定向。</td>
+              </tr>
+              <tr>
+                <td><code>mode</code></td>
+                <td><code>"path" | "hash"</code></td>
+                <td><code>"path"</code></td>
+                <td>路由模式，决定内部使用的 history adapter。</td>
+              </tr>
+              <tr>
+                <td><code>base</code></td>
+                <td><code>string</code></td>
+                <td><code>""</code></td>
+                <td>基本路径前缀（path 模式下生效）。</td>
+              </tr>
+              <tr>
+                <td><code>beforeEach</code></td>
+                <td><code>RouteGuard | RouteGuard[]</code></td>
+                <td>—</td>
+                <td>全局前置守卫。</td>
+              </tr>
+              <tr>
+                <td><code>afterEach</code></td>
+                <td><code>((to, from) =&gt; void)[]</code></td>
+                <td>—</td>
+                <td>全局后置钩子。</td>
+              </tr>
+            </tbody>
+          </table>
+          <h3>Router 实例</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>成员</th>
+                <th>类型</th>
+                <th>说明</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>location / params / query / matched / currentRoute</code></td>
+                <td>signal</td>
+                <td>路由状态（标准信号，可直接用于 JSX / computed）。</td>
+              </tr>
+              <tr>
+                <td><code>navigate / push / replace</code></td>
+                <td>方法</td>
+                <td>编程式导航。</td>
+              </tr>
+              <tr>
+                <td><code>back / forward / go</code></td>
+                <td>方法</td>
+                <td>历史前进后退。</td>
+              </tr>
+              <tr>
+                <td><code>beforeEach / afterEach</code></td>
+                <td>方法</td>
+                <td>运行时注册守卫 / 钩子，返回取消函数。</td>
+              </tr>
+              <tr>
+                <td><code>dispose</code></td>
+                <td>方法</td>
+                <td>清理监听器与状态。</td>
+              </tr>
             </tbody>
           </table>
         </section>
@@ -92,53 +184,128 @@
         <section id="components" class="api-section">
           <h2>组件</h2>
 
-          <h4>Router</h4>
+          <h3 id="router">Router</h3>
           <table>
-            <thead><tr><th>Props</th><th>类型</th><th>说明</th></tr></thead>
+            <thead>
+              <tr>
+                <th>Props</th>
+                <th>类型</th>
+                <th>说明</th>
+              </tr>
+            </thead>
             <tbody>
-              <tr><td><code>router</code></td><td><code>Router</code></td><td>路由器实例。</td></tr>
-              <tr><td><code>children</code></td><td><code>Node</code></td><td>子组件（通常包含 Link、Route、Outlet）。</td></tr>
+              <tr>
+                <td><code>router</code></td>
+                <td><code>Router</code></td>
+                <td>路由器实例。</td>
+              </tr>
+              <tr>
+                <td><code>children</code></td>
+                <td><code>Node</code></td>
+                <td>子内容（通常包含 Link、Outlet）。</td>
+              </tr>
             </tbody>
           </table>
+          <p>
+            建立当前路由上下文（供 hooks 与 Link 使用），卸载时调用 <code>router.dispose()</code>。
+          </p>
 
-          <h4>Route</h4>
+          <h3 id="route">Route</h3>
+          <p>
+            路由表使用<strong>普通对象</strong>声明（<code>RouteRecord</code>），见
+            <a href="#createrouter">RouterOptions.routes</a>。JSX 中暴露的
+            <code>&lt;Route&gt;</code> 组件不渲染任何 DOM（占位符）。
+          </p>
+
+          <h3 id="link">Link</h3>
           <table>
-            <thead><tr><th>Props</th><th>类型</th><th>说明</th></tr></thead>
+            <thead>
+              <tr>
+                <th>Props</th>
+                <th>类型</th>
+                <th>说明</th>
+              </tr>
+            </thead>
             <tbody>
-              <tr><td><code>path</code></td><td><code>string</code></td><td>匹配路径模式，支持 <code>:param</code> 动态段。</td></tr>
-              <tr><td><code>component</code></td><td><code>Component</code></td><td>匹配时渲染的组件。</td></tr>
-              <tr><td><code>guards</code></td><td><code>RouteGuard[]</code></td><td>路由级守卫（可选）。</td></tr>
-              <tr><td><code>redirect</code></td><td><code>string</code></td><td>匹配时重定向（可选）。</td></tr>
+              <tr>
+                <td><code>to</code></td>
+                <td><code>string</code></td>
+                <td>目标路径。</td>
+              </tr>
+              <tr>
+                <td><code>replace</code></td>
+                <td><code>boolean</code></td>
+                <td>替换当前历史记录（默认 false）。</td>
+              </tr>
+              <tr>
+                <td><code>state</code></td>
+                <td><code>unknown</code></td>
+                <td>附加导航状态。</td>
+              </tr>
+              <tr>
+                <td><code>activeClass</code></td>
+                <td><code>string</code></td>
+                <td>当前路径匹配时添加的 class。</td>
+              </tr>
+              <tr>
+                <td><code>exact</code></td>
+                <td><code>boolean</code></td>
+                <td>精确匹配时才添加 activeClass（默认前缀匹配）。</td>
+              </tr>
+              <tr>
+                <td><code>children</code></td>
+                <td><code>Node</code></td>
+                <td>链接内容。</td>
+              </tr>
             </tbody>
           </table>
+          <p>
+            渲染为 <code>&lt;a&gt;</code>；点击时在 router 上执行导航（
+            <code>ctrl/meta/shift</code> 键或非主键点击、<code>target</code> 为外链时不拦截）。
+          </p>
 
-          <h4>Link</h4>
+          <h3 id="outlet">Outlet</h3>
           <table>
-            <thead><tr><th>Props</th><th>类型</th><th>说明</th></tr></thead>
+            <thead>
+              <tr>
+                <th>Props</th>
+                <th>类型</th>
+                <th>说明</th>
+              </tr>
+            </thead>
             <tbody>
-              <tr><td><code>to</code></td><td><code>string</code></td><td>目标路径。</td></tr>
-              <tr><td><code>replace</code></td><td><code>boolean</code></td><td>替换当前历史记录（默认 false）。</td></tr>
-              <tr><td><code>state</code></td><td><code>unknown</code></td><td>附加导航状态。</td></tr>
-              <tr><td><code>activeClass</code></td><td><code>string</code></td><td>当前路径匹配时添加的 class。</td></tr>
-              <tr><td><code>children</code></td><td><code>Node</code></td><td>链接内容。</td></tr>
+              <tr>
+                <td><code>router</code></td>
+                <td><code>Router</code></td>
+                <td>指定路由器（可选，默认使用最近的 Router）。</td>
+              </tr>
             </tbody>
           </table>
+          <p>
+            渲染当前匹配路由的组件；导航时自动切换。用于嵌套布局。每次导航都会重新执行路由组件函数，
+            因此组件内调用 hooks 拿到的是最新快照。
+          </p>
 
-          <h4>Outlet</h4>
+          <h3 id="navigate">Navigate</h3>
           <table>
-            <thead><tr><th>Props</th><th>类型</th><th>说明</th></tr></thead>
+            <thead>
+              <tr>
+                <th>Props</th>
+                <th>类型</th>
+                <th>说明</th>
+              </tr>
+            </thead>
             <tbody>
-              <tr><td><code>router</code></td><td><code>Router</code></td><td>指定路由器（可选，默认使用最近的 Router）。</td></tr>
-            </tbody>
-          </table>
-          <p>渲染当前匹配 Route 的组件。用于嵌套路由布局。</p>
-
-          <h4>Navigate</h4>
-          <table>
-            <thead><tr><th>Props</th><th>类型</th><th>说明</th></tr></thead>
-            <tbody>
-              <tr><td><code>to</code></td><td><code>string</code></td><td>跳转目标。</td></tr>
-              <tr><td><code>replace</code></td><td><code>boolean</code></td><td>替换当前历史记录。</td></tr>
+              <tr>
+                <td><code>to</code></td>
+                <td><code>string</code></td>
+                <td>跳转目标。</td>
+              </tr>
+              <tr>
+                <td><code>replace</code></td>
+                <td><code>boolean</code></td>
+                <td>替换当前历史记录（默认 true）。</td>
+              </tr>
             </tbody>
           </table>
           <p>渲染时立即执行导航，不渲染任何 DOM。</p>
@@ -147,22 +314,73 @@
         <section id="hooks" class="api-section">
           <h2>Hooks</h2>
           <table>
-            <thead><tr><th>Hook</th><th>返回类型</th><th>说明</th></tr></thead>
+            <thead>
+              <tr>
+                <th>Hook</th>
+                <th>返回</th>
+                <th>说明</th>
+              </tr>
+            </thead>
             <tbody>
-              <tr><td><code>useRouter()</code></td><td><code>Router</code></td><td>获取当前 router 实例。</td></tr>
-              <tr><td><code>useParams()</code></td><td><code>RouteParams</code></td><td>获取动态路由参数 signal。</td></tr>
-              <tr><td><code>useQuery()</code></td><td><code>RouteQuery</code></td><td>获取查询参数 signal。</td></tr>
-              <tr><td><code>useLocation()</code></td><td><code>RouteLocation</code></td><td>获取当前 location signal。</td></tr>
-              <tr><td><code>useRoute()</code></td><td><code>{ route, matched, params, query, location }</code></td><td>获取完整路由上下文 signals。</td></tr>
-              <tr><td><code>tryUseRouter()</code></td><td><code>Router | null</code></td><td>安全获取 router，Router 外返回 null。</td></tr>
+              <tr>
+                <td><code>useRouter()</code></td>
+                <td><code>Router</code></td>
+                <td>获取当前 router 实例（Router 外调用抛错）。</td>
+              </tr>
+              <tr>
+                <td><code>useParams()</code></td>
+                <td><code>RouteParams</code></td>
+                <td>当前动态路由参数快照。</td>
+              </tr>
+              <tr>
+                <td><code>useQuery()</code></td>
+                <td><code>RouteQuery</code></td>
+                <td>当前查询参数快照。</td>
+              </tr>
+              <tr>
+                <td><code>useLocation()</code></td>
+                <td><code>RouteLocation</code></td>
+                <td>当前 location 快照。</td>
+              </tr>
+              <tr>
+                <td><code>useRoute()</code></td>
+                <td><code>{ route, matched, params, query, location }</code></td>
+                <td>完整路由上下文快照。</td>
+              </tr>
+              <tr>
+                <td><code>tryUseRouter()</code></td>
+                <td><code>Router | null</code></td>
+                <td>安全获取 router，Router 外返回 null。</td>
+              </tr>
             </tbody>
           </table>
+          <p class="note">
+            hooks 返回的是调用时的<strong>快照</strong>（非 signal）。在 Outlet
+            渲染的路由组件中使用：每次导航 Outlet 都会重新执行组件函数，因此始终是最新值。若需要在
+            JSX 中响应式订阅，直接用 <code>router.location</code> 等信号。
+          </p>
+          <div class="code-block">
+            <pre><code class="language-tsx" data-src="./assets/snippets/router-hooks.tsx"></code></pre>
+          </div>
         </section>
 
         <section id="guards" class="api-section">
-          <h2>路由守卫</h2>
+          <h2>守卫</h2>
+          <p>
+            守卫通过 <code>beforeEach</code>（全局）或
+            <code>RouteRecord.beforeEnter / beforeLeave</code>（路由级）注册。守卫返回
+            <code>true</code>（放行）、
+            <code>false</code>（阻止）、<code>string</code>（重定向路径）或
+            <code>RedirectDescriptor</code>；支持异步（<code>Promise</code>）。
+          </p>
           <table>
-            <thead><tr><th>导出</th><th>签名</th><th>说明</th></tr></thead>
+            <thead>
+              <tr>
+                <th>导出</th>
+                <th>签名</th>
+                <th>说明</th>
+              </tr>
+            </thead>
             <tbody>
               <tr>
                 <td><code>createAuthGuard</code></td>
@@ -171,8 +389,8 @@
               </tr>
               <tr>
                 <td><code>combineGuards</code></td>
-                <td><code>combineGuards(...guards: RouteGuard[]): RouteGuard</code></td>
-                <td>组合多个守卫，按顺序执行。</td>
+                <td><code>combineGuards(...guards): RouteGuard</code></td>
+                <td>组合多个守卫，按顺序执行，遇到第一个拦截结果立即返回。</td>
               </tr>
               <tr>
                 <td><code>createAsyncGuard</code></td>
@@ -181,8 +399,6 @@
               </tr>
             </tbody>
           </table>
-          <p>守卫可以是同步或异步函数，返回 <code>true</code>（放行）、<code>false</code>（阻止）、
-          <code>string</code>（重定向路径）或 <code>RedirectDescriptor</code>。</p>
           <div class="code-block">
             <pre><code class="language-tsx" data-src="./assets/snippets/router-guards.tsx"></code></pre>
           </div>
@@ -190,48 +406,164 @@
 
         <section id="history" class="api-section">
           <h2>History</h2>
+          <p>
+            <code>createRouter</code> 按 <code>mode</code> 自动选择 adapter：path 模式用
+            <code>createPathHistory</code>（History API），hash 模式用
+            <code>createHashHistory</code>（hashchange）。两个工厂也可单独创建，用于测试或
+            非浏览器环境。
+          </p>
           <table>
-            <thead><tr><th>导出</th><th>说明</th></tr></thead>
+            <thead>
+              <tr>
+                <th>导出</th>
+                <th>说明</th>
+              </tr>
+            </thead>
             <tbody>
-              <tr><td><code>createPathHistory()</code></td><td>创建基于 History API 的 path 模式 adapter。</td></tr>
-              <tr><td><code>createHashHistory()</code></td><td>创建基于 hashchange 的 hash 模式 adapter。</td></tr>
+              <tr>
+                <td><code>createPathHistory(base?)</code></td>
+                <td>基于 History API 的 path 模式 adapter。</td>
+              </tr>
+              <tr>
+                <td><code>createHashHistory()</code></td>
+                <td>基于 hashchange 的 hash 模式 adapter。</td>
+              </tr>
             </tbody>
           </table>
-          <p>通常不需要直接调用，<code>createRouter({ mode })</code> 会自动选择。传入自定义 adapter 可用于测试或非浏览器环境。</p>
+          <p>
+            adapter 接口：<code>getPath / getHash / push / replace / go / listen / dispose</code>。
+          </p>
+          <div class="code-block">
+            <pre><code class="language-ts" data-src="./assets/snippets/router-history.ts"></code></pre>
+          </div>
         </section>
 
         <section id="utils" class="api-section">
           <h2>工具函数</h2>
           <table>
-            <thead><tr><th>导出</th><th>签名</th><th>说明</th></tr></thead>
+            <thead>
+              <tr>
+                <th>导出</th>
+                <th>签名</th>
+                <th>说明</th>
+              </tr>
+            </thead>
             <tbody>
-              <tr><td><code>redirect</code></td><td><code>redirect(path, state?): RedirectDescriptor</code></td><td>创建重定向描述（push）。</td></tr>
-              <tr><td><code>redirectReplace</code></td><td><code>redirectReplace(path, state?): RedirectDescriptor</code></td><td>创建重定向描述（replace）。</td></tr>
-              <tr><td><code>buildPath</code></td><td><code>buildPath(path, query?): string</code></td><td>构建带查询字符串的路径。</td></tr>
-              <tr><td><code>getQueryValue</code></td><td><code>getQueryValue(query, key): string | undefined</code></td><td>从 query 对象提取单值。</td></tr>
-              <tr><td><code>pathsEqual</code></td><td><code>pathsEqual(a, b): boolean</code></td><td>比较路径是否匹配（忽略查询串和尾部斜杠）。</td></tr>
-              <tr><td><code>useNavigate</code></td><td><code>useNavigate(router): (to, options?) => void</code></td><td>创建绑定 router 的导航函数。</td></tr>
+              <tr>
+                <td><code>redirect</code></td>
+                <td><code>redirect(path, state?): RedirectDescriptor</code></td>
+                <td>创建重定向描述（push）。</td>
+              </tr>
+              <tr>
+                <td><code>redirectReplace</code></td>
+                <td><code>redirectReplace(path, state?): RedirectDescriptor</code></td>
+                <td>创建重定向描述（replace）。</td>
+              </tr>
+              <tr>
+                <td><code>buildPath</code></td>
+                <td><code>buildPath(path, query?): string</code></td>
+                <td>构建带查询字符串的路径。</td>
+              </tr>
+              <tr>
+                <td><code>getQueryValue</code></td>
+                <td><code>getQueryValue(query, key): string | undefined</code></td>
+                <td>从 query 对象提取单值（数组取首项）。</td>
+              </tr>
+              <tr>
+                <td><code>pathsEqual</code></td>
+                <td><code>pathsEqual(a, b): boolean</code></td>
+                <td>比较路径是否匹配（忽略查询串、hash 与尾部斜杠）。</td>
+              </tr>
+              <tr>
+                <td><code>useNavigate</code></td>
+                <td><code>useNavigate(router): (to, options?) =&gt; void</code></td>
+                <td>创建绑定 router 的导航函数。</td>
+              </tr>
+              <tr>
+                <td><code>openExternal</code></td>
+                <td><code>openExternal(url, target?)</code></td>
+                <td>在新窗口打开外部链接。</td>
+              </tr>
             </tbody>
           </table>
+          <div class="code-block">
+            <pre><code class="language-ts" data-src="./assets/snippets/router-utils.ts"></code></pre>
+          </div>
         </section>
 
         <section id="types" class="api-section">
           <h2>类型定义</h2>
           <table>
-            <thead><tr><th>类型</th><th>说明</th></tr></thead>
+            <thead>
+              <tr>
+                <th>类型</th>
+                <th>说明</th>
+              </tr>
+            </thead>
             <tbody>
-              <tr><td><code>RouteParams</code></td><td><code>Record&lt;string, string&gt;</code></td></tr>
-              <tr><td><code>RouteQuery</code></td><td><code>Record&lt;string, string | string[]&gt;</code></td></tr>
-              <tr><td><code>RouteMode</code></td><td><code>"path" | "hash"</code></td></tr>
-              <tr><td><code>RouteLocation</code></td><td><code>{ path, params, query, hash, state, key }</code></td></tr>
-              <tr><td><code>NavigateOptions</code></td><td><code>{ replace?, state? }</code></td></tr>
-              <tr><td><code>RouteRecord</code></td><td>路由配置记录：<code>{ path, component?, guards?, redirect?, children? }</code></td></tr>
-              <tr><td><code>RouteComponentProps</code></td><td>路由组件 props：<code>{ params, query, location }</code></td></tr>
-              <tr><td><code>RouteGuard</code></td><td><code>(to, from, router) => RouteGuardResult</code></td></tr>
-              <tr><td><code>RouteMatch</code></td><td>匹配结果：<code>{ route, params, query, location }</code></td></tr>
-              <tr><td><code>RouterState</code></td><td><code>{ location, params, query }</code>（signal 化）</td></tr>
-              <tr><td><code>Router</code></td><td>路由器实例接口。</td></tr>
-              <tr><td><code>RouterOptions</code></td><td><code>{ mode?, base?, guards?, history? }</code></td></tr>
+              <tr>
+                <td><code>RouteParams</code></td>
+                <td><code>Record&lt;string, string&gt;</code></td>
+              </tr>
+              <tr>
+                <td><code>RouteQuery</code></td>
+                <td><code>Record&lt;string, string | string[]&gt;</code></td>
+              </tr>
+              <tr>
+                <td><code>RouteMode</code></td>
+                <td><code>"path" | "hash"</code></td>
+              </tr>
+              <tr>
+                <td><code>RouteLocation</code></td>
+                <td><code>{ path, hash, query, fullPath, state, key }</code></td>
+              </tr>
+              <tr>
+                <td><code>NavigateOptions</code></td>
+                <td><code>{ replace?, state? }</code></td>
+              </tr>
+              <tr>
+                <td><code>RouteRecord</code></td>
+                <td>
+                  路由配置记录：<code
+                    >{ path, component?, children?, meta?, beforeEnter?, beforeLeave?, redirect?
+                    }</code
+                  >
+                </td>
+              </tr>
+              <tr>
+                <td><code>RouteComponentProps</code></td>
+                <td>路由组件 props：<code>{ params, query, location, router }</code></td>
+              </tr>
+              <tr>
+                <td><code>RouteGuardResult</code></td>
+                <td>
+                  <code>boolean | string | RedirectDescriptor | undefined</code>（可 Promise）
+                </td>
+              </tr>
+              <tr>
+                <td><code>RedirectDescriptor</code></td>
+                <td><code>{ path, replace?, state? }</code></td>
+              </tr>
+              <tr>
+                <td><code>RouteGuard</code></td>
+                <td><code>(to, from, router) =&gt; RouteGuardResult</code></td>
+              </tr>
+              <tr>
+                <td><code>RouteMatch</code></td>
+                <td>匹配结果：<code>{ route, params, remaining }</code></td>
+              </tr>
+              <tr>
+                <td><code>RouterState</code></td>
+                <td><code>{ location, params, query, matched, currentRoute }</code></td>
+              </tr>
+              <tr>
+                <td><code>Router</code></td>
+                <td>路由器实例接口（见 <a href="#createrouter">createRouter</a>）。</td>
+              </tr>
+              <tr>
+                <td><code>RouterOptions</code></td>
+                <td><code>{ mode?, base?, routes, beforeEach?, afterEach? }</code></td>
+              </tr>
             </tbody>
           </table>
         </section>

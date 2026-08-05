@@ -1,0 +1,10 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ESNext", "DOM"],
+    "jsx": "react-jsx",
+    "jsxImportSource": "@kikojs/dom",
+    "noEmit": true
+  },
+  "include": ["assets/**/*.ts", "assets/**/*.tsx"]
+}

@@ -6,7 +6,7 @@
     <title>示例 — kiko</title>
     <meta
       name="description"
-      content="kiko 官方示例：计数器、Show / For 控制流、Suspend 异步挂起、React 桥接。"
+      content="kiko 官方示例：计数器、Show / For 控制流、ErrorBoundary / Suspend、htm 模板字符串、React 桥接，以及本地示例项目。"
     />
     <link
       rel="stylesheet"
@@ -20,10 +20,11 @@
         <a class="logo" href="./index.html"><span></span>kiko</a>
         <ul class="links">
           <li><a href="./index.html">首页</a></li>
+          <li><a href="./guide.html">指南</a></li>
           <li><a href="./signal.html">signal</a></li>
           <li><a href="./dom.html">dom</a></li>
           <li><a href="./router.html">router</a></li>
-          <li><a href="./examples.html">示例</a></li>
+          <li><a href="./examples.html" aria-current="page">示例</a></li>
           <li>
             <a href="https://github.com/FairyScript/kiko" target="_blank" rel="noopener">GitHub</a>
           </li>
@@ -49,34 +50,37 @@
       </section>
 
       <section>
-        <h2>Suspend 异步挂起</h2>
-        <p>在 Promise 或异步组件 resolve 之前显示 fallback。</p>
-        <p class="note">
-          kiko 组件函数只执行一次，因此 Suspend 仅适合一次性初始化。不要把 signal 作为 async
-          组件的依赖来驱动重新加载；需要响应式刷新时请使用 <code>effect</code> 配合 signal。
-        </p>
-        <div class="code-block">
-          <pre><code class="language-tsx" data-src="./assets/snippets/suspend.tsx"></code></pre>
-        </div>
-      </section>
-
-      <section>
         <h2>Show 条件渲染</h2>
-        <p>根据 signal 布尔值切换 UI。</p>
+        <p>根据 signal 布尔值切换 UI，支持函数 children 与 fallback。</p>
         <div class="code-block">
-          <pre><code class="language-tsx" data-src="./assets/snippets/show.tsx"></code></pre>
+          <pre><code class="language-tsx" data-src="./assets/snippets/dom-show.tsx"></code></pre>
         </div>
       </section>
 
       <section>
         <h2>For 列表渲染</h2>
-        <p>列表变化时，DOM 子树会重新构建。</p>
+        <p>列表变化时做最小 DOM 操作，<code>index</code> 是访问器。</p>
         <div class="code-block">
-          <pre><code class="language-tsx" data-src="./assets/snippets/for.tsx"></code></pre>
+          <pre><code class="language-tsx" data-src="./assets/snippets/dom-for.tsx"></code></pre>
         </div>
       </section>
 
       <section>
+        <h2>ErrorBoundary / Suspend</h2>
+        <p>渲染错误捕获与一次性异步加载：</p>
+        <div class="code-block">
+          <pre><code class="language-tsx" data-src="./assets/snippets/dom-errorboundary.tsx"></code></pre>
+        </div>
+        <div class="code-block">
+          <pre><code class="language-tsx" data-src="./assets/snippets/dom-suspend.tsx"></code></pre>
+        </div>
+        <p class="note">
+          kiko 组件函数只执行一次，因此 Suspend 仅适合一次性初始化。需要响应式刷新时请使用
+          <code>effect</code> 配合 signal。
+        </p>
+      </section>
+
+      <section id="htm">
         <h2>htm 模板字符串（无构建 JSX）</h2>
         <p>
           没有 JSX 编译器？<code>dom</code> 标签模板在运行时完成相同的翻译——组件、信号、 scoped
@@ -92,18 +96,54 @@
 
       <section>
         <h2>React 桥接</h2>
-        <p>在 kiko 树中嵌入 React 组件，实现生态兼容。</p>
+        <p>在 kiko 树中嵌入 React 组件，实现生态兼容（signal prop 变化自动重渲染）。</p>
         <div class="code-block">
-          <pre><code class="language-tsx" data-src="./assets/snippets/react.tsx"></code></pre>
+          <pre><code class="language-tsx" data-src="./assets/snippets/dom-react.tsx"></code></pre>
         </div>
       </section>
 
       <section>
-        <h2>/signal effect</h2>
-        <p>使用 /signal 的 <code>effect</code> 与 <code>batch</code> 处理副作用。</p>
+        <h2>/signal 组合使用</h2>
+        <p>@kikojs/signal 的派生与批处理示例：</p>
         <div class="code-block">
-          <pre><code class="language-ts" data-src="./assets/snippets/effect.ts"></code></pre>
+          <pre><code class="language-ts" data-src="./assets/snippets/signal-complete.ts"></code></pre>
         </div>
+      </section>
+
+      <section>
+        <h2>本地示例项目</h2>
+        <p>仓库 <code>examples/</code> 目录下的完整可运行项目：</p>
+        <table>
+          <thead>
+            <tr>
+              <th>目录</th>
+              <th>内容</th>
+              <th>运行</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>examples/basic</code></td>
+              <td>计数器（Bun bundler + dev server）</td>
+              <td><code>bun run dev</code></td>
+            </tr>
+            <tr>
+              <td><code>examples/htm</code></td>
+              <td>无构建 htm 模板字符串（Todo + scoped 样式）</td>
+              <td><code>bun run dev</code></td>
+            </tr>
+            <tr>
+              <td><code>examples/react-portal</code></td>
+              <td>React 组件桥接</td>
+              <td><code>bun run dev</code></td>
+            </tr>
+            <tr>
+              <td><code>examples/tailwind</code></td>
+              <td>Tailwind + kiko</td>
+              <td><code>bun run dev</code></td>
+            </tr>
+          </tbody>
+        </table>
       </section>
     </main>
 
