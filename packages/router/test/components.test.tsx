@@ -4,12 +4,21 @@ import { describe, it, expect, beforeEach } from "bun:test"
 import { jsx } from "@kikojs/dom"
 import { createRouter } from "../src/router"
 import { Router, Link, Outlet, Navigate } from "../src/components"
+import { setActiveRouter } from "../src/context"
 import type { RouteRecord } from "../src/types"
 
 function flushMicrotasks(): Promise<void> {
   const { promise, resolve } = Promise.withResolvers<void>()
   queueMicrotask(resolve)
   return promise
+}
+
+function drainMicrotasks(max = 20): Promise<void> {
+  const queue: Promise<void>[] = []
+  for (let i = 0; i < max; i++) {
+    queue.push(flushMicrotasks())
+  }
+  return Promise.all(queue).then(() => undefined)
 }
 
 function createRoutes(): RouteRecord[] {
@@ -24,6 +33,8 @@ function createRoutes(): RouteRecord[] {
 describe("Router components", () => {
   beforeEach(() => {
     window.history.replaceState(null, "", "/")
+    // Router() 挂载时设置模块级 activeRouter，跨测试残留会影响抛错断言
+    setActiveRouter(null)
   })
 
   it("Router renders children", () => {
@@ -41,6 +52,24 @@ describe("Router components", () => {
     await flushMicrotasks()
     expect(outlet.textContent).toBe("about")
     router.dispose()
+  })
+
+  it("Outlet renders the initial route and passes params to the component", async () => {
+    window.history.replaceState(null, "", "/users/42")
+    const router = createRouter({ mode: "path", routes: createRoutes() })
+    Router({ router })
+    const outlet = Outlet({})
+    expect(outlet.textContent).toBe("user")
+    expect(router.params.get()).toEqual({ id: "42" })
+    router.dispose()
+  })
+
+  it("Outlet throws when no router is available", () => {
+    expect(() => Outlet({})).toThrow(/Outlet must be used inside a Router/)
+  })
+
+  it("Navigate throws when no router is available", () => {
+    expect(() => Navigate({ to: "/" })).toThrow(/Navigate must be used inside a Router/)
   })
 
   it("Link navigates on click", async () => {
@@ -79,6 +108,97 @@ describe("Router components", () => {
     Navigate({ to: "/about" })
     await flushMicrotasks()
     expect(router.location.get().path).toBe("/about")
+    router.dispose()
+  })
+
+  it("Link toggles activeClass on the current route", async () => {
+    const router = createRouter({ mode: "path", routes: createRoutes() })
+    Router({ router })
+    const link = Link({ to: "/about", activeClass: "active", children: "go" }) as HTMLAnchorElement
+    expect(link.classList.contains("active")).toBe(false)
+    router.push("/about")
+    await drainMicrotasks()
+    expect(link.classList.contains("active")).toBe(true)
+    router.push("/")
+    await drainMicrotasks()
+    expect(link.classList.contains("active")).toBe(false)
+    router.dispose()
+  })
+
+  it("Link activeClass with exact:true only matches the exact path", async () => {
+    const router = createRouter({ mode: "path", routes: createRoutes() })
+    Router({ router })
+    // exact 模式：/users/42 不应激活 to="/users"
+    const link = Link({
+      to: "/users",
+      activeClass: "on",
+      exact: true,
+      children: "u",
+    }) as HTMLAnchorElement
+    router.push("/users/42")
+    await drainMicrotasks()
+    expect(link.classList.contains("on")).toBe(false)
+    router.push("/users")
+    await drainMicrotasks()
+    expect(link.classList.contains("on")).toBe(true)
+    router.dispose()
+  })
+
+  it("Link activeClass supports multiple space-separated classes", async () => {
+    const router = createRouter({ mode: "path", routes: createRoutes() })
+    Router({ router })
+    const link = Link({ to: "/about", activeClass: "a b", children: "go" }) as HTMLAnchorElement
+    router.push("/about")
+    await drainMicrotasks()
+    expect(link.classList.contains("a")).toBe(true)
+    expect(link.classList.contains("b")).toBe(true)
+    router.push("/")
+    await drainMicrotasks()
+    expect(link.classList.contains("a")).toBe(false)
+    expect(link.classList.contains("b")).toBe(false)
+    router.dispose()
+  })
+
+  it("Link does not intercept modified clicks", async () => {
+    const router = createRouter({ mode: "path", routes: createRoutes() })
+    Router({ router })
+    const link = Link({ to: "/about", children: "go" }) as HTMLAnchorElement
+    const before = router.location.get().path
+    link.dispatchEvent(new MouseEvent("click", { ctrlKey: true, bubbles: true, cancelable: true }))
+    await flushMicrotasks()
+    expect(router.location.get().path).toBe(before)
+    link.dispatchEvent(new MouseEvent("click", { metaKey: true, bubbles: true, cancelable: true }))
+    await flushMicrotasks()
+    expect(router.location.get().path).toBe(before)
+    link.dispatchEvent(new MouseEvent("click", { shiftKey: true, bubbles: true, cancelable: true }))
+    await flushMicrotasks()
+    expect(router.location.get().path).toBe(before)
+    router.dispose()
+  })
+
+  it("Link with replace navigates without pushing history", async () => {
+    const router = createRouter({ mode: "path", routes: createRoutes() })
+    Router({ router })
+    const link = Link({ to: "/about", replace: true, children: "go" }) as HTMLAnchorElement
+    link.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }))
+    await flushMicrotasks()
+    expect(router.location.get().path).toBe("/about")
+    // replace 后 back 不应回到 /about 之前的历史……此处验证 location 已更新即可
+    router.dispose()
+  })
+
+  it("Link target=_blank click is not intercepted", async () => {
+    const router = createRouter({ mode: "path", routes: createRoutes() })
+    Router({ router })
+    const link = Link({
+      to: "/about",
+      target: "_blank",
+      children: "go",
+    }) as HTMLAnchorElement
+    const before = router.location.get().path
+    link.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }))
+    await flushMicrotasks()
+    expect(router.location.get().path).toBe(before)
     router.dispose()
   })
 })

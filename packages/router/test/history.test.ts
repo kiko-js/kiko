@@ -73,6 +73,27 @@ describe("unified history semantics inside the router", () => {
     router.dispose()
   })
 
+  it("hash mode parses a nested fragment (path#frag) without doubling the hash", () => {
+    // 回归：曾出现 frag#frag 双 hash 与丢失 fragment 的 bug
+    window.history.replaceState(null, "", "#/search?q=hello#frag")
+    const router = createRouter({ mode: "hash", routes })
+    expect(router.location.get().path).toBe("/search")
+    expect(router.location.get().query.q).toBe("hello")
+    expect(router.location.get().hash).toBe("frag")
+    expect(router.location.get().fullPath).toBe("/search?q=hello#frag")
+    router.dispose()
+  })
+
+  it("hash mode preserves nested fragment across navigation", async () => {
+    window.history.replaceState(null, "", "#/")
+    const router = createRouter({ mode: "hash", routes })
+    router.push("/search?q=x#frag")
+    await flushMicrotasks()
+    expect(router.location.get().hash).toBe("frag")
+    expect(window.location.hash).toBe("#/search?q=x#frag")
+    router.dispose()
+  })
+
   it("path mode preserves fragment on initial load and on popstate", async () => {
     window.history.replaceState(null, "", "/search?q=hello#frag")
     const router = createRouter({ mode: "path", routes })
