@@ -489,8 +489,8 @@
         <section id="ssr" class="api-section">
           <h2>SSR — 服务端渲染</h2>
           <p>
-            kiko 没有 vdom，组件函数是唯一事实来源——SSR 不做第二套渲染管线：用一个模块级 SSR
-            模式开关让 <code>jsx</code> / 控制流组件改产 HTML 字符串，同一套组件代码
+            kiko 没有 vdom，组件函数是唯一事实来源——SSR 不做第二套渲染管线：服务端入口
+            注册字符串运行时，让 <code>jsx</code> / 控制流组件改产 HTML，同一套组件代码
             双端复用。两种输出形式：
           </p>
           <table>
@@ -514,6 +514,13 @@
               </tr>
             </tbody>
           </table>
+          <p class="note">
+            两个入口从 <code>@kikojs/dom/server</code> 导入（SSR 侧）；默认入口
+            <code>@kikojs/dom</code> 不含任何 SSR 代码——客户端 bundle 只带一个约 30 字节的
+            运行时桥，字符串渲染器可被 tree-shake 完全剔除；服务端 bundle 同理不含客户端
+            渲染路径。组件代码两端都从 <code>@kikojs/dom</code> 导入 <code>jsx</code> /
+            控制流组件，类型世界保持单一。
+          </p>
           <p>
             必须传<strong>函数</strong>（惰性求值）——JSX 会在 SSR 模式开启前被急切求值，
             传值形态会在客户端模式下构建 DOM。

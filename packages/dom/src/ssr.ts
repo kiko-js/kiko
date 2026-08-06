@@ -1,18 +1,22 @@
 import { isSignal } from "./signal"
 import type { WatchableSignal } from "./signal"
 import { createScopeAttr, rewriteScopedCss } from "./style"
+import type { SSRRuntime } from "./ssr-mode"
 import type { AsyncComponent, Component, Props, StyleProps } from "./jsx-runtime"
 
 /**
- * SSR 字符串渲染器。
+ * SSR 字符串渲染器（服务端侧）。
  *
- * kiko 的组件函数是唯一事实来源（无 vdom），因此 SSR 不做第二套渲染管线：用
- * 模块级深度计数器把 `jsx` / 控制流组件切到字符串模式，让同一套组件代码产出
- * HTML。`beginSSR` / `endSSR` 配对成深度计数而非布尔值——两个并发 SSR 渲染的
- * await 间隙不会把对方踢出 SSR 模式（客户端渲染全程同步，天然不与 SSR 交错）。
+ * kiko 的组件函数是唯一事实来源（无 vdom），因此 SSR 不做第二套渲染管线：本模块
+ * 实现字符串模式的 jsx / 控制流组件，并在模块加载时通过 `ssr-mode` 自注册——
+ * `jsx-runtime` / `flow` 检测到已注册的运行时即切换为字符串产出。
+ *
+ * 该模块只被 `@kikojs/dom/server` 入口引用；客户端 bundle 从不导入它，
+ * 因此可被 tree-shake 完全剔除。
  *
  * SSR 模式下 `jsx` 返回 `string | Promise<string>`（children 含 promise 时异步），
- * 组件返回的 Promise 逐层向上传播，入口处整体 await。
+ * 组件返回的 Promise 逐层向上传播，入口处整体 await。输出中的注释节点
+ * （`<!--show-->`、`<!---->` 等）是水合对齐标记，不影响渲染。
  */
 
 /**
@@ -26,20 +30,6 @@ class SSRElement {
 
 /** SSR 渲染值：文本（转义）或已序列化标记（透出），可含 promise */
 export type SSRValue = SSRElement | string | Promise<SSRElement | string>
-
-let ssrDepth = 0
-
-export function isSSR(): boolean {
-  return ssrDepth > 0
-}
-
-export function beginSSR(): void {
-  ssrDepth++
-}
-
-export function endSSR(): void {
-  ssrDepth--
-}
 
 function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
   return typeof (value as { then?: unknown } | null)?.then === "function"
@@ -61,9 +51,17 @@ function camelToKebab(key: string): string {
   return /[A-Z]/.test(key) ? key.replace(/[A-Z]/g, m => "-" + m.toLowerCase()) : key
 }
 
+/** 序列化结果前置水合标记（如 <!--show-->），包装为 SSRElement 避免上游二次转义 */
+function withMarker(marker: string, content: SSRValue): SSRValue {
+  if (isPromiseLike(content)) {
+    return content.then(c => new SSRElement(`${marker}${raw(c)}`))
+  }
+  return new SSRElement(`${marker}${raw(content)}`)
+}
+
 /**
  * 把任意内容序列化为 HTML 字符串：
- * - 信号 → 读取当前快照（SSR 无响应式）
+ * - 信号 → 输出水合标记 `<!---->` + 当前快照（SSR 无响应式）
  * - promise → 异步，resolve 后继续序列化
  * - 数组 → 逐项拼接；含 promise 时整体异步
  * - 文本转义 & < >
@@ -71,7 +69,9 @@ function camelToKebab(key: string): string {
 export function toSSRString(value: unknown): SSRValue {
   if (value == null || value === false || value === true) return ""
   if (value instanceof SSRElement) return value
-  if (isSignal(value)) return toSSRString((value as WatchableSignal<unknown>).get())
+  if (isSignal(value)) {
+    return withMarker("<!---->", toSSRString((value as WatchableSignal<unknown>).get()))
+  }
   if (isPromiseLike(value)) {
     return Promise.resolve(value).then(resolved => toSSRString(resolved))
   }
@@ -226,9 +226,9 @@ export function ssrShow(props: {
       typeof props.children === "function"
         ? (props.children as (value: unknown) => unknown)(cond)
         : props.children
-    return value as unknown as SSRValue
+    return withMarker("<!--show-->", toSSRString(value))
   }
-  return props.fallback as unknown as SSRValue
+  return withMarker("<!--show-->", toSSRString(props.fallback))
 }
 
 export function ssrFor(props: {
@@ -238,11 +238,12 @@ export function ssrFor(props: {
 }): SSRValue {
   const list = unwrap(props.each) as readonly unknown[]
   // SSR 无响应式：keyed 与 non-keyed 等价；keyed 的 children 期望 accessor，保持一致
-  return list.map((item, i) => {
+  const content = list.map((item, i) => {
     const index = (): number => i
     const arg = props.getKey ? () => item : item
     return props.children(arg, index)
-  }) as unknown as SSRValue
+  })
+  return withMarker("<!--for-->", toSSRString(content))
 }
 
 export function ssrErrorBoundary(props: {
@@ -251,7 +252,7 @@ export function ssrErrorBoundary(props: {
   children: () => unknown
 }): SSRValue {
   try {
-    return props.children() as unknown as SSRValue
+    return withMarker("<!--error-boundary-->", toSSRString(props.children()))
   } catch (e) {
     try {
       props.onError?.(e)
@@ -262,7 +263,7 @@ export function ssrErrorBoundary(props: {
       typeof props.fallback === "function"
         ? (props.fallback as (error: unknown) => unknown)(e)
         : props.fallback
-    return fb as unknown as SSRValue
+    return withMarker("<!--error-boundary-->", toSSRString(fb))
   }
 }
 
@@ -271,26 +272,43 @@ function reportErrorSSR(error: unknown): void {
 }
 
 export function ssrSuspend(props: { fallback?: unknown; children: unknown }): SSRValue {
+  const wrap = (content: SSRValue): SSRValue => {
+    if (isPromiseLike(content)) {
+      return Promise.resolve(content).then(
+        c => new SSRElement(`<!--suspend-->${raw(c)}<!--/suspend-->`),
+        rejected => {
+          reportErrorSSR(rejected)
+          return Promise.resolve(toSSRString(props.fallback)).then(
+            c => new SSRElement(`<!--suspend-->${raw(c)}<!--/suspend-->`),
+          )
+        },
+      )
+    }
+    return new SSRElement(`<!--suspend-->${raw(content)}<!--/suspend-->`)
+  }
+
   const children = unwrap(props.children)
   if (isPromiseLike(children)) {
-    return Promise.resolve(children).then(
-      resolved => resolved as unknown as SSRValue,
-      rejected => {
-        reportErrorSSR(rejected)
-        return props.fallback as unknown as SSRValue
-      },
-    )
+    return wrap(Promise.resolve(children).then(resolved => toSSRString(resolved)))
   }
   if (Array.isArray(children) && children.some(isPromiseLike)) {
-    return Promise.all(children).then(
-      resolved => resolved as unknown as SSRValue,
-      rejected => {
-        reportErrorSSR(rejected)
-        return props.fallback as unknown as SSRValue
-      },
-    )
+    return wrap(Promise.all(children).then(resolved => toSSRString(resolved)))
   }
-  return children as unknown as SSRValue
+  return wrap(toSSRString(children))
+}
+
+// ---------------------------------------------------------------------------
+// 运行时（由 server.ts 显式注册；不在模块加载时自注册，避免全局副作用）
+
+/** SSR 字符串运行时：jsx / 控制流组件在 SSR 模式下的实现集合 */
+export const ssrRuntime: SSRRuntime = {
+  jsx: ssrJsx,
+  fragment: children => toSSRString(children),
+  style: ssrStyle,
+  show: ssrShow,
+  for: ssrFor,
+  errorBoundary: ssrErrorBoundary,
+  suspend: ssrSuspend,
 }
 
 // ---------------------------------------------------------------------------
@@ -302,14 +320,9 @@ export function ssrSuspend(props: { fallback?: unknown; children: unknown }): SS
  * `renderToDocument(() => <App />)`。
  */
 export async function renderToDocument(component: () => unknown): Promise<string> {
-  beginSSR()
-  try {
-    pendingScopes = []
-    const result = await toSSRString(component())
-    return `<!DOCTYPE html>${raw(result)}`
-  } finally {
-    endSSR()
-  }
+  pendingScopes = []
+  const result = await toSSRString(component())
+  return `<!DOCTYPE html>${raw(result)}`
 }
 
 /**
@@ -317,11 +330,6 @@ export async function renderToDocument(component: () => unknown): Promise<string
  * `renderToFragment(() => <CardList />)`。
  */
 export async function renderToFragment(component: () => unknown): Promise<string> {
-  beginSSR()
-  try {
-    pendingScopes = []
-    return raw(await toSSRString(component()))
-  } finally {
-    endSSR()
-  }
+  pendingScopes = []
+  return raw(await toSSRString(component()))
 }

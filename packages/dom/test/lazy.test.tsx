@@ -1,7 +1,8 @@
 /** @jsxImportSource @kikojs/dom */
 import { describe, it, expect, beforeAll } from "bun:test"
 import { jsx } from "../src/jsx-runtime"
-import { Suspend, lazy } from "../src/flow"
+import { Suspend } from "../src/flow"
+import { lazy } from "../src/lazy"
 import type { Component } from "../src/jsx-runtime"
 
 beforeAll(async () => {

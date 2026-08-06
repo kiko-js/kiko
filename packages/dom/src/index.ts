@@ -13,5 +13,5 @@ export {
 } from "./jsx-runtime"
 export { render } from "./render"
 export { createPortal } from "./portal"
-export { renderToDocument, renderToFragment } from "./ssr"
-export { Show, For, ErrorBoundary, Suspend, lazy } from "./flow"
+export { Show, For, ErrorBoundary, Suspend } from "./flow"
+export { lazy } from "./lazy"

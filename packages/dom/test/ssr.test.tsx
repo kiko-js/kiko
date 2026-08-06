@@ -1,22 +1,25 @@
 /** @jsxImportSource @kikojs/dom */
-import { describe, it, expect, beforeAll } from "bun:test"
+import { describe, it, expect, beforeAll, afterAll } from "bun:test"
 import { jsx, Fragment, Style } from "../src/jsx-runtime"
-import { Show, For, ErrorBoundary, Suspend, lazy } from "../src/flow"
-import { renderToDocument, renderToFragment } from "../src/ssr"
+import { Show, For, ErrorBoundary, Suspend } from "../src/flow"
+import { lazy } from "../src/lazy"
+import { renderToDocument, renderToFragment, ssrRuntime } from "../src/ssr"
+import { setSSRRuntime } from "../src/ssr-mode"
 import { createSignal } from "../src/signal"
 import type { AsyncComponent } from "../src/jsx-runtime"
 
 beforeAll(async () => {
   await import("./setup")
+  // 显式注册 SSR 运行时（server.ts 入口的等价行为）；测试后重置——
+  // bun test 同进程共享模块状态，残留注册会毒化其他测试文件
+  setSSRRuntime(ssrRuntime)
 })
 
-// SSR 渲染路径本身不触碰 document（测试末尾的客户端模式恢复检查除外）。
+afterAll(() => {
+  setSSRRuntime(null)
+})
 
-function flush(): Promise<void> {
-  const { promise, resolve } = Promise.withResolvers<void>()
-  queueMicrotask(resolve)
-  return promise
-}
+// SSR 渲染路径本身不触碰 document。
 
 describe("renderToFragment — 元素与属性", () => {
   it("renders a basic element tree", async () => {
@@ -58,11 +61,11 @@ describe("renderToFragment — 元素与属性", () => {
     expect(html).toBe(`<button>go</button>`)
   })
 
-  it("snapshots signal children and signal props", async () => {
+  it("snapshots signal children (with hydration marker) and signal props", async () => {
     const count = createSignal(2)
     const hidden = createSignal(false)
     const html = await renderToFragment(() => jsx("p", { hidden, children: count }))
-    expect(html).toBe(`<p>2</p>`)
+    expect(html).toBe(`<p><!---->2</p>`)
   })
 
   it("renders Fragment children", async () => {
@@ -83,10 +86,10 @@ describe("renderToFragment — 控制流", () => {
           children: "on",
         }),
       ),
-    ).toBe("on")
+    ).toBe(`<!--show-->on`)
     expect(
       await renderToFragment(() => Show({ when: false, fallback: "off", children: "on" })),
-    ).toBe("off")
+    ).toBe(`<!--show-->off`)
   })
 
   it("Show calls function children with the truthy value", async () => {
@@ -96,7 +99,7 @@ describe("renderToFragment — 控制流", () => {
         children: (n: number) => jsx("b", { children: String(n) }),
       }),
     )
-    expect(html).toBe(`<b>5</b>`)
+    expect(html).toBe(`<!--show--><b>5</b>`)
   })
 
   it("For renders each item", async () => {
@@ -106,7 +109,7 @@ describe("renderToFragment — 控制流", () => {
         children: item => jsx("li", { children: item }),
       }),
     )
-    expect(html).toBe(`<li>a</li><li>b</li><li>c</li>`)
+    expect(html).toBe(`<!--for--><li>a</li><li>b</li><li>c</li>`)
   })
 
   it("For keyed mode passes accessors like the client", async () => {
@@ -117,7 +120,7 @@ describe("renderToFragment — 控制流", () => {
         children: item => jsx("li", { children: item() }),
       }),
     )
-    expect(html).toBe(`<li>a</li><li>b</li>`)
+    expect(html).toBe(`<!--for--><li>a</li><li>b</li>`)
   })
 
   it("ErrorBoundary swaps to fallback on throw", async () => {
@@ -131,7 +134,7 @@ describe("renderToFragment — 控制流", () => {
           children: () => jsx(Boom, {}),
         }),
       ),
-    ).toBe("fallback")
+    ).toBe(`<!--error-boundary-->fallback`)
   })
 })
 
@@ -140,7 +143,7 @@ describe("renderToFragment — 异步", () => {
     const { promise, resolve } = Promise.withResolvers<Node>()
     const htmlPromise = renderToFragment(() => Suspend({ fallback: "loading", children: promise }))
     resolve(jsx("span", { children: "loaded" }))
-    expect(await htmlPromise).toBe(`<span>loaded</span>`)
+    expect(await htmlPromise).toBe(`<!--suspend--><span>loaded</span><!--/suspend-->`)
   })
 
   it("Suspend renders fallback when a promise rejects", async () => {
@@ -156,7 +159,7 @@ describe("renderToFragment — 异步", () => {
         Suspend({ fallback: "fallback", children: promise }),
       )
       reject(new Error("nope"))
-      expect(await htmlPromise).toBe("fallback")
+      expect(await htmlPromise).toBe(`<!--suspend-->fallback<!--/suspend-->`)
       expect(reported.length).toBe(1)
     } finally {
       // @ts-ignore
@@ -173,7 +176,7 @@ describe("renderToFragment — 异步", () => {
         children: [jsx(AsyncCard, {}), jsx(LazyCard, {})],
       }),
     )
-    expect(html).toBe(`<span>async</span><span>lazy</span>`)
+    expect(html).toBe(`<!--suspend--><span>async</span><span>lazy</span><!--/suspend-->`)
   })
 
   it("resolves promises nested inside arrays and elements", async () => {
@@ -225,9 +228,5 @@ describe("并发安全", () => {
     const [ha, hb] = await Promise.all([a, b])
     expect(ha).toBe(`<div>A</div>`)
     expect(hb).toBe(`<span>B</span>`)
-    await flush()
-    // SSR 结束后回到客户端模式
-    const node = jsx("p", { children: "client" })
-    expect((node as HTMLElement).textContent).toBe("client")
   })
 })

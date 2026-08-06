@@ -1,5 +1,6 @@
 /** @jsxImportSource @kikojs/dom */
-import { createSignal, renderToDocument, renderToFragment, Show, For, Suspend, lazy } from "@kikojs/dom"
+import { createSignal, Show, For, Suspend, lazy } from "@kikojs/dom"
+import { renderToDocument, renderToFragment } from "@kikojs/dom/server"
 
 const count = createSignal(3)
 

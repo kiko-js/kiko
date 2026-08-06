@@ -9,8 +9,7 @@ import {
   trackCleanup,
   trackWatcher,
 } from "./jsx-runtime"
-import type { AsyncComponent, Component, Props } from "./jsx-runtime"
-import { isSSR, ssrErrorBoundary, ssrFor, ssrShow, ssrSuspend } from "./ssr"
+import { getSSRRuntime } from "./ssr-mode"
 
 /**
  * Structural-reactivity helpers: `Show` and `For` are optional control-flow
@@ -47,9 +46,8 @@ export function Show<T>(props: {
   fallback?: unknown
   children: unknown | ((item: T) => unknown)
 }): DocumentFragment {
-  if (isSSR()) {
-    return ssrShow(props as unknown as Parameters<typeof ssrShow>[0]) as unknown as DocumentFragment
-  }
+  const ssr = getSSRRuntime()
+  if (ssr) return ssr.show(props as Record<string, unknown>) as unknown as DocumentFragment
   const frag = document.createDocumentFragment()
   const marker = document.createComment("show")
   frag.appendChild(marker)
@@ -133,9 +131,8 @@ export function For<T>(props: {
   getKey?: (item: T, index: number) => unknown
   children: (item: T | (() => T), index: () => number) => unknown
 }): DocumentFragment {
-  if (isSSR()) {
-    return ssrFor(props as unknown as Parameters<typeof ssrFor>[0]) as unknown as DocumentFragment
-  }
+  const ssr = getSSRRuntime()
+  if (ssr) return ssr.for(props as Record<string, unknown>) as unknown as DocumentFragment
   const frag = document.createDocumentFragment()
   const marker = document.createComment("for")
   frag.appendChild(marker)
@@ -277,9 +274,8 @@ export function ErrorBoundary(props: {
   errorSignal?: Signal.State<unknown>
   children: () => unknown
 }): DocumentFragment {
-  if (isSSR()) {
-    return ssrErrorBoundary(props) as unknown as DocumentFragment
-  }
+  const ssr = getSSRRuntime()
+  if (ssr) return ssr.errorBoundary(props as Record<string, unknown>) as unknown as DocumentFragment
   const frag = document.createDocumentFragment()
   const marker = document.createComment("error-boundary")
   frag.appendChild(marker)
@@ -398,9 +394,8 @@ function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
  * the error is reported via `reportError` and `fallback` stays on screen.
  */
 export function Suspend(props: { fallback?: unknown; children: unknown }): DocumentFragment {
-  if (isSSR()) {
-    return ssrSuspend(props) as unknown as DocumentFragment
-  }
+  const ssr = getSSRRuntime()
+  if (ssr) return ssr.suspend(props as Record<string, unknown>) as unknown as DocumentFragment
   const frag = document.createDocumentFragment()
   const marker = document.createComment("suspend")
   frag.appendChild(marker)
@@ -492,37 +487,4 @@ export function Suspend(props: { fallback?: unknown; children: unknown }): Docum
   })
 
   return frag
-}
-
-/**
- * 代码分割：`lazy(loader)` 返回一个异步组件，首次调用时加载模块（并发调用共享
- * 同一次加载），之后直接使用缓存的组件实例。与 `<Suspend>` 组合使用：
- *
- * ```tsx
- * const Card = lazy(() => import("./Card").then(m => m.default))
- * <Suspend fallback={<p>加载中…</p>}>{Card()}</Suspend>
- * ```
- *
- * 加载失败会清除缓存，下次调用可重试。
- */
-export function lazy<P extends Props = Props>(
-  loader: () => Promise<Component<P>>,
-): AsyncComponent<P> {
-  let component: Component<P> | null = null
-  let loading: Promise<Component<P>> | null = null
-
-  return (props?: P): Promise<Node> => {
-    if (component) return Promise.resolve(component(props as P))
-    if (!loading) {
-      loading = loader().then(m => {
-        component = m
-        return m
-      })
-      // 消费拒绝，避免 unhandled rejection；清除缓存允许下次调用重试
-      loading.catch(() => {
-        loading = null
-      })
-    }
-    return loading.then(m => m(props as P))
-  }
 }
