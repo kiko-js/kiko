@@ -54,6 +54,28 @@ describe("batch", () => {
     await waitForMicrotask()
     expect(runs).toBe(2)
   })
+
+  it("recovers when the batch body throws", async () => {
+    const a = createSignal(0)
+    let runs = 0
+    effect(() => {
+      a.get()
+      runs++
+    })
+    expect(runs).toBe(1)
+    // batchDepth 在 finally 中恢复：抛错后写入仍能正常 flush
+    expect(() =>
+      batch(() => {
+        a.set(1)
+        throw new Error("boom")
+      }),
+    ).toThrow("boom")
+    await waitForMicrotask()
+    expect(runs).toBe(2)
+    a.set(2)
+    await waitForMicrotask()
+    expect(runs).toBe(3)
+  })
 })
 
 describe("untrack", () => {

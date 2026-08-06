@@ -108,4 +108,27 @@ describe("on", () => {
     expect(prev).toBe(1)
     dispose()
   })
+
+  it("runs a cleanup returned from the callback before the next run", async () => {
+    const a = createSignal(1)
+    const log: string[] = []
+    effect(
+      on(
+        () => a.get(),
+        p => {
+          if (p !== undefined) log.push(`fn:${p}`)
+          return () => log.push("cleanup")
+        },
+      ),
+    )
+    // 首次运行：p 为 undefined，仅注册 cleanup
+    expect(log).toEqual([])
+    a.set(2)
+    await waitForMicrotask()
+    // 先跑上次的 cleanup，再执行 fn（收到旧值 1）
+    expect(log).toEqual(["cleanup", "fn:1"])
+    a.set(3)
+    await waitForMicrotask()
+    expect(log).toEqual(["cleanup", "fn:1", "cleanup", "fn:2"])
+  })
 })

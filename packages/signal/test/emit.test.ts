@@ -88,4 +88,74 @@ describe("createEmitter", () => {
     emitter.emit("e", 2)
     expect(seen).toEqual([1, 10, 20])
   })
+
+  it("listeners added during emit are not called until the next emit", () => {
+    const emitter = createEmitter<{ x: number }>()
+    const seen: number[] = []
+    emitter.on("x", () => {
+      // 快照语义：emit 期间新增的监听器本轮不触发
+      emitter.on("x", () => seen.push(2))
+      seen.push(1)
+    })
+    emitter.emit("x", 0)
+    expect(seen).toEqual([1])
+    emitter.emit("x", 0)
+    expect(seen).toEqual([1, 1, 2])
+  })
+
+  it("a throwing listener propagates and stops later listeners", () => {
+    const emitter = createEmitter<{ x: number }>()
+    const seen: number[] = []
+    emitter.on("x", () => {
+      seen.push(1)
+      throw new Error("boom")
+    })
+    emitter.on("x", () => seen.push(2))
+    expect(() => emitter.emit("x", 0)).toThrow("boom")
+    // Emitter 不做错误隔离：抛错中断本轮 emit（与 effect 的错误隔离不同）
+    expect(seen).toEqual([1])
+  })
+
+  it("hasListeners reflects registration state", () => {
+    const emitter = createEmitter<{ a: number; b: string }>()
+    expect(emitter.hasListeners()).toBe(false)
+    expect(emitter.hasListeners("a")).toBe(false)
+    const off = emitter.on("a", () => {})
+    expect(emitter.hasListeners()).toBe(true)
+    expect(emitter.hasListeners("a")).toBe(true)
+    expect(emitter.hasListeners("b")).toBe(false)
+    off()
+    expect(emitter.hasListeners()).toBe(false)
+    expect(emitter.hasListeners("a")).toBe(false)
+  })
+
+  it("clear() without arguments removes all listeners", () => {
+    const emitter = createEmitter<{ a: number; b: number }>()
+    let a = 0
+    let b = 0
+    emitter.on("a", () => {
+      a++
+    })
+    emitter.on("b", () => {
+      b++
+    })
+    emitter.clear()
+    emitter.emit("a", 1)
+    emitter.emit("b", 1)
+    expect(a).toBe(0)
+    expect(b).toBe(0)
+    expect(emitter.hasListeners()).toBe(false)
+  })
+
+  it("off is idempotent", () => {
+    const emitter = createEmitter<{ x: number }>()
+    let calls = 0
+    const off = emitter.on("x", () => {
+      calls++
+    })
+    off()
+    off()
+    emitter.emit("x", 1)
+    expect(calls).toBe(0)
+  })
 })

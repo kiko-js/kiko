@@ -58,6 +58,41 @@ describe("effect", () => {
     await waitForMicrotask()
     expect(runs).toBe(1)
   })
+
+  it("discards non-function return values (not treated as cleanup)", async () => {
+    const count = createSignal(0)
+    let runs = 0
+    // 表达式体 effect 返回数字：不得作为 cleanup 也不得抛错
+    effect(() => {
+      count.get()
+      runs++
+      return 42
+    })
+    expect(runs).toBe(1)
+    count.set(1)
+    await waitForMicrotask()
+    expect(runs).toBe(2)
+    count.set(2)
+    await waitForMicrotask()
+    expect(runs).toBe(3)
+  })
+
+  it("dispose is idempotent and runs the cleanup once", async () => {
+    const count = createSignal(0)
+    let cleanups = 0
+    const dispose = effect(() => {
+      count.get()
+      return () => {
+        cleanups++
+      }
+    })
+    dispose()
+    dispose()
+    expect(cleanups).toBe(1)
+    count.set(1)
+    await waitForMicrotask()
+    expect(cleanups).toBe(1)
+  })
 })
 
 describe("effect error isolation", () => {

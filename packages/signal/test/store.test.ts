@@ -244,3 +244,56 @@ test("array index access and array replacement", () => {
   store.items.set([4, 5])
   expect(store.items.get()).toEqual([4, 5])
 })
+
+test("set to the same value does not notify", async () => {
+  const store = createStore({ a: { b: 1 } })
+  const ab = store.a.b
+  const log: number[] = []
+  effect(() => log.push(ab.get()))
+  expect(log).toEqual([1])
+  log.length = 0
+  ab.set(1)
+  await flush()
+  expect(log).toEqual([])
+  ab.set(2)
+  await flush()
+  expect(log).toEqual([2])
+})
+
+test("array length signal updates when the array is replaced", async () => {
+  const store = createStore({ items: [1, 2, 3] })
+  const lengths: number[] = []
+  effect(() => lengths.push(store.items.length.get()))
+  expect(lengths).toEqual([3])
+  store.items.set([4, 5])
+  await flush()
+  expect(lengths).toEqual([3, 2])
+})
+
+test("symbol keys are addressable", () => {
+  const sym = Symbol("k")
+  const store = createStore<{ [sym]: number }>({ [sym]: 1 })
+  expect(store[sym].get()).toBe(1)
+  store[sym].set(5)
+  expect(store[sym].get()).toBe(5)
+  expect(store.get()).toEqual({ [sym]: 5 })
+})
+
+test("symbol key changes notify", async () => {
+  const sym = Symbol("k")
+  const store = createStore<{ [sym]: number }>({ [sym]: 1 })
+  const log: number[] = []
+  effect(() => log.push(store[sym].get()))
+  expect(log).toEqual([1])
+  store[sym].set(9)
+  await flush()
+  expect(log).toEqual([1, 9])
+})
+
+test("reading a missing path yields undefined without throwing", () => {
+  const store = createStore<{ a?: { b: number } }>({})
+  expect(store.a?.get()).toBeUndefined()
+  // 缺失路径的深层访问：运行时返回 undefined 而非抛错
+  const deep = (store as unknown as { a: { b: { get(): unknown } } }).a.b
+  expect(deep.get()).toBeUndefined()
+})

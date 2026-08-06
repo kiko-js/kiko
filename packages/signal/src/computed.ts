@@ -24,6 +24,12 @@ export function toSignalValue<T>(value: T | Signal.State<T> | Signal.Computed<T>
  * Watch a signal (or plain value) and invoke `callback` on change.
  * For non-signal values the callback fires immediately and `null` is returned.
  * Returns a `Signal.subtle.Watcher` the caller is responsible for managing.
+ *
+ * Signal callbacks run on a microtask: `signal-polyfill` invokes watcher
+ * callbacks synchronously inside the notification phase, where reading the
+ * signal throws ("signal read during notification phase"). The microtask
+ * defers the read until after the phase ends; the watcher is re-armed after
+ * each callback (signal-polyfill watchers are one-shot).
  */
 export function watchValue<T>(
   value: T | Signal.State<T> | Signal.Computed<T>,
@@ -36,7 +42,10 @@ export function watchValue<T>(
 
   const signal = value as Signal.State<T> | Signal.Computed<T>
   const watcher = new Signal.subtle.Watcher(() => {
-    callback(signal.get())
+    queueMicrotask(() => {
+      callback(signal.get())
+      watcher.watch(signal)
+    })
   })
   watcher.watch(signal)
   return watcher

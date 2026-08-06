@@ -101,4 +101,54 @@ describe("createResource", () => {
     stop()
     expect(inner!.dispose).toBeDefined()
   })
+
+  it("refetch clears a previous error before retrying", async () => {
+    let fail = true
+    const resource = createResource(async () => {
+      if (fail) throw new Error("boom")
+      return "ok"
+    })
+    await tick()
+    expect(resource.error.get()).toBeInstanceOf(Error)
+    fail = false
+    resource.refetch()
+    await tick()
+    expect(resource.error.get()).toBeNull()
+    expect(resource.data.get()).toBe("ok")
+    expect(resource.loading.get()).toBe(false)
+    resource.dispose()
+  })
+
+  it("refetch re-enters loading state synchronously", () => {
+    let calls = 0
+    const resource = createResource(async () => ++calls)
+    // 首次 effect 运行是同步的，但 fetch 本身异步
+    expect(resource.loading.get()).toBe(true)
+    resource.refetch()
+    expect(resource.loading.get()).toBe(true)
+    resource.dispose()
+  })
+
+  it("dispose then refetch is a no-op", async () => {
+    let calls = 0
+    const resource = createResource(async () => ++calls)
+    await tick()
+    expect(resource.data.get()).toBe(1)
+    resource.dispose()
+    resource.refetch()
+    await tick()
+    // 已 dispose：不启动新请求，状态保持不变
+    expect(calls).toBe(1)
+    expect(resource.data.get()).toBe(1)
+    expect(resource.loading.get()).toBe(false)
+    expect(resource.error.get()).toBeNull()
+  })
+
+  it("dispose is idempotent", async () => {
+    const resource = createResource(async () => "x")
+    resource.dispose()
+    expect(() => resource.dispose()).not.toThrow()
+    await tick()
+    expect(resource.data.get()).toBeUndefined()
+  })
 })

@@ -179,7 +179,13 @@ function createProxyNode<T>(context: StoreContext, path: PathKey[]): Store<T> {
       if (prop === Symbol.toPrimitive || prop === "toString" || prop === "valueOf") {
         return () => String(readPath(context.root, path).value)
       }
-      if (typeof prop === "symbol") {
+      // 仅拒绝内建探测 symbol（可迭代性 / toStringTag）；用户数据可能以
+      // symbol 为 key，必须走代理路径。
+      if (
+        prop === Symbol.iterator ||
+        prop === Symbol.asyncIterator ||
+        prop === Symbol.toStringTag
+      ) {
         return undefined
       }
       return createProxyNode(context, [...path, prop])

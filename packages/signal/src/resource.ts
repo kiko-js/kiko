@@ -45,6 +45,7 @@ export function createResource<T>(
   let disposed = false
 
   async function run(source: unknown): Promise<void> {
+    if (disposed) return
     const mySeq = ++seq
     loading.set(true)
     error.set(null)
