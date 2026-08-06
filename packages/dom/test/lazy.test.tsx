@@ -66,14 +66,15 @@ describe("lazy", () => {
     expect((node as HTMLElement).textContent).toBe("card")
   })
 
-  it("composes with Suspend for fallback-first rendering", async () => {
+  it("composes with Suspend as a JSX element", async () => {
     const { promise, resolve } = Promise.withResolvers<Component>()
     const Card: Component = () => jsx("span", { children: "card" })
     const LazyCard = lazy(() => promise)
+    // <Suspend fallback={...}><Card /></Suspend> —— jsx(LazyCard) 返回 Promise<Node>
     const el = jsx("div", {
       children: Suspend({
         fallback: jsx("span", { children: "loading" }),
-        children: LazyCard({}),
+        children: jsx(LazyCard, {}),
       }),
     }) as HTMLElement
     expect(el.textContent).toBe("loading")

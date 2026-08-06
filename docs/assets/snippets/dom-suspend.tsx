@@ -10,8 +10,8 @@ const Card = lazy(() => Promise.resolve(MyCard))
 
 const view = (
   <Suspend fallback={<p>加载中…</p>}>
-    {/* children 可以是 Promise<Node>；等待期间渲染 fallback */}
-    {Card()}
+    {/* 异步组件可直接作为 JSX 元素：jsx 返回 Promise<Node>，等待期间渲染 fallback */}
+    <Card />
   </Suspend>
 )
 

@@ -405,8 +405,15 @@
           </p>
           <p>
             <code>lazy(loader): AsyncComponent</code> 提供代码分割：首次调用加载模块（并发调用
-            共享同一次加载，之后走缓存；加载失败清除缓存可重试）。返回异步组件，以
-            <code>{"{Card()}"}</code> 形式放进 <code>Suspend</code>：
+            共享同一次加载，之后走缓存；加载失败清除缓存可重试）。异步组件（含
+            <code>lazy</code> 返回值）可作为 <strong>JSX 元素</strong>直接放进
+            <code>Suspend</code>——<code>jsx</code> 对异步组件返回
+            <code>Promise&lt;Node&gt;</code>，由 Suspend 处理：
+          </p>
+          <p class="note">
+            Promise 出现在 <code>Suspend</code> 之外会抛出
+            <code>"Promise rendered outside &lt;Suspend&gt;"</code>——异步内容只能挂在 Suspend
+            下，错位放置会在运行时立即报错而非静默渲染。
           </p>
           <div class="code-block">
             <pre><code class="language-tsx" data-src="./assets/snippets/dom-suspend.tsx"></code></pre>

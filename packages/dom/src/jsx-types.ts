@@ -305,6 +305,10 @@ export interface SVGIntrinsicElements {
  */
 export namespace JSX {
   export type Element = Node
+  // 异步组件（返回 Promise<Node>，需配合 <Suspend> 使用）也允许作为 JSX 元素；
+  // 显式声明 ElementType 使 TS 走该联合而非默认的"构造函数返回 Element"。
+  // `never` 参数经逆变接受任意 props 形状的组件（含无 props 组件）。
+  export type ElementType = string | ((props: never) => Node) | ((props?: never) => Promise<Node>)
   // kiko has no class components — only function `Component<P>`. `void`
   // makes any class-component usage a type error rather than silently
   // treating a class instance as a `Node`.

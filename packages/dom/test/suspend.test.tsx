@@ -1,6 +1,6 @@
 /** @jsxImportSource @kikojs/dom */
 import { describe, it, expect, beforeAll } from "bun:test"
-import { jsx, cleanupWatchers } from "../src/jsx-runtime"
+import { jsx, cleanupWatchers, toNodes } from "../src/jsx-runtime"
 import { Suspend } from "../src/flow"
 import { createSignal } from "../src/signal"
 
@@ -141,7 +141,7 @@ describe("Suspend", () => {
     const el = jsx("div", {
       children: Suspend({
         fallback: jsx("span", { children: "loading" }),
-        // @ts-expect-error async component returns Promise<Node>, not Node
+        // 异步组件作为 JSX 元素：jsx 返回 Promise<Node>，由 Suspend 处理
         children: jsx(AsyncComp, {}),
       }),
     }) as HTMLElement
@@ -160,7 +160,6 @@ describe("Suspend", () => {
     const el = jsx("div", {
       children: Suspend({
         fallback: jsx("span", { children: "loading" }),
-        // @ts-expect-error async components return Promise<Node>
         children: [jsx(AsyncA, {}), jsx(AsyncB, {})],
       }),
     }) as HTMLElement
@@ -233,5 +232,11 @@ describe("Suspend", () => {
     which.set(jsx("span", { children: "b" }))
     await flush()
     expect(el.textContent).toBe("b")
+  })
+
+  it("throws when a promise is rendered outside Suspend", () => {
+    const { promise } = Promise.withResolvers<Node>()
+    expect(() => jsx("div", { children: promise })).toThrow(/outside <Suspend>/)
+    expect(() => toNodes(promise)).toThrow(/outside <Suspend>/)
   })
 })

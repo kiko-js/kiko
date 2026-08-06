@@ -110,8 +110,15 @@ export function cleanupWatchers(root: Node): void {
   for (const child of root.childNodes) cleanupWatchers(child)
 }
 
+function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
+  return typeof (value as { then?: unknown } | null)?.then === "function"
+}
+
 export function toNodes(value: unknown): Node[] {
   if (value == null || value === false || value === true) return []
+  if (isPromiseLike(value)) {
+    throw new Error("Promise rendered outside <Suspend> — wrap async components in <Suspend>")
+  }
   if (value instanceof Node) return [value]
   if (Array.isArray(value)) {
     const out: Node[] = []
@@ -149,6 +156,9 @@ export function swapNodes(marker: Node, old: Node[], next: Node[]): Node[] {
 
 function appendChild(parent: Node, child: unknown): void {
   if (child == null || child === false || child === true) return
+  if (isPromiseLike(child)) {
+    throw new Error("Promise rendered outside <Suspend> — wrap async components in <Suspend>")
+  }
 
   if (isSignal(child)) {
     const signal = child as WatchableSignal<unknown>
@@ -425,7 +435,12 @@ function setProp(el: StyledElement, key: string, value: unknown): void {
   applyProp(el, key, value)
 }
 
-export function jsx(tag: string | Component<any>, props: Props | null): Node {
+export function jsx(tag: string | Component<any>, props: Props | null): Node
+export function jsx(tag: AsyncComponent<any>, props: Props | null): Promise<Node>
+export function jsx(
+  tag: string | Component<any> | AsyncComponent<any>,
+  props: Props | null,
+): Node | Promise<Node> {
   const p = props ?? ({} as Props)
 
   if (typeof tag === "function") {
