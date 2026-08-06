@@ -9,6 +9,7 @@ import {
   adoptSheet,
   unadoptSheet,
 } from "./style"
+import { isSSR, ssrJsx, ssrStyle, toSSRString } from "./ssr"
 
 export type Props = Record<string, unknown> & { children?: unknown }
 export type Component<P = Props> = (props: P) => Node
@@ -443,6 +444,11 @@ export function jsx(
 ): Node | Promise<Node> {
   const p = props ?? ({} as Props)
 
+  if (isSSR()) {
+    // SSR 模式下实际返回 string | Promise<string>，类型签名保持客户端语义
+    return ssrJsx(tag, p) as unknown as Node | Promise<Node>
+  }
+
   if (typeof tag === "function") {
     return tag(p)
   }
@@ -462,6 +468,7 @@ export function jsx(
 }
 
 export function Fragment(props: Props): DocumentFragment {
+  if (isSSR()) return toSSRString(props.children) as unknown as DocumentFragment
   const frag = document.createDocumentFragment()
   appendChild(frag, props.children)
   return frag
@@ -532,6 +539,7 @@ function collectCssSignals(children: unknown): WatchableSignal<unknown>[] {
  * is disposed via `cleanupWatchers`.
  */
 export function Style(props: StyleProps): Node {
+  if (isSSR()) return ssrStyle(props) as unknown as Node
   const scoped = !props.global
   const attr = scoped ? createScopeAttr() : null
   const constructable = supportsConstructable()

@@ -64,6 +64,7 @@
             </ul>
           </li>
           <li><a href="#style">Style — scoped css</a></li>
+          <li><a href="#ssr">SSR — 服务端渲染</a></li>
           <li><a href="#htm">结合 htm（无构建 JSX）</a></li>
           <li><a href="#react">ReactPortal</a></li>
           <li><a href="#signals">Signal 封装</a></li>
@@ -483,6 +484,68 @@
             元素。卸载时（dispose / Show 切换）自动从 adoptedStyleSheets 移除；子树重新挂载时 sheet
             会被重新 adopt。
           </p>
+        </section>
+
+        <section id="ssr" class="api-section">
+          <h2>SSR — 服务端渲染</h2>
+          <p>
+            kiko 没有 vdom，组件函数是唯一事实来源——SSR 不做第二套渲染管线：用一个模块级 SSR
+            模式开关让 <code>jsx</code> / 控制流组件改产 HTML 字符串，同一套组件代码
+            双端复用。两种输出形式：
+          </p>
+          <table>
+            <thead>
+              <tr>
+                <th>导出</th>
+                <th>说明</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>renderToFragment(() =&gt; …): Promise&lt;string&gt;</code></td>
+                <td>片段 HTML：任意子树，不带 doctype。</td>
+              </tr>
+              <tr>
+                <td><code>renderToDocument(() =&gt; …): Promise&lt;string&gt;</code></td>
+                <td>
+                  完整文档：根为 <code>&lt;html&gt;</code>，自动前置
+                  <code>&lt;!DOCTYPE html&gt;</code>。
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <p>
+            必须传<strong>函数</strong>（惰性求值）——JSX 会在 SSR 模式开启前被急切求值，
+            传值形态会在客户端模式下构建 DOM。
+          </p>
+          <ul style="color: var(--muted); margin-bottom: 22px">
+            <li>
+              <strong>信号：</strong>取当前快照（SSR 无响应式）；props 与 children 中的信号 均支持。
+            </li>
+            <li>
+              <strong>异步：</strong><code>Suspend</code> 等待 promise 后再输出（完整渲染），
+              <code>lazy</code> 模块自然可用；reject 时报 <code>reportError</code> 并渲染 fallback。
+            </li>
+            <li>
+              <strong>scoped Style：</strong>scope 属性挂在最近祖先元素上，选择器改写后输出
+              ——与客户端语义一致。
+            </li>
+            <li>
+              <strong>事件处理器被丢弃</strong>（无法序列化）；<code>ref</code> /
+              <code>key</code> 忽略。
+            </li>
+            <li>
+              <strong>客户端专属：</strong><code>render</code> / <code>Router</code> /
+              <code>ReactPortal</code> 在 SSR 模式下不可用。
+            </li>
+            <li>
+              <strong>并发安全：</strong>SSR 模式用深度计数器而非布尔值，多个并发渲染的 await
+              间隙不会互相踢出模式。
+            </li>
+          </ul>
+          <div class="code-block">
+            <pre><code class="language-tsx" data-src="./assets/snippets/dom-ssr.tsx"></code></pre>
+          </div>
         </section>
 
         <section id="htm" class="api-section">

@@ -10,6 +10,7 @@ import {
   trackWatcher,
 } from "./jsx-runtime"
 import type { AsyncComponent, Component, Props } from "./jsx-runtime"
+import { isSSR, ssrErrorBoundary, ssrFor, ssrShow, ssrSuspend } from "./ssr"
 
 /**
  * Structural-reactivity helpers: `Show` and `For` are optional control-flow
@@ -46,6 +47,9 @@ export function Show<T>(props: {
   fallback?: unknown
   children: unknown | ((item: T) => unknown)
 }): DocumentFragment {
+  if (isSSR()) {
+    return ssrShow(props as unknown as Parameters<typeof ssrShow>[0]) as unknown as DocumentFragment
+  }
   const frag = document.createDocumentFragment()
   const marker = document.createComment("show")
   frag.appendChild(marker)
@@ -129,6 +133,9 @@ export function For<T>(props: {
   getKey?: (item: T, index: number) => unknown
   children: (item: T | (() => T), index: () => number) => unknown
 }): DocumentFragment {
+  if (isSSR()) {
+    return ssrFor(props as unknown as Parameters<typeof ssrFor>[0]) as unknown as DocumentFragment
+  }
   const frag = document.createDocumentFragment()
   const marker = document.createComment("for")
   frag.appendChild(marker)
@@ -270,6 +277,9 @@ export function ErrorBoundary(props: {
   errorSignal?: Signal.State<unknown>
   children: () => unknown
 }): DocumentFragment {
+  if (isSSR()) {
+    return ssrErrorBoundary(props) as unknown as DocumentFragment
+  }
   const frag = document.createDocumentFragment()
   const marker = document.createComment("error-boundary")
   frag.appendChild(marker)
@@ -388,6 +398,9 @@ function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
  * the error is reported via `reportError` and `fallback` stays on screen.
  */
 export function Suspend(props: { fallback?: unknown; children: unknown }): DocumentFragment {
+  if (isSSR()) {
+    return ssrSuspend(props) as unknown as DocumentFragment
+  }
   const frag = document.createDocumentFragment()
   const marker = document.createComment("suspend")
   frag.appendChild(marker)

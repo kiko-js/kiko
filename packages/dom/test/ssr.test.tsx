@@ -1,0 +1,233 @@
+/** @jsxImportSource @kikojs/dom */
+import { describe, it, expect, beforeAll } from "bun:test"
+import { jsx, Fragment, Style } from "../src/jsx-runtime"
+import { Show, For, ErrorBoundary, Suspend, lazy } from "../src/flow"
+import { renderToDocument, renderToFragment } from "../src/ssr"
+import { createSignal } from "../src/signal"
+import type { AsyncComponent } from "../src/jsx-runtime"
+
+beforeAll(async () => {
+  await import("./setup")
+})
+
+// SSR 渲染路径本身不触碰 document（测试末尾的客户端模式恢复检查除外）。
+
+function flush(): Promise<void> {
+  const { promise, resolve } = Promise.withResolvers<void>()
+  queueMicrotask(resolve)
+  return promise
+}
+
+describe("renderToFragment — 元素与属性", () => {
+  it("renders a basic element tree", async () => {
+    expect(await renderToFragment(() => jsx("div", { class: "a", children: "hi" }))).toBe(
+      `<div class="a">hi</div>`,
+    )
+  })
+
+  it("escapes text and attribute values", async () => {
+    expect(
+      await renderToFragment(() => jsx("p", { title: `a"b<c>`, children: `1 < 2 & 3 > 0` })),
+    ).toBe(`<p title="a&quot;b&lt;c&gt;">1 &lt; 2 &amp; 3 &gt; 0</p>`)
+  })
+
+  it("serializes boolean attrs bare and skips falsy ones", async () => {
+    expect(
+      await renderToFragment(() =>
+        jsx("input", { disabled: true, checked: false, placeholder: "x" }),
+      ),
+    ).toBe(`<input disabled placeholder="x">`)
+  })
+
+  it("renders void elements without a closing tag", async () => {
+    expect(await renderToFragment(() => jsx("img", { src: "a.png", alt: "a" }))).toBe(
+      `<img src="a.png" alt="a">`,
+    )
+  })
+
+  it("serializes style objects as kebab-case css", async () => {
+    expect(
+      await renderToFragment(() =>
+        jsx("div", { style: { color: "red", backgroundColor: "blue" } }),
+      ),
+    ).toBe(`<div style="color: red; background-color: blue"></div>`)
+  })
+
+  it("drops event handlers", async () => {
+    const html = await renderToFragment(() => jsx("button", { onClick: () => {}, children: "go" }))
+    expect(html).toBe(`<button>go</button>`)
+  })
+
+  it("snapshots signal children and signal props", async () => {
+    const count = createSignal(2)
+    const hidden = createSignal(false)
+    const html = await renderToFragment(() => jsx("p", { hidden, children: count }))
+    expect(html).toBe(`<p>2</p>`)
+  })
+
+  it("renders Fragment children", async () => {
+    expect(await renderToFragment(() => Fragment({ children: [jsx("a", {}), jsx("b", {})] }))).toBe(
+      `<a></a><b></b>`,
+    )
+  })
+})
+
+describe("renderToFragment — 控制流", () => {
+  it("Show renders truthy branch and fallback", async () => {
+    const on = createSignal(true)
+    expect(
+      await renderToFragment(() =>
+        Show({
+          when: on,
+          fallback: "off",
+          children: "on",
+        }),
+      ),
+    ).toBe("on")
+    expect(
+      await renderToFragment(() => Show({ when: false, fallback: "off", children: "on" })),
+    ).toBe("off")
+  })
+
+  it("Show calls function children with the truthy value", async () => {
+    const html = await renderToFragment(() =>
+      Show({
+        when: createSignal(5),
+        children: (n: number) => jsx("b", { children: String(n) }),
+      }),
+    )
+    expect(html).toBe(`<b>5</b>`)
+  })
+
+  it("For renders each item", async () => {
+    const html = await renderToFragment(() =>
+      For({
+        each: ["a", "b", "c"],
+        children: item => jsx("li", { children: item }),
+      }),
+    )
+    expect(html).toBe(`<li>a</li><li>b</li><li>c</li>`)
+  })
+
+  it("For keyed mode passes accessors like the client", async () => {
+    const html = await renderToFragment(() =>
+      For({
+        each: ["a", "b"],
+        getKey: item => item,
+        children: item => jsx("li", { children: item() }),
+      }),
+    )
+    expect(html).toBe(`<li>a</li><li>b</li>`)
+  })
+
+  it("ErrorBoundary swaps to fallback on throw", async () => {
+    const Boom = (): Node => {
+      throw new Error("boom")
+    }
+    expect(
+      await renderToFragment(() =>
+        ErrorBoundary({
+          fallback: "fallback",
+          children: () => jsx(Boom, {}),
+        }),
+      ),
+    ).toBe("fallback")
+  })
+})
+
+describe("renderToFragment — 异步", () => {
+  it("Suspend awaits promise children and renders resolved html", async () => {
+    const { promise, resolve } = Promise.withResolvers<Node>()
+    const htmlPromise = renderToFragment(() => Suspend({ fallback: "loading", children: promise }))
+    resolve(jsx("span", { children: "loaded" }))
+    expect(await htmlPromise).toBe(`<span>loaded</span>`)
+  })
+
+  it("Suspend renders fallback when a promise rejects", async () => {
+    const reported: unknown[] = []
+    const original = globalThis.reportError
+    // @ts-ignore
+    globalThis.reportError = (e: unknown) => {
+      reported.push(e)
+    }
+    try {
+      const { promise, reject } = Promise.withResolvers<Node>()
+      const htmlPromise = renderToFragment(() =>
+        Suspend({ fallback: "fallback", children: promise }),
+      )
+      reject(new Error("nope"))
+      expect(await htmlPromise).toBe("fallback")
+      expect(reported.length).toBe(1)
+    } finally {
+      // @ts-ignore
+      globalThis.reportError = original
+    }
+  })
+
+  it("renders async components and lazy modules", async () => {
+    const AsyncCard: AsyncComponent = async () => jsx("span", { children: "async" })
+    const LazyCard = lazy(() => Promise.resolve(() => jsx("span", { children: "lazy" })))
+    const html = await renderToFragment(() =>
+      Suspend({
+        fallback: "loading",
+        children: [jsx(AsyncCard, {}), jsx(LazyCard, {})],
+      }),
+    )
+    expect(html).toBe(`<span>async</span><span>lazy</span>`)
+  })
+
+  it("resolves promises nested inside arrays and elements", async () => {
+    const { promise, resolve } = Promise.withResolvers<string>()
+    const htmlPromise = renderToFragment(() =>
+      jsx("div", { children: [jsx("b", { children: "x" }), promise] }),
+    )
+    resolve("y")
+    expect(await htmlPromise).toBe(`<div><b>x</b>y</div>`)
+  })
+})
+
+describe("renderToDocument — 完整文档", () => {
+  it("prepends the doctype", async () => {
+    const html = await renderToDocument(() =>
+      jsx("html", { children: jsx("body", { children: "hello" }) }),
+    )
+    expect(html).toBe(`<!DOCTYPE html><html><body>hello</body></html>`)
+  })
+})
+
+describe("Style 的 SSR", () => {
+  it("scoped style attaches the scope attr to the nearest ancestor", async () => {
+    const html = await renderToFragment(() =>
+      jsx("main", {
+        children: [
+          jsx("span", { children: "" }),
+          jsx("div", { children: [Style({ children: ".card { color: red }" })] }),
+        ],
+      }),
+    )
+    expect(html).toMatch(/<div data-kiko-v\d+>/)
+    expect(html).toMatch(/<style>\[data-kiko-v\d+\] \.card/)
+    expect(html).not.toMatch(/<span data-kiko-v/)
+  })
+
+  it("global style renders the css verbatim", async () => {
+    const html = await renderToFragment(() =>
+      Style({ global: true, children: ".a > .b { color: red }" }),
+    )
+    expect(html).toBe(`<style>.a > .b { color: red }</style>`)
+  })
+})
+
+describe("并发安全", () => {
+  it("two concurrent renders do not cross-talk", async () => {
+    const a = renderToFragment(() => jsx("div", { children: "A" }))
+    const b = renderToFragment(() => jsx("span", { children: "B" }))
+    const [ha, hb] = await Promise.all([a, b])
+    expect(ha).toBe(`<div>A</div>`)
+    expect(hb).toBe(`<span>B</span>`)
+    await flush()
+    // SSR 结束后回到客户端模式
+    const node = jsx("p", { children: "client" })
+    expect((node as HTMLElement).textContent).toBe("client")
+  })
+})
