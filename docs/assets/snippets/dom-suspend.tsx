@@ -1,16 +1,25 @@
 /** @jsxImportSource @kikojs/dom */
-import { Suspend } from "@kikojs/dom"
+import { Suspend, lazy, createSignal } from "@kikojs/dom"
+import { computed } from "@kikojs/signal"
 
-// 注意：kiko 组件函数只执行一次，这里的 await 只在初始化时运行一次。
-// 不要把 signal 作为 async 组件的依赖来驱动重新加载。
-const UserCard = async () => {
-  const user = await fetch("/api/user").then((r) => r.json())
-  return <div class="user-card">{user.name}</div>
-}
+// lazy：代码分割。首次调用加载模块（并发调用共享同一次加载），之后走缓存；
+// 加载失败会清除缓存，下次调用可重试。
+// 实际工程中：const Card = lazy(() => import("./Card").then(m => m.default))
+const MyCard = () => <div class="user-card">card</div>
+const Card = lazy(() => Promise.resolve(MyCard))
 
 const view = (
   <Suspend fallback={<p>加载中…</p>}>
     {/* children 可以是 Promise<Node>；等待期间渲染 fallback */}
-    {UserCard()}
+    {Card()}
   </Suspend>
 )
+
+// children 也可以是信号：值变化时重新挂起，迟到的旧结果会被丢弃
+const userId = createSignal(1)
+const userCard = computed(() =>
+  fetch(`/api/user/${userId.get()}`)
+    .then(r => r.json())
+    .then(user => <div class="user-card">{user.name}</div>),
+)
+const reactive = <Suspend fallback={<p>加载中…</p>}>{userCard}</Suspend>

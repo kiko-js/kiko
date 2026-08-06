@@ -60,7 +60,7 @@
               <li><a href="#show">Show</a></li>
               <li><a href="#for">For</a></li>
               <li><a href="#errorboundary">ErrorBoundary</a></li>
-              <li><a href="#suspend">Suspend</a></li>
+              <li><a href="#suspend">Suspend / lazy</a></li>
             </ul>
           </li>
           <li><a href="#style">Style — scoped css</a></li>
@@ -368,7 +368,7 @@
             <pre><code class="language-tsx" data-src="./assets/snippets/dom-errorboundary.tsx"></code></pre>
           </div>
 
-          <h3 id="suspend">Suspend — 异步挂起</h3>
+          <h3 id="suspend">Suspend — 异步挂起 / lazy — 代码分割</h3>
           <table>
             <thead>
               <tr>
@@ -380,8 +380,10 @@
             <tbody>
               <tr>
                 <td><code>children</code></td>
-                <td><code>Promise&lt;Node&gt; | (Promise&lt;Node&gt; | Node)[] | Node</code></td>
-                <td>异步加载的内容。</td>
+                <td>
+                  <code>Promise&lt;Node&gt; | (Promise&lt;Node&gt; | Node)[] | Node | 信号</code>
+                </td>
+                <td>异步加载的内容；信号值变化时重新挂起。</td>
               </tr>
               <tr>
                 <td><code>fallback</code></td>
@@ -396,11 +398,16 @@
             <code>Promise.all</code> 等待，任一 reject 时通过 <code>reportError</code> 上报并保持
             fallback。
           </p>
-          <div class="note">
-            与 React 不同，kiko 组件函数只执行一次，因此 Suspend 适合<strong>一次性初始化</strong>。
-            如需在 signal 变化后重新加载数据，请使用 <code>effect</code> 或
-            <code>Show</code> 等响应式原语。
-          </div>
+          <p>
+            <code>children</code> 也可以是<strong>信号</strong>（值可为 Promise / 数组 / 普通
+            节点）：信号变化时重新挂起，迟到的旧结果会被丢弃并清理其 watcher——适合由路由参数、
+            用户输入驱动的异步组件。
+          </p>
+          <p>
+            <code>lazy(loader): AsyncComponent</code> 提供代码分割：首次调用加载模块（并发调用
+            共享同一次加载，之后走缓存；加载失败清除缓存可重试）。返回异步组件，以
+            <code>{"{Card()}"}</code> 形式放进 <code>Suspend</code>：
+          </p>
           <div class="code-block">
             <pre><code class="language-tsx" data-src="./assets/snippets/dom-suspend.tsx"></code></pre>
           </div>

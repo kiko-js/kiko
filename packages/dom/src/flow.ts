@@ -9,6 +9,7 @@ import {
   trackCleanup,
   trackWatcher,
 } from "./jsx-runtime"
+import type { AsyncComponent, Component, Props } from "./jsx-runtime"
 
 /**
  * Structural-reactivity helpers: `Show` and `For` are optional control-flow
@@ -364,12 +365,21 @@ export function ErrorBoundary(props: {
   return frag
 }
 
+function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
+  return typeof (value as { then?: unknown } | null)?.then === "function"
+}
+
 /**
  * Suspend: render `fallback` while any promise in `children` is pending, then
  * swap to the resolved DOM once every promise has settled.
  *
  * `children` may be:
- * - A `Promise<Node>` (e.g. produced by `<AsyncComp />` inside the Suspend).
+ * - A signal whose value is a promise / array-with-promises / plain node.
+ *   When the signal changes, the pending promise is superseded — its late
+ *   result is discarded (and its watchers cleaned) instead of overwriting
+ *   the newer content.
+ * - A promise (native or thenable), e.g. produced by `lazy(loader)()` or an
+ *   async component called inside the Suspend.
  * - An array of promises and/or plain nodes.
  * - A plain node value (renders immediately, no fallback shown).
  *
@@ -382,10 +392,10 @@ export function Suspend(props: { fallback?: unknown; children: unknown }): Docum
   const marker = document.createComment("suspend")
   frag.appendChild(marker)
   let current: Node[] = []
-  let cancelled = false
+  // 代际计数器：每次重渲染 +1，令在途 promise 的迟到结果失效（supersede）
+  let seq = 0
 
   const render = (value: unknown): void => {
-    if (cancelled) return
     current = swapNodes(marker, current, toNodes(value))
   }
 
@@ -393,8 +403,12 @@ export function Suspend(props: { fallback?: unknown; children: unknown }): Docum
     current = swapNodes(marker, current, toNodes(props.fallback))
   }
 
+  // 被 supersede / 清理时丢弃的已解析节点：清理其内部 watcher，避免泄漏
+  const discard = (value: unknown): void => {
+    for (const n of toNodes(value)) cleanupWatchers(n)
+  }
+
   const handleError = (error: unknown): void => {
-    if (cancelled) return
     if (typeof reportError === "function") reportError(error)
     else
       queueMicrotask(() => {
@@ -402,24 +416,100 @@ export function Suspend(props: { fallback?: unknown; children: unknown }): Docum
       })
   }
 
-  if (props.children instanceof Promise) {
-    renderFallback()
-    props.children.then(value => render(value), handleError)
-  } else if (
-    Array.isArray(props.children) &&
-    props.children.some(child => child instanceof Promise)
-  ) {
-    renderFallback()
-    Promise.all(props.children).then(values => render(values), handleError)
-  } else {
-    render(props.children)
+  // 收集 children 中的 promise：挂起则先渲染 fallback，settle 后换入结果
+  const settle = (value: unknown, mySeq: number): void => {
+    if (isPromiseLike(value)) {
+      renderFallback()
+      value.then(
+        resolved => {
+          if (mySeq !== seq) {
+            discard(resolved)
+            return
+          }
+          render(resolved)
+        },
+        rejected => {
+          if (mySeq === seq) handleError(rejected)
+        },
+      )
+      return
+    }
+    if (Array.isArray(value) && value.some(isPromiseLike)) {
+      renderFallback()
+      Promise.all(value).then(
+        resolved => {
+          if (mySeq !== seq) {
+            discard(resolved)
+            return
+          }
+          render(resolved)
+        },
+        rejected => {
+          if (mySeq === seq) handleError(rejected)
+        },
+      )
+      return
+    }
+    render(value)
+  }
+
+  const renderValue = (value: unknown): void => {
+    const mySeq = ++seq
+    settle(value, mySeq)
+  }
+
+  renderValue(unwrap(props.children))
+
+  if (isSignal(props.children)) {
+    const signal = props.children as WatchableSignal<unknown>
+    const watcher = createWatcher(() => {
+      queueMicrotask(() => {
+        renderValue(unwrap(signal))
+        watcher.watch(signal)
+      })
+    })
+    watcher.watch(signal)
+    trackWatcher(marker, watcher)
   }
 
   trackCleanup(marker, () => {
-    cancelled = true
+    seq++ // 使在途 promise 的结果失效
     for (const n of current) cleanupWatchers(n)
     current = []
   })
 
   return frag
+}
+
+/**
+ * 代码分割：`lazy(loader)` 返回一个异步组件，首次调用时加载模块（并发调用共享
+ * 同一次加载），之后直接使用缓存的组件实例。与 `<Suspend>` 组合使用：
+ *
+ * ```tsx
+ * const Card = lazy(() => import("./Card").then(m => m.default))
+ * <Suspend fallback={<p>加载中…</p>}>{Card()}</Suspend>
+ * ```
+ *
+ * 加载失败会清除缓存，下次调用可重试。
+ */
+export function lazy<P extends Props = Props>(
+  loader: () => Promise<Component<P>>,
+): AsyncComponent<P> {
+  let component: Component<P> | null = null
+  let loading: Promise<Component<P>> | null = null
+
+  return (props?: P): Promise<Node> => {
+    if (component) return Promise.resolve(component(props as P))
+    if (!loading) {
+      loading = loader().then(m => {
+        component = m
+        return m
+      })
+      // 消费拒绝，避免 unhandled rejection；清除缓存允许下次调用重试
+      loading.catch(() => {
+        loading = null
+      })
+    }
+    return loading.then(m => m(props as P))
+  }
 }

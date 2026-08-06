@@ -2,6 +2,7 @@
 import { describe, it, expect, beforeAll } from "bun:test"
 import { jsx, cleanupWatchers } from "../src/jsx-runtime"
 import { Suspend } from "../src/flow"
+import { createSignal } from "../src/signal"
 
 beforeAll(async () => {
   await import("./setup")
@@ -184,5 +185,53 @@ describe("Suspend", () => {
     await promise
     await flush()
     expect(el.textContent).toBe("plain-async")
+  })
+
+  it("accepts thenable children, not only native promises", async () => {
+    const { promise, resolve } = Promise.withResolvers<Node>()
+    const thenable = { then: (onFulfilled: (v: Node) => void) => promise.then(onFulfilled) }
+    const el = jsx("div", {
+      children: Suspend({ fallback: jsx("span", { children: "loading" }), children: thenable }),
+    }) as HTMLElement
+    expect(el.textContent).toBe("loading")
+    resolve(jsx("span", { children: "thenable" }))
+    await promise
+    await flush()
+    expect(el.textContent).toBe("thenable")
+  })
+
+  it("re-renders when children signal changes, discarding stale results", async () => {
+    const { promise: first, resolve: resolveFirst } = Promise.withResolvers<Node>()
+    const { promise: second, resolve: resolveSecond } = Promise.withResolvers<Node>()
+    const which = createSignal<unknown>(first)
+    const el = jsx("div", {
+      children: Suspend({
+        fallback: jsx("span", { children: "loading" }),
+        children: which,
+      }),
+    }) as HTMLElement
+    expect(el.textContent).toBe("loading")
+    which.set(second)
+    await flush()
+    // 旧 promise 迟到：不得渲染
+    resolveFirst(jsx("span", { children: "stale" }))
+    await first
+    await flush()
+    expect(el.textContent).toBe("loading")
+    resolveSecond(jsx("span", { children: "fresh" }))
+    await second
+    await flush()
+    expect(el.textContent).toBe("fresh")
+  })
+
+  it("swaps signal children directly when the value is a plain node", async () => {
+    const which = createSignal<unknown>(jsx("span", { children: "a" }))
+    const el = jsx("div", {
+      children: Suspend({ fallback: jsx("span", { children: "loading" }), children: which }),
+    }) as HTMLElement
+    expect(el.textContent).toBe("a")
+    which.set(jsx("span", { children: "b" }))
+    await flush()
+    expect(el.textContent).toBe("b")
   })
 })

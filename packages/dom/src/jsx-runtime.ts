@@ -12,7 +12,7 @@ import {
 
 export type Props = Record<string, unknown> & { children?: unknown }
 export type Component<P = Props> = (props: P) => Node
-export type AsyncComponent<P = Props> = (props: P) => Promise<Node>
+export type AsyncComponent<P = Props> = (props?: P) => Promise<Node>
 
 export type { JSX } from "./jsx-types"
 
