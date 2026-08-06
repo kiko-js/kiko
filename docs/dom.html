@@ -51,6 +51,7 @@
             <ul>
               <li><a href="#renderapi">render</a></li>
               <li><a href="#ref">ref 清理</a></li>
+              <li><a href="#portal">createPortal</a></li>
             </ul>
           </li>
           <li>
@@ -245,6 +246,16 @@
           </p>
           <div class="code-block">
             <pre><code class="language-tsx" data-src="./assets/snippets/dom-ref.tsx"></code></pre>
+          </div>
+          <h3 id="portal">createPortal</h3>
+          <p>
+            把节点渲染到任意容器（如 <code>document.body</code>），原位置只留锚点注释。 Modal /
+            Tooltip / Dropdown 需要脱离文档流时使用；锚点随宿主树一起
+            dispose，移入容器的节点会被移除并清理 watcher。信号子节点先经
+            <code>jsx</code> 创建再整体移入，响应式更新与清理机制不变。
+          </p>
+          <div class="code-block">
+            <pre><code class="language-tsx" data-src="./assets/snippets/dom-portal.tsx"></code></pre>
           </div>
         </section>
 

@@ -63,6 +63,7 @@
             </ul>
           </li>
           <li><a href="#state">状态管理 — createStore</a></li>
+          <li><a href="#resource">异步数据 — createResource</a></li>
           <li>
             <a href="#lowlevel">事件与底层</a>
             <ul>
@@ -386,6 +387,50 @@
           </ul>
           <div class="code-block">
             <pre><code class="language-ts" data-src="./assets/snippets/signal-store.ts"></code></pre>
+          </div>
+        </section>
+
+        <section id="resource" class="api-section">
+          <h2>异步数据 — createResource</h2>
+          <p>
+            把异步拉取封装为 <code>data</code> / <code>loading</code> /
+            <code>error</code> 三个标准信号。<code>source</code>
+            中的信号依赖变化时自动重新拉取，并发安全 （旧请求的迟到结果不会覆盖新请求）；<code
+              >refetch()</code
+            >
+            手动重拉。
+          </p>
+          <table>
+            <thead>
+              <tr>
+                <th>签名</th>
+                <th>说明</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>createResource&lt;T&gt;(fetcher, options?): Resource&lt;T&gt;</code></td>
+                <td>
+                  <code>fetcher(source)</code> 返回 Promise；<code>data</code> /
+                  <code>loading</code> / <code>error</code> 均为标准信号。
+                </td>
+              </tr>
+              <tr>
+                <td><code>options.initial</code></td>
+                <td>首次加载完成前 <code>data</code> 的初值（如缓存）。</td>
+              </tr>
+              <tr>
+                <td><code>options.source</code></td>
+                <td>getter：其中读取的信号依赖变化时自动重新拉取。</td>
+              </tr>
+              <tr>
+                <td><code>resource.refetch()</code> / <code>dispose()</code></td>
+                <td>手动重拉；停止监听与在途请求（effect 内创建时自动清理）。</td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="code-block">
+            <pre><code class="language-ts" data-src="./assets/snippets/signal-resource.ts"></code></pre>
           </div>
         </section>
 

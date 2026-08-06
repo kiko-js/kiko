@@ -12,4 +12,5 @@ export {
   type StyleProps,
 } from "./jsx-runtime"
 export { render } from "./render"
+export { createPortal } from "./portal"
 export { Show, For, ErrorBoundary, Suspend } from "./flow"

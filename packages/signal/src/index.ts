@@ -7,6 +7,7 @@ export { batch, untrack } from "./scheduler"
 export { on } from "./on"
 export { createStore, ref, isRef, REF } from "./store"
 export type { Store, PathKey, Ref } from "./store"
+export { createResource, type Resource, type ResourceOptions } from "./resource"
 import { Signal } from "signal-polyfill"
 
 export type Watcher = Signal.subtle.Watcher

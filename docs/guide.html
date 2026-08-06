@@ -303,6 +303,14 @@
             <pre><code class="language-ts" data-src="./assets/snippets/signal-batch.ts"></code></pre>
           </div>
           <p>
+            共享状态（主题、语言、当前用户、API client）直接用<strong>模块级信号</strong>
+            即可——全局可见、默认响应式、无需 Provider 嵌套。kiko 没有 re-render 周期，
+            组件函数只执行一次，不存在传统 context 要解决的“避免重渲染的 prop 传递”问题：
+          </p>
+          <div class="code-block">
+            <pre><code class="language-ts" data-src="./assets/snippets/signal-context.ts"></code></pre>
+          </div>
+          <p>
             @kikojs/dom 的 JSX 直接消费这些标准信号——无需适配层。把 signal 放进
             <code>children</code> 或 props 即可。
           </p>
