@@ -87,15 +87,28 @@ export function toSSRString(value: unknown): SSRValue {
 }
 
 // ---------------------------------------------------------------------------
-// scoped <Style>：scope 属性挂在“最近元素祖先”上。children 先于父元素求值，
-// Style 运行时把 scope 属性压入待定队列；下一个开始序列化的元素（即其父元素）
-// 取走队列——嵌套时先序列化的内层元素会先取走，正好是“最近祖先”语义。
-let pendingScopes: string[] = []
+// scoped <Style>：scope 属性挂在“包含该 style 的元素”上（与客户端 appendChild
+// 时 applyScopeRoots 挂父元素的语义一致）。children 先于父元素求值，且兄弟元素
+// 也在父之前序列化，所以序列化顺序队列（pendingScopes）会被兄弟抢先消费——
+// scope 会错误地落到兄弟元素上。改为：ssrStyle 在输出中内嵌唯一标记
+// `<!--kiko-scope:attr-->`，每个元素序列化完 children 后提取自己 children 里的
+// 标记挂到自身 attrs；最内层包含元素消费后，标记不再外泄。
 
-function takePendingScopes(): string[] {
-  const scopes = pendingScopes
-  pendingScopes = []
-  return scopes
+const SCOPE_MARKER_PREFIX = "<!--kiko-scope:"
+const SCOPE_MARKER_SUFFIX = "-->"
+
+function extractScopeMarkers(html: string): { cleaned: string; attrs: string[] } {
+  const attrs: string[] = []
+  let cleaned = html
+  let idx = cleaned.indexOf(SCOPE_MARKER_PREFIX)
+  while (idx >= 0) {
+    const end = cleaned.indexOf(SCOPE_MARKER_SUFFIX, idx)
+    if (end < 0) break
+    attrs.push(cleaned.slice(idx + SCOPE_MARKER_PREFIX.length, end))
+    cleaned = cleaned.slice(0, idx) + cleaned.slice(end + SCOPE_MARKER_SUFFIX.length)
+    idx = cleaned.indexOf(SCOPE_MARKER_PREFIX)
+  }
+  return { cleaned, attrs }
 }
 
 function extractCssText(children: unknown): string {
@@ -122,8 +135,8 @@ export function ssrStyle(props: StyleProps): SSRValue {
     return new SSRElement(`<style>${css}</style>`)
   }
   const attr = createScopeAttr()
-  pendingScopes.push(attr)
-  return new SSRElement(`<style>${rewriteScopedCss(css, attr)}</style>`)
+  // 标记由最近的序列化祖先元素（即包含本 style 的元素）提取并挂载
+  return new SSRElement(`<!--kiko-scope:${attr}--><style>${rewriteScopedCss(css, attr)}</style>`)
 }
 
 // ---------------------------------------------------------------------------
@@ -189,19 +202,23 @@ export function ssrJsx(
 
   if (tag === "style") return ssrStyle(p as StyleProps)
 
-  const pending = takePendingScopes()
-  const attrs = serializeAttrs(p) + pending.map(a => ` ${a}`).join("")
-
   if (VOID_ELEMENTS.has(tag)) {
-    return new SSRElement(`<${tag}${attrs}>`)
+    return new SSRElement(`<${tag}${serializeAttrs(p)}>`)
   }
 
+  // children 先序列化：其中 <Style> 的 scope 标记由当前元素提取并挂到自身 attrs
   const children = toSSRString(p.children)
   const close = `</${tag}>`
   if (isPromiseLike(children)) {
-    return children.then(c => new SSRElement(`<${tag}${attrs}>${raw(c)}${close}`))
+    return children.then(c => {
+      const { cleaned, attrs } = extractScopeMarkers(raw(c))
+      const scopeAttrs = attrs.length > 0 ? ` ${attrs.join(" ")}` : ""
+      return new SSRElement(`<${tag}${serializeAttrs(p)}${scopeAttrs}>${cleaned}${close}`)
+    })
   }
-  return new SSRElement(`<${tag}${attrs}>${raw(children)}${close}`)
+  const { cleaned, attrs } = extractScopeMarkers(raw(children))
+  const scopeAttrs = attrs.length > 0 ? ` ${attrs.join(" ")}` : ""
+  return new SSRElement(`<${tag}${serializeAttrs(p)}${scopeAttrs}>${cleaned}${close}`)
 }
 
 // ---------------------------------------------------------------------------
@@ -320,9 +337,10 @@ export const ssrRuntime: SSRRuntime = {
  * `renderToDocument(() => <App />)`。
  */
 export async function renderToDocument(component: () => unknown): Promise<string> {
-  pendingScopes = []
   const result = await toSSRString(component())
-  return `<!DOCTYPE html>${raw(result)}`
+  // 顶层无元素可挂载 scope 标记（如 Fragment 根 + <Style>）：丢弃
+  const { cleaned } = extractScopeMarkers(raw(result))
+  return `<!DOCTYPE html>${cleaned}`
 }
 
 /**
@@ -330,6 +348,7 @@ export async function renderToDocument(component: () => unknown): Promise<string
  * `renderToFragment(() => <CardList />)`。
  */
 export async function renderToFragment(component: () => unknown): Promise<string> {
-  pendingScopes = []
-  return raw(await toSSRString(component()))
+  const result = await toSSRString(component())
+  const { cleaned } = extractScopeMarkers(raw(result))
+  return cleaned
 }

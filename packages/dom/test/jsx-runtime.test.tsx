@@ -8,6 +8,12 @@ beforeAll(async () => {
   await import("./setup")
 })
 
+function flush(): Promise<void> {
+  const { promise, resolve } = Promise.withResolvers<void>()
+  queueMicrotask(resolve)
+  return promise
+}
+
 describe("jsx", () => {
   it("creates an element from string tag", () => {
     const el = jsx("div", { id: "root" }) as HTMLElement
@@ -237,5 +243,53 @@ describe("jsx", () => {
     expect(el.style.background).toBe("blue")
     expect(el.style.color).toBe("")
     expect(el.style.fontWeight).toBe("")
+  })
+
+  it("signal style switching to a string then null clears object styles", async () => {
+    const styleSig = createSignal<Record<string, string> | string | null>({ color: "red" })
+    const el = jsx("div", { style: styleSig }) as HTMLElement
+    expect(el.style.color).toBe("red")
+    styleSig.set("color: blue")
+    await flush()
+    expect(el.getAttribute("style")).toBe("color: blue")
+    styleSig.set(null)
+    await flush()
+    expect(el.hasAttribute("style")).toBe(false)
+  })
+
+  it("skips null/undefined/false/true children", () => {
+    const el = jsx("div", {
+      children: [null, undefined, false, true, "x"],
+    }) as HTMLElement
+    expect(el.textContent).toBe("x")
+    expect(el.childNodes.length).toBe(1)
+  })
+
+  it("falls back to setAttribute when IDL assignment throws (SVG readonly props)", () => {
+    // happy-dom 中部分 SVG 属性（如 cx/cy/r）是只读 IDL：赋值抛错时回退属性
+    const circle = jsx("circle", { cx: 5, cy: 3, r: 4 }) as SVGCircleElement
+    const cx = circle.getAttribute("cx")
+    const cy = circle.getAttribute("cy")
+    const r = circle.getAttribute("r")
+    // 无论走 IDL 还是属性回退，值都必须可读
+    expect(String(cx ?? circle.cx)).toBe("5")
+    expect(String(cy ?? circle.cy)).toBe("3")
+    expect(String(r ?? circle.r)).toBe("4")
+  })
+
+  it("normalizes unknown camelCase props to kebab-case attributes", () => {
+    const el = jsx("div", { "data-foo-bar": "1", strokeWidth: 2 }) as HTMLElement
+    expect(el.getAttribute("data-foo-bar")).toBe("1")
+    expect(el.getAttribute("stroke-width")).toBe("2")
+  })
+
+  it("Fragment with a signal child stays reactive", async () => {
+    const count = createSignal(0)
+    const frag = Fragment({ children: count })
+    const div = jsx("div", { children: frag }) as HTMLElement
+    expect(div.textContent).toBe("0")
+    count.set(5)
+    await flush()
+    expect(div.textContent).toBe("5")
   })
 })

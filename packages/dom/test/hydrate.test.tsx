@@ -156,6 +156,87 @@ describe("hydrate", () => {
     dispose()
   })
 
+  it("hydrates a still-pending lazy module: adopts SSR content, swaps on settle", async () => {
+    const container = document.createElement("div")
+    // SSR 阶段：模块已加载，输出 resolved 内容
+    const serverCard = lazy(() => Promise.resolve(() => jsx("span", { children: "lazy" })))
+    const serverApp = (): Node => Suspend({ fallback: "loading", children: jsx(serverCard, {}) })
+    setSSRRuntime(ssrRuntime)
+    try {
+      container.innerHTML = await renderToFragment(serverApp)
+    } finally {
+      setSSRRuntime(null)
+    }
+    expect(container.textContent).toBe("lazy")
+
+    // 客户端：全新 lazy 实例，模块未加载完成（pending）——水合必须静态采纳
+    // SSR 内容（无 fallback 闪烁），模块 settle 后再换入客户端节点。
+    const { promise, resolve } = Promise.withResolvers<Component>()
+    const clientCard = lazy(() => promise)
+    const clientApp = (): Node => Suspend({ fallback: "loading", children: jsx(clientCard, {}) })
+    const dispose = hydrate(clientApp, container)
+    expect(container.textContent).toBe("lazy")
+    resolve(() => jsx("span", { children: "client" }))
+    await promise
+    await flush()
+    expect(container.textContent).toBe("client")
+    dispose()
+  })
+
+  it("hydrates Show rendering its fallback branch from SSR", async () => {
+    const container = document.createElement("div")
+    const dispose = await ssrThenHydrate(
+      () => Show({ when: false, fallback: "off", children: "on" }),
+      container,
+    )
+    expect(container.textContent).toBe("off")
+    dispose()
+  })
+
+  it("hydrates keyed For passing item accessors", async () => {
+    const container = document.createElement("div")
+    const list = createSignal([
+      { id: 1, v: "a" },
+      { id: 2, v: "b" },
+    ])
+    const dispose = await ssrThenHydrate(
+      () =>
+        For({
+          each: list,
+          getKey: item => item.id,
+          children: item => jsx("li", { children: item().v }),
+        }),
+      container,
+    )
+    expect(container.textContent).toBe("ab")
+    list.set([
+      { id: 1, v: "A" },
+      { id: 2, v: "b" },
+    ])
+    await flush()
+    expect(container.textContent).toBe("Ab")
+    dispose()
+  })
+
+  it("hydrates a scoped Style element from SSR output", async () => {
+    const container = document.createElement("div")
+    const dispose = await ssrThenHydrate(
+      () =>
+        jsx("main", {
+          children: [
+            jsx("style", { children: ".card { color: red }" }),
+            jsx("p", { class: "card", children: "x" }),
+          ],
+        }),
+      container,
+    )
+    const styleEl = container.querySelector("style")!
+    expect(styleEl.textContent).toMatch(/data-kiko-v\d+/)
+    const main = container.firstChild as HTMLElement
+    expect(Array.from(main.attributes).some(a => a.name.startsWith("data-kiko-v"))).toBe(true)
+    dispose()
+  })
+
   it("dispose cleans up watchers", async () => {
     const container = document.createElement("div")
     const count = createSignal(1)

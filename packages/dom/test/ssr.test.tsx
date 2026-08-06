@@ -73,6 +73,19 @@ describe("renderToFragment — 元素与属性", () => {
       `<a></a><b></b>`,
     )
   })
+
+  it("serializes numeric children and skips nullish/false", async () => {
+    expect(await renderToFragment(() => jsx("span", { children: 42 }))).toBe(`<span>42</span>`)
+    expect(await renderToFragment(() => jsx("span", { children: 0 }))).toBe(`<span>0</span>`)
+    expect(await renderToFragment(() => jsx("span", { children: null }))).toBe(`<span></span>`)
+    expect(await renderToFragment(() => jsx("span", { children: false }))).toBe(`<span></span>`)
+  })
+
+  it("escapes single quotes in attributes", async () => {
+    expect(await renderToFragment(() => jsx("p", { title: "it's" }))).toBe(
+      `<p title="it&#39;s"></p>`,
+    )
+  })
 })
 
 describe("renderToFragment — 控制流", () => {
@@ -167,6 +180,30 @@ describe("renderToFragment — 异步", () => {
     }
   })
 
+  it("Suspend renders fallback when any promise in an array rejects", async () => {
+    const reported: unknown[] = []
+    const original = globalThis.reportError
+    // @ts-ignore
+    globalThis.reportError = (e: unknown) => {
+      reported.push(e)
+    }
+    try {
+      const { promise: a, resolve: ra } = Promise.withResolvers<Node>()
+      const { promise: b, reject: rb } = Promise.withResolvers<Node>()
+      const htmlPromise = renderToFragment(() =>
+        Suspend({ fallback: "fallback", children: [a, b] }),
+      )
+      ra(jsx("span", { children: "A" }))
+      rb(new Error("b failed"))
+      expect(await htmlPromise).toBe(`<!--suspend-->fallback<!--/suspend-->`)
+      expect(reported.length).toBe(1)
+      expect((reported[0] as Error).message).toBe("b failed")
+    } finally {
+      // @ts-ignore
+      globalThis.reportError = original
+    }
+  })
+
   it("renders async components and lazy modules", async () => {
     const AsyncCard: AsyncComponent = async () => jsx("span", { children: "async" })
     const LazyCard = lazy(() => Promise.resolve(() => jsx("span", { children: "lazy" })))
@@ -218,6 +255,33 @@ describe("Style 的 SSR", () => {
       Style({ global: true, children: ".a > .b { color: red }" }),
     )
     expect(html).toBe(`<style>.a > .b { color: red }</style>`)
+  })
+
+  it("scope attr lands on the ancestor even when style has later siblings", async () => {
+    // 回归：序列化顺序下兄弟元素先于父序列化，scope 曾错误落在兄弟上
+    // （<p data-kiko-v1>），导致 scoped css 失效且与客户端（挂父）不一致。
+    const html = await renderToFragment(() =>
+      jsx("main", {
+        children: [
+          Style({ children: ".card { color: red }" }),
+          jsx("p", { class: "card", children: "x" }),
+        ],
+      }),
+    )
+    expect(html).toMatch(/<main data-kiko-v\d+><style>/)
+    expect(html).not.toMatch(/<p class="card" data-kiko-v/)
+    expect(html).not.toContain("kiko-scope")
+  })
+
+  it("scope attr nests to the innermost containing element", async () => {
+    const html = await renderToFragment(() =>
+      jsx("main", {
+        children: jsx("div", {
+          children: [Style({ children: ".a { color: red }" })],
+        }),
+      }),
+    )
+    expect(html).toMatch(/<main><div data-kiko-v\d+><style>/)
   })
 })
 

@@ -163,4 +163,39 @@ describe("ErrorBoundary", () => {
     expect(el.textContent).toBe("inner-fb")
     expect(outerSeen).toEqual([])
   })
+
+  it("an onError callback that throws does not break the boundary", () => {
+    const el = jsx("div", {
+      children: ErrorBoundary({
+        onError: () => {
+          throw new Error("onError boom")
+        },
+        fallback: "fb",
+        children: () => {
+          throw new Error("children boom")
+        },
+      }),
+    }) as HTMLElement
+    // onError 是用户代码：抛错不得阻止 fallback 挂载
+    expect(el.textContent).toBe("fb")
+  })
+
+  it("keeps showing the fallback while the children keep throwing", async () => {
+    const s = createSignal(0)
+    const Comp = (): Node => {
+      s.get()
+      throw new Error("always")
+    }
+    const el = jsx("div", {
+      children: ErrorBoundary({
+        fallback: "fb",
+        children: Comp,
+      }),
+    }) as HTMLElement
+    expect(el.textContent).toBe("fb")
+    s.set(1)
+    await flush()
+    // 仍处于错误态：children 通知被忽略，不进入重试循环
+    expect(el.textContent).toBe("fb")
+  })
 })

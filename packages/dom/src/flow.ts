@@ -64,7 +64,6 @@ export function Show<T>(props: {
   const marker = document.createComment("show")
   frag.appendChild(marker)
   let current: Node[] = []
-  let mounted = false
 
   const render = (): void => {
     const cond = unwrap(props.when)
@@ -75,10 +74,9 @@ export function Show<T>(props: {
           ? (props.children as (item: T) => unknown)(cond as T)
           : props.children
       current = swapNodes(marker, current, toNodes(value))
-      mounted = true
-    } else if (mounted) {
+    } else {
+      // 首次渲染即 falsy 也渲染 fallback：与 SSR / 水合路径保持一致。
       current = swapNodes(marker, current, toNodes(props.fallback))
-      mounted = false
     }
   }
 
@@ -99,7 +97,6 @@ export function Show<T>(props: {
   trackCleanup(marker, () => {
     for (const n of current) cleanupWatchers(n)
     current = []
-    mounted = false
   })
 
   return frag

@@ -234,6 +234,23 @@ describe("Suspend", () => {
     expect(el.textContent).toBe("b")
   })
 
+  it("treats a signal whose value is an array with promises as pending", async () => {
+    const { promise, resolve } = Promise.withResolvers<Node>()
+    const which = createSignal<unknown>([promise, jsx("span", { children: "x" })])
+    const el = jsx("div", {
+      children: Suspend({ fallback: jsx("span", { children: "loading" }), children: which }),
+    }) as HTMLElement
+    expect(el.textContent).toBe("loading")
+    resolve(jsx("span", { children: "y" }))
+    await promise
+    await flush()
+    expect(el.textContent).toBe("yx")
+    // 信号再次变为普通数组：直接换入
+    which.set([jsx("span", { children: "z" })])
+    await flush()
+    expect(el.textContent).toBe("z")
+  })
+
   it("throws when a promise is rendered outside Suspend", () => {
     const { promise } = Promise.withResolvers<Node>()
     expect(() => jsx("div", { children: promise })).toThrow(/outside <Suspend>/)

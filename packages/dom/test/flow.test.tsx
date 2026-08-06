@@ -94,6 +94,29 @@ describe("Show", () => {
     expect(el.textContent).toBe("yes")
   })
 
+  it("renders fallback when falsy from the very first render", () => {
+    // 回归：此前客户端首次 falsy 渲染为空，而 SSR 输出 fallback —— 语义不一致。
+    // 与 ssrShow / hydrateShow 保持一致：falsy 时渲染 fallback。
+    const el = jsx("div", {
+      children: Show({ when: false, fallback: "none", children: "yes" }),
+    }) as HTMLElement
+    expect(el.textContent).toBe("none")
+  })
+
+  it("renders fallback when the when-signal starts falsy", async () => {
+    const show = createSignal(false)
+    const el = jsx("div", {
+      children: Show({ when: show, fallback: "none", children: "yes" }),
+    }) as HTMLElement
+    expect(el.textContent).toBe("none")
+    show.set(true)
+    await flush()
+    expect(el.textContent).toBe("yes")
+    show.set(false)
+    await flush()
+    expect(el.textContent).toBe("none")
+  })
+
   it("swaps to fallback when the signal flips false", async () => {
     const show = createSignal(true)
     const el = jsx("div", {
