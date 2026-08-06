@@ -2,14 +2,16 @@ import { createWatcher, isSignal } from "./signal"
 import type { WatchableSignal } from "./signal"
 import {
   cleanupWatchers,
+  jsx,
   setProp,
+  Style,
   swapNodes,
   toNodes,
   trackCleanup,
   trackWatcher,
 } from "./jsx-runtime"
 import { isPromiseLike, isTruthy, unwrap } from "./shared"
-import type { AsyncComponent, Component, Props } from "./jsx-runtime"
+import type { AsyncComponent, Component, Props, StyleProps } from "./jsx-runtime"
 
 /**
  * 客户端水合：采纳 SSR 产出的现有 DOM，而不是重建。
@@ -53,11 +55,15 @@ function warn(message: string): void {
 /**
  * 待采纳节点：element 类型取游标 1 个节点后调用 resolve(el)；
  * group 类型（Fragment / 控制流）不取节点，resolve() 自行按标记采纳。
+ * `rebuild` 在客户端模式（水合结束后）重建真实节点——控制流组件（如
+ * Show）的 children/fallback 是水合期急切求值的 PendingNode，信号驱动
+ * 切换分支时无法用游标采纳，必须重建。
  */
 class PendingNode {
   constructor(
     readonly kind: "element" | "group",
     readonly resolve: (el?: Node) => Node[],
+    readonly rebuild?: () => Node,
   ) {}
 }
 
@@ -80,12 +86,22 @@ function hydrateValue(value: unknown): Node[] {
     throw new Error("Promise rendered outside <Suspend> — wrap async components in <Suspend>")
   }
   if (typeof value === "string" || typeof value === "number") {
+    const expected = String(value)
     const node = take()
     if (!node || node.nodeType !== Node.TEXT_NODE) {
       warn("expected text node")
       return []
     }
-    return [node]
+    const text = node as Text
+    const content = text.textContent ?? ""
+    // HTML 解析器合并相邻文本节点：SSR 输出的信号快照（<!---->0）可能已与
+    // 紧随其后的文本（"，doubled = "）合并成一个节点。按期望值前缀拆分，
+    // 多余部分归还游标，保持"一个值 = 一个节点"的水合对齐协议。
+    if (content !== expected && content.startsWith(expected)) {
+      const rest = text.splitText(expected.length)
+      cursor.splice(cursorPos, 0, rest)
+    }
+    return [text]
   }
   if (Array.isArray(value)) {
     const out: Node[] = []
@@ -139,13 +155,21 @@ export function hydrateJsx(
 
   if (tag === "style") {
     // <style>：采纳现有元素（SSR 已输出；不做 constructable sheet 优化）
-    return new PendingNode("element", el => [el!])
+    return new PendingNode(
+      "element",
+      el => [el!],
+      () => Style(p as StyleProps),
+    )
   }
 
-  return new PendingNode("element", el => {
-    hydrateElement(el!, tag, p)
-    return [el!]
-  })
+  return new PendingNode(
+    "element",
+    el => {
+      hydrateElement(el!, tag, p)
+      return [el!]
+    },
+    () => jsx(tag, p),
+  )
 }
 
 export function hydrateFragment(children: unknown): PendingNode {
@@ -202,11 +226,17 @@ export function hydrateShow(props: {
       }
       return props.fallback
     }
+    // 切换分支时无法用游标采纳（水合已结束）：PendingNode 走 rebuild 重建，
+    // 其余值走 toNodes。初次采纳仍用 hydrateValue 对齐 SSR 现有节点。
+    const toBranchNodes = (value: unknown): Node[] => {
+      if (value instanceof PendingNode && value.rebuild) return toNodes(value.rebuild())
+      return toNodes(value)
+    }
     let current = hydrateValue(branch())
     if (isSignal(props.when)) {
       const signal = props.when as WatchableSignal<unknown>
       const render = (): void => {
-        current = swapNodes(marker, current, toNodes(branch()))
+        current = swapNodes(marker, current, toBranchNodes(branch()))
       }
       const watcher = createWatcher(() => {
         queueMicrotask(() => {

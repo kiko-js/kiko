@@ -112,6 +112,52 @@ describe("hydrate", () => {
     dispose()
   })
 
+  it("hydrates a signal interleaved with adjacent text", async () => {
+    // 回归：SSR 输出 `<!---->0` 与紧随文本在 HTML 解析后合并为一个文本节点，
+    // 水合游标按"一个值=一个节点"对齐时错位。需按期望值前缀拆分。
+    const container = document.createElement("div")
+    const count = createSignal(0)
+    const dispose = await ssrThenHydrate(
+      () => jsx("p", { children: ["count = ", count, "，doubled = ", count] }),
+      container,
+    )
+    expect(container.textContent).toBe("count = 0，doubled = 0")
+    count.set(5)
+    await flush()
+    expect(container.textContent).toBe("count = 5，doubled = 5")
+    count.set(0)
+    await flush()
+    expect(container.textContent).toBe("count = 0，doubled = 0")
+    dispose()
+  })
+
+  it("hydrates Show with JSX element branches and swaps them reactively", async () => {
+    // 回归：水合模式下 children/fallback 是急切求值的 PendingNode，切换分支时
+    // 无法用游标采纳——必须 rebuild 为真实 DOM（此前渲染成 "[object Object]"）。
+    const container = document.createElement("div")
+    const on = createSignal(true)
+    const dispose = await ssrThenHydrate(
+      () =>
+        Show({
+          when: on,
+          fallback: jsx("p", { class: "muted", children: "hidden" }),
+          children: jsx("p", { class: "on", children: "visible" }),
+        }),
+      container,
+    )
+    expect(container.textContent).toBe("visible")
+    on.set(false)
+    await flush()
+    expect(container.textContent).toBe("hidden")
+    const fb = container.querySelector("p.muted")!
+    expect(fb.textContent).toBe("hidden")
+    on.set(true)
+    await flush()
+    expect(container.textContent).toBe("visible")
+    expect(container.querySelector("p.on")!.textContent).toBe("visible")
+    dispose()
+  })
+
   it("hydrates For and re-renders on each change", async () => {
     const container = document.createElement("div")
     const list = createSignal(["a", "b"])
