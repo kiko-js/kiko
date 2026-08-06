@@ -1,0 +1,13 @@
+{
+  "name": "ssr",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun run bundler.ts",
+    "dev": "bun run bundler.ts && bun run server.tsx"
+  },
+  "dependencies": {
+    "@kikojs/dom": "workspace:*",
+    "@kikojs/signal": "workspace:*"
+  }
+}
