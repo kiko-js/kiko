@@ -99,7 +99,7 @@ interface KeyEntry<T> {
   nodes: Node[]
   state: Signal.State<T>
   accessor: Signal.Computed<T>
-  idx: number
+  idx: Signal.State<number>
 }
 
 /**
@@ -170,18 +170,18 @@ export function For<T>(props: {
       const existing = entries.get(key)
       if (existing) {
         existing.state.set(item)
-        existing.idx = i
+        existing.idx.set(i)
         entries.delete(key)
         nextEntries.set(key, existing)
         next.push(...existing.nodes)
       } else {
         const state = new Signal.State<T>(item)
         const accessor = new Signal.Computed<T>(() => state.get())
-        const entry: KeyEntry<T> = { nodes: [], state, accessor, idx: i }
+        const entry: KeyEntry<T> = { nodes: [], state, accessor, idx: new Signal.State(i) }
         entry.nodes = toNodes(
           childFn(
             () => accessor.get(),
-            () => entry.idx,
+            () => entry.idx.get(),
           ),
         )
         nextEntries.set(key, entry)

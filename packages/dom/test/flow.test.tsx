@@ -298,4 +298,42 @@ describe("For", () => {
     await sync()
     expect(texts()).toEqual(["A"])
   })
+
+  it("getKey index accessor is signalized: reorders update index bindings", async () => {
+    // 回归：idx 曾是非信号字段，同一对象引用移动位置时（state.set 相等跳过）
+    // 绑定 index 的 computed 不重算，重排后索引显示旧值。
+    const items = [
+      { id: 1, v: "a" },
+      { id: 2, v: "b" },
+    ]
+    const list = createSignal(items)
+    const el = jsx("ul", {
+      children: For({
+        each: list,
+        getKey: item => item.id,
+        children: (item, index) => {
+          const text = new Signal.Computed(() => `${item().v}:${index()}`)
+          const li = document.createElement("li") as HTMLElement
+          li.appendChild(jsx("span", { children: text }) as HTMLElement)
+          return li
+        },
+      }),
+    }) as HTMLElement
+    const texts = () => Array.from(el.querySelectorAll("li span")).map(s => s.textContent)
+    const sync = async (): Promise<void> => {
+      await flush()
+      await flush()
+    }
+    expect(texts()).toEqual(["a:0", "b:1"])
+
+    // 同一引用交换位置：state 相等跳过，但 idx 信号变化必须驱动重算
+    list.set([items[1]!, items[0]!])
+    await sync()
+    expect(texts()).toEqual(["b:0", "a:1"])
+
+    // 再插入：新 key 占 index 0，原 index 0 → 1
+    list.set([{ id: 3, v: "c" }, items[1]!, items[0]!])
+    await sync()
+    expect(texts()).toEqual(["c:0", "b:1", "a:2"])
+  })
 })
