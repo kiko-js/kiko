@@ -8,6 +8,7 @@ import {
   trackCleanup,
   trackWatcher,
 } from "./jsx-runtime"
+import { isPromiseLike, isTruthy, unwrap } from "./shared"
 import type { AsyncComponent, Component, Props } from "./jsx-runtime"
 
 /**
@@ -43,18 +44,6 @@ let cursorPos = 0
 
 function take(): Node | undefined {
   return cursor[cursorPos++]
-}
-
-function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
-  return typeof (value as { then?: unknown } | null)?.then === "function"
-}
-
-function unwrap<T>(value: T | WatchableSignal<T>): T {
-  return isSignal(value) ? (value as WatchableSignal<T>).get() : (value as T)
-}
-
-function isTruthy(cond: unknown): boolean {
-  return cond !== false && cond != null && cond !== "" && cond !== 0
 }
 
 function warn(message: string): void {

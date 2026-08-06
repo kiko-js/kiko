@@ -10,6 +10,8 @@ interface CompiledRoute {
   exactRegex: RegExp
   prefixRegex: RegExp | null
   paramNames: string[]
+  /** 预编译的子路由（matchAll 逐层下钻时无需重新编译） */
+  children: CompiledRoute[]
 }
 
 /** 去除尾部斜杠，保留前导斜杠 */
@@ -59,7 +61,18 @@ function compileRoute(route: RouteRecord): CompiledRoute {
   const exactRegex = new RegExp(`^${pattern}(?:/)?$`, "i")
   const prefixRegex = hasChildren ? new RegExp(`^${pattern}(?:/|$)`, "i") : null
 
-  return { route, exactRegex, prefixRegex, paramNames }
+  return {
+    route,
+    exactRegex,
+    prefixRegex,
+    paramNames,
+    children: compileRoutes(route.children ?? []),
+  }
+}
+
+/** 递归编译整个路由树（顶层与每层 children），创建时一次完成 */
+function compileRoutes(routes: RouteRecord[]): CompiledRoute[] {
+  return routes.map(compileRoute)
 }
 
 function extractParams(item: CompiledRoute, match: RegExpExecArray): RouteParams {
@@ -79,7 +92,7 @@ function extractParams(item: CompiledRoute, match: RegExpExecArray): RouteParams
 
 /** 创建路由匹配器 */
 export function createMatcher(routes: RouteRecord[]): Matcher {
-  const compiled = routes.map(compileRoute)
+  const compiled = compileRoutes(routes)
 
   function match(path: string): RouteMatch | null {
     const normalized = normalizeForMatch(path)
@@ -98,11 +111,10 @@ export function createMatcher(routes: RouteRecord[]): Matcher {
     const normalized = normalizeForMatch(path)
     const matches: RouteMatch[] = []
     let remaining = stripLeadingSlash(normalized)
-    let candidates: RouteRecord[] = routes
+    let candidates: CompiledRoute[] = compiled
 
     while (candidates.length > 0) {
-      const compiledCandidates = candidates.map(compileRoute)
-      const item = compiledCandidates.find(c =>
+      const item = candidates.find(c =>
         c.prefixRegex ? c.prefixRegex.test("/" + remaining) : c.exactRegex.test("/" + remaining),
       )
       if (!item) break
@@ -112,7 +124,7 @@ export function createMatcher(routes: RouteRecord[]): Matcher {
       const consumed = m[0]!.replace(/\/$/, "")
       matches.push({ route: item.route, params, remaining })
       remaining = stripLeadingSlash(remaining.slice(consumed.length - 1))
-      candidates = item.route.children ?? []
+      candidates = item.children
     }
 
     return matches

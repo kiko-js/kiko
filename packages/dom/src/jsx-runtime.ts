@@ -9,6 +9,7 @@ import {
   adoptSheet,
   unadoptSheet,
 } from "./style"
+import { isPromiseLike } from "./shared"
 import { getSSRRuntime } from "./ssr-mode"
 import { hydrateFragment, hydrateJsx, hydrateStyle, isHydrating } from "./hydrate"
 
@@ -110,10 +111,6 @@ export function cleanupWatchers(root: Node): void {
     nodeWatchers.delete(root)
   }
   for (const child of root.childNodes) cleanupWatchers(child)
-}
-
-function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
-  return typeof (value as { then?: unknown } | null)?.then === "function"
 }
 
 export function toNodes(value: unknown): Node[] {

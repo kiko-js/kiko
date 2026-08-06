@@ -1,9 +1,5 @@
-import { Signal } from "signal-polyfill"
 import type { EffectCleanup, EffectFn } from "./effect"
-
-// Bracket access — see scheduler.ts for why `Signal.subtle.untracked` is not
-// safe as a bare identifier in some bundler/test contexts.
-const subtleUntrack: <U>(cb: () => U) => U = Signal.subtle["untrack"]
+import { untrack } from "./scheduler"
 
 /**
  * Explicit-dependency helper for `effect()`.
@@ -48,7 +44,7 @@ export function on<T>(
       return undefined
     }
 
-    const result = subtleUntrack(() => fn(prev)) as void | EffectCleanup
+    const result = untrack(() => fn(prev)) as void | EffectCleanup
     prev = input
     first = false
     return result

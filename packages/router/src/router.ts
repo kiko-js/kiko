@@ -77,10 +77,11 @@ export function createRouter(options: RouterOptions): Router {
   const routes = options.routes
   const matcher = createMatcher(routes)
 
-  const globalBefore: RouteGuard[] = Array.isArray(options.beforeEach)
-    ? options.beforeEach
-    : options.beforeEach
-      ? [options.beforeEach]
+  const beforeEachOpt = options.beforeEach
+  const globalBefore: RouteGuard[] = Array.isArray(beforeEachOpt)
+    ? beforeEachOpt
+    : beforeEachOpt
+      ? [beforeEachOpt]
       : []
   const globalAfter: ((to: RouteLocation, from: RouteLocation | null) => void)[] =
     options.afterEach ?? []
@@ -147,12 +148,7 @@ export function createRouter(options: RouterOptions): Router {
 
   const MAX_REDIRECT_DEPTH = 10
 
-  async function commit(
-    path: string,
-    opts: NavigateOptions,
-    shouldReplace?: boolean,
-    redirectDepth = 0,
-  ): Promise<void> {
+  async function commit(path: string, opts: NavigateOptions, redirectDepth = 0): Promise<void> {
     if (redirectDepth > MAX_REDIRECT_DEPTH) {
       throw new Error(`Too many redirects when navigating to ${path}`)
     }
@@ -168,14 +164,13 @@ export function createRouter(options: RouterOptions): Router {
       // 重定向时递归处理，避免无限循环由调用方控制
       await commit(
         guardOutcome.path,
-        { state: guardOutcome.state },
-        guardOutcome.replace ?? true,
+        { state: guardOutcome.state, replace: guardOutcome.replace ?? true },
         redirectDepth + 1,
       )
       return
     }
 
-    if (shouldReplace) {
+    if (opts.replace) {
       history.replace(path, state)
     } else {
       history.push(path, state)
@@ -191,8 +186,7 @@ export function createRouter(options: RouterOptions): Router {
       history.go(to)
       return
     }
-    const shouldReplace = opts.replace ?? false
-    commit(to, opts, shouldReplace).catch(err => {
+    commit(to, opts).catch(err => {
       reportError(err)
     })
   }

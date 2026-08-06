@@ -9,6 +9,7 @@ import {
   trackCleanup,
   trackWatcher,
 } from "./jsx-runtime"
+import { isPromiseLike, isTruthy, unwrap } from "./shared"
 import { getSSRRuntime } from "./ssr-mode"
 import {
   hydrateErrorBoundary,
@@ -30,14 +31,6 @@ import {
  */
 
 type MaybeSignal<T> = T | WatchableSignal<T>
-
-function unwrap<T>(value: MaybeSignal<T>): T {
-  return isSignal(value) ? (value as WatchableSignal<T>).get() : (value as T)
-}
-
-function isTruthy(cond: unknown): boolean {
-  return cond !== false && cond != null && cond !== "" && cond !== 0
-}
 
 /**
  * Conditionally render `children` when `when` is truthy, else `fallback`.
@@ -388,10 +381,6 @@ export function ErrorBoundary(props: {
   })
 
   return frag
-}
-
-function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
-  return typeof (value as { then?: unknown } | null)?.then === "function"
 }
 
 /**

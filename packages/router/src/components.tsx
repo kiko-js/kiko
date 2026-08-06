@@ -82,7 +82,7 @@ export function Link(props: LinkProps): Node {
 
   if (activeClass) {
     const el = anchor as HTMLElement
-    effect(() => {
+    const stop = effect(() => {
       const router = getActiveRouter()
       if (!router) return
       const loc = router.location.get()
@@ -97,6 +97,8 @@ export function Link(props: LinkProps): Node {
         }
       }
     })
+    // effect 的 watcher 不挂在 anchor 上，不 track 会在 Router 卸载后泄漏
+    trackCleanup(anchor, stop)
   }
 
   if (children) {

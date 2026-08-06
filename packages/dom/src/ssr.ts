@@ -1,6 +1,7 @@
 import { isSignal } from "./signal"
 import type { WatchableSignal } from "./signal"
 import { createScopeAttr, rewriteScopedCss } from "./style"
+import { isPromiseLike, isTruthy, unwrap } from "./shared"
 import type { SSRRuntime } from "./ssr-mode"
 import type { AsyncComponent, Component, Props, StyleProps } from "./jsx-runtime"
 
@@ -30,10 +31,6 @@ class SSRElement {
 
 /** SSR 渲染值：文本（转义）或已序列化标记（透出），可含 promise */
 export type SSRValue = SSRElement | string | Promise<SSRElement | string>
-
-function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
-  return typeof (value as { then?: unknown } | null)?.then === "function"
-}
 
 function escapeText(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
@@ -223,14 +220,6 @@ export function ssrJsx(
 
 // ---------------------------------------------------------------------------
 // 控制流组件（与 flow.ts 客户端路径共享同一 props 语义）
-
-function unwrap<T>(value: T | WatchableSignal<T>): T {
-  return isSignal(value) ? (value as WatchableSignal<T>).get() : (value as T)
-}
-
-function isTruthy(cond: unknown): boolean {
-  return cond !== false && cond != null && cond !== "" && cond !== 0
-}
 
 export function ssrShow(props: {
   when: unknown
