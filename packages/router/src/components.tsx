@@ -1,5 +1,5 @@
 /** @jsxImportSource @kikojs/dom */
-import { computed, effect } from "@kikojs/signal"
+import { effect } from "@kikojs/signal"
 import { jsx } from "@kikojs/dom"
 import { cleanupWatchers, swapNodes, toNodes, trackCleanup } from "@kikojs/dom/jsx-runtime"
 import { getActiveRouter, setActiveRouter } from "./context"
@@ -59,7 +59,6 @@ interface LinkProps {
 }
 
 export function Link(props: LinkProps): Node {
-  const router = getActiveRouter()
   const { to, replace, state, activeClass, exact, children, ...rest } = props
 
   const anchor = jsx("a", {
@@ -70,6 +69,9 @@ export function Link(props: LinkProps): Node {
       const target = (e.currentTarget as HTMLAnchorElement).getAttribute("target")
       if (target && target !== "_self") return
       e.preventDefault()
+      // JSX children 先于父组件求值：Link 创建时 Router 尚未 setActiveRouter，
+      // 因此点击时惰性解析——模块槽位在 Router 挂载后保持有效。
+      const router = getActiveRouter()
       if (router) {
         router.navigate(to, { replace, state })
       } else {
@@ -78,15 +80,14 @@ export function Link(props: LinkProps): Node {
     },
   })
 
-  if (router && activeClass) {
+  if (activeClass) {
     const el = anchor as HTMLElement
-    const current = computed(() => {
+    effect(() => {
+      const router = getActiveRouter()
+      if (!router) return
       const loc = router.location.get()
       const match = exact ? loc.path === to : loc.path.startsWith(to)
-      return match ? activeClass : ""
-    })
-    effect(() => {
-      const cls = current.get()
+      const cls = match ? activeClass : ""
       if (cls) {
         el.classList.add(cls)
       } else {

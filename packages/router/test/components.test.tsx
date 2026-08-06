@@ -60,6 +60,19 @@ describe("Router components", () => {
     expect(link.getAttribute("href")).toBe("https://example.com")
   })
 
+  it("Link nested in Router via JSX resolves router lazily", async () => {
+    const router = createRouter({ mode: "path", routes: createRoutes() })
+    // JSX 求值顺序：children（Link）先于 Router 执行，Link 创建时拿不到 router，
+    // 必须在点击时惰性解析。
+    const tree = Router({ router, children: Link({ to: "/about", children: "go" }) })
+    const link = (tree as DocumentFragment).firstChild as HTMLAnchorElement
+    link.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }))
+    await flushMicrotasks()
+    // 修复前 Link 捕获到 null router，点击走整页导航（router.location 停留在 /）
+    expect(router.location.get().path).toBe("/about")
+    router.dispose()
+  })
+
   it("Navigate triggers navigation", async () => {
     const router = createRouter({ mode: "path", routes: createRoutes() })
     Router({ router })
