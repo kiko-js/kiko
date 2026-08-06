@@ -10,6 +10,13 @@ import {
   trackWatcher,
 } from "./jsx-runtime"
 import { getSSRRuntime } from "./ssr-mode"
+import {
+  hydrateErrorBoundary,
+  hydrateFor,
+  hydrateShow,
+  hydrateSuspend,
+  isHydrating,
+} from "./hydrate"
 
 /**
  * Structural-reactivity helpers: `Show` and `For` are optional control-flow
@@ -46,6 +53,11 @@ export function Show<T>(props: {
   fallback?: unknown
   children: unknown | ((item: T) => unknown)
 }): DocumentFragment {
+  if (isHydrating()) {
+    return hydrateShow(
+      props as unknown as Parameters<typeof hydrateShow>[0],
+    ) as unknown as DocumentFragment
+  }
   const ssr = getSSRRuntime()
   if (ssr) return ssr.show(props as Record<string, unknown>) as unknown as DocumentFragment
   const frag = document.createDocumentFragment()
@@ -131,6 +143,11 @@ export function For<T>(props: {
   getKey?: (item: T, index: number) => unknown
   children: (item: T | (() => T), index: () => number) => unknown
 }): DocumentFragment {
+  if (isHydrating()) {
+    return hydrateFor(
+      props as unknown as Parameters<typeof hydrateFor>[0],
+    ) as unknown as DocumentFragment
+  }
   const ssr = getSSRRuntime()
   if (ssr) return ssr.for(props as Record<string, unknown>) as unknown as DocumentFragment
   const frag = document.createDocumentFragment()
@@ -274,6 +291,11 @@ export function ErrorBoundary(props: {
   errorSignal?: Signal.State<unknown>
   children: () => unknown
 }): DocumentFragment {
+  if (isHydrating()) {
+    return hydrateErrorBoundary(
+      props as unknown as Parameters<typeof hydrateErrorBoundary>[0],
+    ) as unknown as DocumentFragment
+  }
   const ssr = getSSRRuntime()
   if (ssr) return ssr.errorBoundary(props as Record<string, unknown>) as unknown as DocumentFragment
   const frag = document.createDocumentFragment()
@@ -394,6 +416,11 @@ function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
  * the error is reported via `reportError` and `fallback` stays on screen.
  */
 export function Suspend(props: { fallback?: unknown; children: unknown }): DocumentFragment {
+  if (isHydrating()) {
+    return hydrateSuspend(
+      props as unknown as Parameters<typeof hydrateSuspend>[0],
+    ) as unknown as DocumentFragment
+  }
   const ssr = getSSRRuntime()
   if (ssr) return ssr.suspend(props as Record<string, unknown>) as unknown as DocumentFragment
   const frag = document.createDocumentFragment()

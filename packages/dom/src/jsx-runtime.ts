@@ -10,6 +10,7 @@ import {
   unadoptSheet,
 } from "./style"
 import { getSSRRuntime } from "./ssr-mode"
+import { hydrateFragment, hydrateJsx, hydrateStyle, isHydrating } from "./hydrate"
 
 export type Props = Record<string, unknown> & { children?: unknown }
 export type Component<P = Props> = (props: P) => Node
@@ -365,7 +366,7 @@ function setRef(el: StyledElement, value: unknown): void {
   }
 }
 
-function setProp(el: StyledElement, key: string, value: unknown): void {
+export function setProp(el: StyledElement, key: string, value: unknown): void {
   if (key === "children" || key === "key") return
 
   if (key === "ref") {
@@ -444,6 +445,11 @@ export function jsx(
 ): Node | Promise<Node> {
   const p = props ?? ({} as Props)
 
+  if (isHydrating()) {
+    // 水合模式下返回 PendingNode（惰性采纳），类型签名保持客户端语义
+    return hydrateJsx(tag, p) as unknown as Node | Promise<Node>
+  }
+
   const ssr = getSSRRuntime()
   if (ssr) {
     // SSR 模式下实际返回 string | Promise<string>，类型签名保持客户端语义
@@ -469,6 +475,7 @@ export function jsx(
 }
 
 export function Fragment(props: Props): DocumentFragment {
+  if (isHydrating()) return hydrateFragment(props.children) as unknown as DocumentFragment
   const ssr = getSSRRuntime()
   if (ssr) return ssr.fragment(props.children) as unknown as DocumentFragment
   const frag = document.createDocumentFragment()
@@ -541,6 +548,7 @@ function collectCssSignals(children: unknown): WatchableSignal<unknown>[] {
  * is disposed via `cleanupWatchers`.
  */
 export function Style(props: StyleProps): Node {
+  if (isHydrating()) return hydrateStyle() as unknown as Node
   const ssr = getSSRRuntime()
   if (ssr) return ssr.style(props as unknown as Record<string, unknown>) as unknown as Node
   const scoped = !props.global

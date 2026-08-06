@@ -12,6 +12,7 @@ export {
   type StyleProps,
 } from "./jsx-runtime"
 export { render } from "./render"
+export { hydrate } from "./hydrate"
 export { createPortal } from "./portal"
 export { Show, For, ErrorBoundary, Suspend } from "./flow"
 export { lazy } from "./lazy"

@@ -64,7 +64,7 @@
             </ul>
           </li>
           <li><a href="#style">Style — scoped css</a></li>
-          <li><a href="#ssr">SSR — 服务端渲染</a></li>
+          <li><a href="#ssr">SSR / hydrate</a></li>
           <li><a href="#htm">结合 htm（无构建 JSX）</a></li>
           <li><a href="#react">ReactPortal</a></li>
           <li><a href="#signals">Signal 封装</a></li>
@@ -546,12 +546,39 @@
               <code>ReactPortal</code> 在 SSR 模式下不可用。
             </li>
             <li>
-              <strong>并发安全：</strong>SSR 模式用深度计数器而非布尔值，多个并发渲染的 await
-              间隙不会互相踢出模式。
+              <strong>并发安全：</strong>SSR 运行时在服务端 bundle 中永久生效、无开关翻转，
+              多个并发渲染天然互不干扰。
             </li>
           </ul>
           <div class="code-block">
             <pre><code class="language-tsx" data-src="./assets/snippets/dom-ssr.tsx"></code></pre>
+          </div>
+
+          <h3 id="hydrate">hydrate — 客户端水合</h3>
+          <p>
+            <code>hydrate(root, container): () =&gt; void</code> 采纳 SSR 产出的现有 DOM： 组件树按
+            SSR 输出的注释标记（<code>&lt;!----&gt;</code>、
+            <code>&lt;!--show--&gt;</code> 等）逐节点对齐，挂上事件监听与信号绑定， 不重建
+            DOM。假设客户端初始状态与 SSR 一致（信号快照、分支选择、列表内容）。 返回
+            <code>dispose()</code> 用于卸载与清理。
+          </p>
+          <ul style="color: var(--muted); margin-bottom: 22px">
+            <li>
+              <strong>信号 / Show / For：</strong>采纳现有内容后照常挂 watcher，后续更新 走 marker
+              交换，与客户端渲染一致。
+            </li>
+            <li>
+              <strong>Suspend / lazy：</strong>模块内容在客户端构建后整体换入，内部绑定随之
+              生效；未加载完前保留 SSR 内容（无闪烁）。
+            </li>
+            <li>
+              <strong>Style：</strong>保留 SSR 输出的 <code>&lt;style&gt;</code> 元素与 祖先上的
+              scope 属性，不做 constructable sheet 优化。
+            </li>
+            <li><strong>错位容忍：</strong>标签不匹配 / 节点不足时告警并尽力对齐， 不中断水合。</li>
+          </ul>
+          <div class="code-block">
+            <pre><code class="language-tsx" data-src="./assets/snippets/dom-hydrate.tsx"></code></pre>
           </div>
         </section>
 
