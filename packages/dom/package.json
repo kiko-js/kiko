@@ -1,6 +1,9 @@
 {
   "name": "@kikojs/dom",
-  "version": "0.1.0",
+  "version": "0.0.1",
+  "files": [
+    "src"
+  ],
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
@@ -9,9 +12,13 @@
     "./jsx-dev-runtime": "./src/jsx-runtime.ts",
     "./react-portal": "./src/react-portal.ts"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "bun build src/index.ts --outdir dist --target browser --format esm --external react --external react-dom --external signal-polyfill",
-    "demo": "bun run examples/demo.tsx"
+    "demo": "bun run examples/demo.tsx",
+    "prepublishOnly": "bun test"
   },
   "dependencies": {
     "signal-polyfill": "^0.2.0"

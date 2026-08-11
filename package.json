@@ -11,6 +11,9 @@
     "lint": "oxlint .",
     "fmt": "oxfmt --write .",
     "fmt:check": "oxfmt --check .",
+    "typecheck": "tsc --noEmit -p packages/signal/tsconfig.json && tsc --noEmit -p packages/dom/tsconfig.json && tsc --noEmit -p packages/router/tsconfig.json && tsc --noEmit -p examples/basic/tsconfig.json && tsc --noEmit -p examples/ssr/tsconfig.json && tsc --noEmit -p examples/htm/tsconfig.json && tsc --noEmit -p examples/react-portal/tsconfig.json && tsc --noEmit -p examples/tailwind/tsconfig.json",
+    "test": "bun test",
+    "build": "bun run --cwd packages/signal build && bun run --cwd packages/dom build && bun run --cwd packages/router build",
     "site:build": "bun run docs/build.ts"
   },
   "devDependencies": {

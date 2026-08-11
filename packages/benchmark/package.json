@@ -1,6 +1,7 @@
 {
   "name": "@kikojs/benchmark",
   "version": "0.1.0",
+  "private": true,
   "type": "module",
   "scripts": {
     "bench": "bun run store-vs-immer.bench.ts"

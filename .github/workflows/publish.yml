@@ -1,0 +1,86 @@
+name: Publish to npm
+
+# Release flow: push a tag matching the package versions (e.g. `v0.0.1`),
+# and @kikojs/signal, @kikojs/dom, @kikojs/router are published to npm
+# (in dependency order) after the full quality gate passes.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # npm provenance attestations
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.x
+          cache: true
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Lint
+        run: bun run lint
+
+      - name: Format check
+        run: bun run fmt:check
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Test
+        run: bun test
+
+      - name: Build
+        run: bun run build
+
+      - name: Authenticate with npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > .npmrc
+
+      # npm does NOT rewrite the `workspace:` protocol at publish time (it
+      # lands in the tarball verbatim and breaks consumers), so resolve the
+      # inter-package deps to the tag version here. Also guards that the tag
+      # matches every published package version.
+      - name: Resolve workspace deps for publish
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          VERSION="${VERSION#v}"
+          node -e "
+            const fs = require('fs');
+            for (const name of ['packages/signal/package.json', 'packages/dom/package.json', 'packages/router/package.json']) {
+              const j = JSON.parse(fs.readFileSync(name, 'utf8'));
+              if (j.version !== process.env.VERSION) {
+                console.error(name + ' version ' + j.version + ' does not match tag v' + process.env.VERSION);
+                process.exit(1);
+              }
+            }
+            const j = JSON.parse(fs.readFileSync('packages/router/package.json', 'utf8'));
+            j.dependencies['@kikojs/signal'] = process.env.VERSION;
+            j.dependencies['@kikojs/dom'] = process.env.VERSION;
+            fs.writeFileSync('packages/router/package.json', JSON.stringify(j, null, 2) + '\n');
+            console.log('workspace deps rewritten to ' + process.env.VERSION);
+          "
+
+      # Order matters: @kikojs/router depends on the other two.
+      - name: Publish packages
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --workspace @kikojs/signal --workspace @kikojs/dom --workspace @kikojs/router --provenance

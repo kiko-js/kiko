@@ -2,6 +2,8 @@
 
 A fine-grained reactive DOM library built on [signal-polyfill](https://github.com/nicolo-ribaudo/signal-polyfill) (the polyfill for the TC39 Signals proposal). JSX compiles directly to real DOM nodes, component functions run exactly once, and a signal change updates only the node that read it.
 
+> **Project status**: kiko is in **early development** (`v0.0.1`). The public API is not yet stable and breaking changes may land at any time. Pin your dependency to an exact version and review upgrades carefully.
+
 > 中文版本：[README.md](./README.md)
 
 ## Features

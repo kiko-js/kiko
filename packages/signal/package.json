@@ -1,13 +1,20 @@
 {
   "name": "@kikojs/signal",
-  "version": "0.1.0",
+  "version": "0.0.1",
+  "files": [
+    "src"
+  ],
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "bun build src/index.ts --outdir dist --target browser --format esm --external signal-polyfill",
-    "test": "bun test"
+    "test": "bun test",
+    "prepublishOnly": "bun test"
   },
   "dependencies": {
     "signal-polyfill": "^0.2.0"

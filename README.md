@@ -2,6 +2,8 @@
 
 一个基于 [signal-polyfill](https://github.com/nicolo-ribaudo/signal-polyfill)（TC39 Signals 提案的 polyfill）构建的细粒度响应式 DOM 库。JSX 直接编译为真实 DOM 节点，组件函数只执行一次；信号变化只更新被读取到的那个节点。
 
+> **项目状态**：kiko 目前处于**早期开发阶段**（`v0.0.1`），公共 API 尚未稳定，随时可能出现破坏性变更（breaking changes）。请将依赖锁定到具体版本，并在升级时留意变更说明。
+
 > English version: [README.en.md](./README.en.md)
 
 ## 特性
