@@ -69,11 +69,14 @@ The site source lives in `docs/` (static HTML, with `signal.html` / `dom.html` /
 
 ```bash
 bun install          # install deps (workspaces: packages/*, examples/*, docs)
-bun test             # run all tests
+bun run build        # build the three packages into dist/ (JS + .d.ts)
+bun run test         # run all tests (auto-builds first)
 bun run lint         # oxlint
 bun run fmt          # format with oxfmt
-bun run site:build   # build the docs site (docs/build.ts)
+bun run site:build   # build the docs site (auto-builds first)
 ```
+
+> Package entry points point at the `dist/` build output when published, so tests, examples and the docs site need a build first (`bun run test` / `bun run site:build` do this automatically via their `pre*` hooks).
 
 ## License
 

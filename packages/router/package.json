@@ -2,19 +2,23 @@
   "name": "@kikojs/router",
   "version": "0.0.1",
   "files": [
-    "src"
+    "dist"
   ],
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
   },
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
-    "build": "bun build src/index.ts --outdir dist --target browser --format esm --external @kikojs/signal --external @kikojs/dom --external signal-polyfill",
+    "build": "bun build.ts",
     "test": "bun test",
-    "prepublishOnly": "bun test"
+    "prepublishOnly": "bun run build && bun test",
+    "prepack": "bun run build"
   },
   "dependencies": {
     "@kikojs/dom": "workspace:*",

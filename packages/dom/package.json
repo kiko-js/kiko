@@ -2,23 +2,39 @@
   "name": "@kikojs/dom",
   "version": "0.0.1",
   "files": [
-    "src"
+    "dist"
   ],
   "type": "module",
   "exports": {
-    ".": "./src/index.ts",
-    "./server": "./src/server.ts",
-    "./jsx-runtime": "./src/jsx-runtime.ts",
-    "./jsx-dev-runtime": "./src/jsx-runtime.ts",
-    "./react-portal": "./src/react-portal.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "default": "./dist/server.js"
+    },
+    "./jsx-runtime": {
+      "types": "./dist/jsx-runtime.d.ts",
+      "default": "./dist/jsx-runtime.js"
+    },
+    "./jsx-dev-runtime": {
+      "types": "./dist/jsx-runtime.d.ts",
+      "default": "./dist/jsx-runtime.js"
+    },
+    "./react-portal": {
+      "types": "./dist/react-portal.d.ts",
+      "default": "./dist/react-portal.js"
+    }
   },
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
-    "build": "bun build src/index.ts --outdir dist --target browser --format esm --external react --external react-dom --external signal-polyfill",
+    "build": "bun build.ts",
     "demo": "bun run examples/demo.tsx",
-    "prepublishOnly": "bun test"
+    "prepublishOnly": "bun run build && bun test",
+    "prepack": "bun run build"
   },
   "dependencies": {
     "signal-polyfill": "^0.2.0"

@@ -5,13 +5,13 @@
  *   bun run docs/build.ts
  */
 
-import { mkdir } from "node:fs/promises"
+import { cp, mkdir, rm } from "node:fs/promises"
 
 const dist = "dist"
 const docs = "docs"
 
 // Clean and recreate output directory
-await Bun.$`rm -rf ${dist}`
+await rm(dist, { recursive: true, force: true })
 await mkdir(dist, { recursive: true })
 
 // Build HTML entrypoints — Bun resolves script/link tags, bundles TS/JS/CSS
@@ -42,5 +42,5 @@ for (const output of result.outputs) {
 
 // Copy runtime assets not picked up by the bundler (loaded via fetch())
 await mkdir(`${dist}/assets/snippets`, { recursive: true })
-await Bun.$`cp -r ${docs}/assets/snippets/. ${dist}/assets/snippets/`
+await cp(`${docs}/assets/snippets`, `${dist}/assets/snippets`, { recursive: true })
 console.log("==> Site build complete")

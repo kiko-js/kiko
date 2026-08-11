@@ -69,11 +69,14 @@ const dispose = render(<App />, document.getElementById("app")!)
 
 ```bash
 bun install          # 安装依赖（workspaces：packages/*、examples/*、docs）
-bun test             # 全量测试
+bun run build        # 构建三个包到 dist/（JS + .d.ts 声明）
+bun run test         # 全量测试（会先自动构建）
 bun run lint         # oxlint
 bun run fmt          # oxfmt 格式化
-bun run site:build   # 构建文档站（docs/build.ts）
+bun run site:build   # 构建文档站（会先自动构建）
 ```
+
+> 包的入口在发布时指向 `dist/` 打包产物，因此运行测试、示例或文档站前需要先构建（`bun run test` / `bun run site:build` 已通过 pre 钩子自动完成）。
 
 ## 许可证
 
