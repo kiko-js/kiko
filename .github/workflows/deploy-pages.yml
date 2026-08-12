@@ -33,8 +33,11 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      # `site:build` triggers `presite:build` (bun run build), which produces
+      # the dist/ bundles the docs site imports (packages resolve each other
+      # through their dist/ entry points).
       - name: Build site
-        run: bun run docs/build.ts
+        run: bun run site:build
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
