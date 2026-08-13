@@ -2,48 +2,71 @@
 
 ## Project Overview
 
-**kiko** is a reactive DOM library built on [signal-polyfill](https://github.com/nicolo-ribaudo/signal-polyfill) (the TC39 Signals proposal polyfill) for fine-grained reactivity. It provides a custom JSX runtime that compiles to real DOM nodes (no virtual DOM, no reconciliation). Optional control-flow components (`Show`, `For`) and a React portal bridge sit on top of the same standard signal primitives.
+**kiko** is a reactive DOM library built on [signal-polyfill](https://github.com/nicolo-ribaudo/signal-polyfill) (the TC39 Signals proposal polyfill) for fine-grained reactivity. It provides a custom JSX runtime that compiles to real DOM nodes (no virtual DOM, no reconciliation). Control-flow components (`Show`, `For`, `Suspend`, `ErrorBoundary`), SSR + hydration, and a React portal bridge sit on top of the same standard signal primitives.
 
-The monorepo contains two packages, both depending on `signal-polyfill` directly:
+The monorepo contains three packages plus a benchmark, all built on `signal-polyfill` directly:
 
-- `@kikojs/signal` — signal primitives, computed/derived signals, effects with cleanup scope + error isolation, a batched scheduler, `untrack`, an `on` dep helper, and a typed event emitter
-- `@kikojs/dom` — DOM library: JSX factory, render/mount, structural-reactive children, `Show`/`For` control flow, JSX type surface, and a React portal bridge
+- `@kikojs/signal` — signal primitives, computed/derived signals, effects with cleanup scope + error isolation, a batched scheduler, `untrack`, an `on` dep helper, `createStore` (proxy-based fine-grained state), `createResource` (async data), and a typed event emitter
+- `@kikojs/dom` — DOM library: JSX factory, render/mount, client hydration, SSR (`@kikojs/dom/server`), structural-reactive children, `Show`/`For`/`Suspend`/`ErrorBoundary` control flow, scoped `Style`, `lazy` code-splitting, a portal helper, a React portal bridge, and the JSX type surface
+- `@kikojs/router` — declarative router on top of `@kikojs/dom`: path/hash modes, nested routes, guards, `Link`/`Outlet` primitives, route hooks
+- `packages/benchmark` (`@kikojs/benchmark`) — `store` vs `immer` benchmark
 
-`@kikojs/dom` does **not** depend on `@kikojs/signal`; it re-implements the thin signal wrappers it needs over `signal-polyfill` so the DOM package stays self-contained. `@kikojs/signal` is the richer signal toolkit for application code.
+`@kikojs/dom` does **not** depend on `@kikojs/signal`; it re-implements the thin signal wrappers it needs over `signal-polyfill` so the DOM package stays self-contained. `@kikojs/router` depends on both `@kikojs/dom` and `@kikojs/signal`. `@kikojs/signal` is the richer signal toolkit for application code.
 
 ### Signal-standard compatibility
 
-`createSignal<T>(initial)` returns a plain `Signal.State<T>`; `computed`/`derived` return `Signal.Computed<T>`. No brand symbols, no custom accessor objects — everything is the standard TC39 Signals interface, so any library that consumes `Signal.State`/`Signal.Computed` works unchanged. The extra helpers (`batch`, `untrack`, `on`, `onCleanup`, `Show`, `For`) are purely additive and never alter how signals behave.
+`createSignal<T>(initial)` returns a plain `Signal.State<T>`; `computed`/`derived` return `Signal.Computed<T>`. No brand symbols, no custom accessor objects — everything is the standard TC39 Signals interface, so any library that consumes `Signal.State`/`Signal.Computed` works unchanged. The extra helpers (`batch`, `untrack`, `on`, `onCleanup`, `createStore`, `Show`, `For`, …) are purely additive and never alter how signals behave.
 
 ## Architecture & Data Flow
 
 ### Core Modules
 
-**`packages/@kikojs/signal/src/`**
+**`packages/signal/src/`**
 
-| Module         | Purpose                                                                                         |
-| -------------- | ----------------------------------------------------------------------------------------------- |
-| `signal.ts`    | `createSignal<T>()` returns `Signal.State<T>`; `isSignal()` type-guards `State`/`Computed`      |
-| `computed.ts`  | `computed<T>(fn)` / `derived<T>(fn)` return `Signal.Computed<T>`; `toSignalValue`, `watchValue` |
-| `effect.ts`    | `effect(fn)` — re-runs on dependency change; batched, error-isolated, integrates cleanup scope  |
-| `scope.ts`     | `onCleanup(fn)` + internal `runInScope`/`flushScope` for per-effect cleanups                    |
-| `scheduler.ts` | `batch(fn)` (deferred flush), `untrack(fn)`, shared `scheduleEffect` dedup                      |
-| `on.ts`        | `on(deps, fn, { defer? })` — explicit-dependency effect helper (SolidJS-style)                  |
-| `emit.ts`      | `createEmitter<Events>()` / `Emitter` — typed event pipeline                                    |
-| `index.ts`     | Barrel exports, plus `createWatcher()` wrapper around `Signal.subtle.Watcher`                   |
+| Module         | Purpose                                                                                                                                                                                                         |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `signal.ts`    | `createSignal<T>()` returns `Signal.State<T>`; `isSignal()` type-guards `State`/`Computed`                                                                                                                      |
+| `computed.ts`  | `computed<T>(fn)` / `derived<T>(fn)` return `Signal.Computed<T>`; `toSignalValue`, `watchValue`                                                                                                                 |
+| `effect.ts`    | `effect(fn)` — re-runs on dependency change; batched, error-isolated, integrates cleanup scope                                                                                                                  |
+| `scope.ts`     | `onCleanup(fn)` + internal `runInScope`/`flushScope` for per-effect cleanups                                                                                                                                    |
+| `scheduler.ts` | `batch(fn)` (deferred flush), `untrack(fn)`, shared `scheduleEffect` dedup, `MAX_FLUSH_DEPTH` guard                                                                                                             |
+| `on.ts`        | `on(deps, fn, { defer? })` — explicit-dependency effect helper (SolidJS-style)                                                                                                                                  |
+| `store.ts`     | `createStore` — limu-inspired proxy store: every property is a `StoreSignal<T> extends Signal.State<T>`; eager wrapping at create/set time; `ref` / `isRef` / `REF`; versioned wrappers; circular-ref detection |
+| `resource.ts`  | `createResource` — async data loading with watch/cancel semantics                                                                                                                                               |
+| `emit.ts`      | `createEmitter<Events>()` / `Emitter` — typed event pipeline                                                                                                                                                    |
+| `index.ts`     | Barrel exports, plus `createWatcher()` wrapper around `Signal.subtle.Watcher`                                                                                                                                   |
 
-**`packages/@kikojs/dom/src/`**
+**`packages/dom/src/`**
 
-| Module            | Purpose                                                                                                                                 |
-| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `signal.ts`       | Thin wrappers over `signal-polyfill` (`createSignal`, `isSignal`, `createWatcher`) — re-implemented, not imported from `@kikojs/signal` |
-| `jsx-runtime.ts`  | JSX factory: `jsx()`, `jsxs()`, `jsxDEV()`, `Fragment`; signal child/prop binding; marker-based structural swap; `cleanupWatchers`      |
-| `jsx-types.ts`    | `JSX` namespace (`IntrinsicElements` for HTML+SVG, `Element`, etc.) and generic `Component<P>` — pure types                             |
-| `flow.ts`         | `Show` / `For` control-flow components (optional; built on signals + markers)                                                           |
-| `render.ts`       | `render(root, container)` — mounts a JSX tree, returns `dispose()` for cleanup                                                          |
-| `htm.ts`          | `dom` / `htm` — htm tagged-template runtime (runtime JSX compiler → same `jsx` factory; buildless)                                      |
-| `react-portal.ts` | `ReactPortal(component, props)` — bridges React components into kiko trees                                                              |
-| `index.ts`        | Barrel re-exports                                                                                                                       |
+| Module                 | Purpose                                                                                                                                                          |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `signal.ts`            | Thin wrappers over `signal-polyfill` (`createSignal`, `isSignal`, `createWatcher`) — re-implemented, not imported from `@kikojs/signal`                          |
+| `jsx-runtime.ts`       | JSX factory: `jsx()`, `jsxs()`, `jsxDEV()`, `Fragment`, `Style`; signal child/prop binding; marker-based structural swap; `cleanupWatchers`                      |
+| `jsx-types.ts`         | `JSX` namespace (`IntrinsicElements` for HTML+SVG, `Element`, etc.) and generic `Component<P>` — pure types                                                      |
+| `flow.ts`              | `Show` / `For` / `Suspend` / `ErrorBoundary` control-flow components (optional; built on signals + markers)                                                      |
+| `render.ts`            | `render(root, container)` — mounts a JSX tree, returns `dispose()` for cleanup                                                                                   |
+| `hydrate.ts`           | `hydrate(root, container)` — client-side hydration of SSR output via `PendingNode` lazy alignment                                                                |
+| `ssr.ts` / `server.ts` | `renderToFragment` / `renderToDocument` — server-side string rendering; `server.ts` is the `@kikojs/dom/server` entry that registers the runtime bridge          |
+| `ssr-mode.ts`          | ~30-byte runtime bridge (`SSRRuntime` interface, `set/getSSRRuntime`) so client jsx/flow never import SSR code                                                   |
+| `lazy.ts`              | `lazy(loader)` — code-splitting: async component with placeholder/suspense handling                                                                              |
+| `style.ts`             | Scoped-css engine backing `<Style>`: scope-attribute generation, selector rewriting (`&`, `:deep`, `:global`), constructable stylesheets with `<style>` fallback |
+| `portal.ts`            | `createPortal(node, target)` — render a subtree into another DOM node                                                                                            |
+| `react-portal.ts`      | `ReactPortal(component, props)` — bridges React components into kiko trees (separate export)                                                                     |
+| `index.ts`             | Barrel re-exports                                                                                                                                                |
+
+**`packages/router/src/`**
+
+| Module                    | Purpose                                                                                                                        |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `router.ts`               | `createRouter(options)` (path/hash modes), `getRouteProps` — core routing state machine + matcher integration                  |
+| `components.tsx`          | `Router`, `Route`, `Link`, `Outlet`, `Navigate` declarative components                                                         |
+| `hooks.ts`                | `useRouter`, `useRoute`, `useParams`, `useQuery`, `useLocation`, `useNavigate`, `tryUseRouter`, `setActiveRouter`              |
+| `guards.ts`               | `createAuthGuard`, `combineGuards`, `createAsyncGuard` — route guards                                                          |
+| `history.ts`              | `createPathHistory` / `createHashHistory` → unified `HistoryAdapter` (`getPath`, `push`, `replace`, `go`, `listen`, `dispose`) |
+| `matcher.ts`              | Path matcher tree (precompiled) + `Matcher` type                                                                               |
+| `utils.ts`                | `redirect`, `redirectReplace`, `buildPath`, `getQueryValue`, `pathsEqual`                                                      |
+| `context.ts` / `types.ts` | Router context object + shared types (`RouteParams`, `RouteLocation`, `RouteGuard`, `RouterOptions`, …)                        |
+| `index.ts`                | Barrel re-exports                                                                                                              |
 
 ### Data Flow
 
@@ -59,6 +82,8 @@ TSX file (/** @jsxImportSource @kikojs/dom */)
 
 Component functions execute **exactly once** — no re-render cycle. Signals embedded in children or props create per-binding watchers that update specific text nodes, attributes, or swap whole subtrees (when a signal child resolves to a `Node`/array). Cleanup is recursive, `WeakMap<Node, Set<Watcher>>`-based; `cleanupWatchers` uses `Signal.subtle.introspectSources(w)` then `w.unwatch(...sources)` because `watcher.unwatch()` with no args is a no-op in `signal-polyfill` v0.2.
 
+SSR path: server entry renders to string with `<!---->` markers for signal children and `<!--show-->`/`<!--for-->`/`<!--suspend-->` comments; the client `hydrate` re-creates the tree via `PendingNode` lazy alignment (adoption order == document order).
+
 ### Public API
 
 ```ts
@@ -71,6 +96,9 @@ onCleanup(fn: () => void): void                          // register cleanup for
 batch<T>(fn: () => T): T                                 // coalesce signal writes into one flush
 untrack<T>(fn: () => T): T                               // read without subscribing
 on<T>(deps, fn, { defer? }): EffectFn                   // explicit-dep effect helper
+createStore<T>(initial: T): StoreRecord<T>              // proxy store: store.user.age.set(31)
+ref<T>(value: T): Ref<T>                                 // store ref marker; isRef / REF
+createResource<T>(loader, options?): Resource<T>        // async data loading
 createEmitter<Events>(): Emitter<Events>
 createWatcher(callback: () => void): Watcher
 
@@ -78,16 +106,35 @@ createWatcher(callback: () => void): Watcher
 jsx(tag: string | Component<any>, props: Props | null): Node
 jsxs = jsx; jsxDEV = jsx
 Fragment(props): DocumentFragment
-render(root: Node, container: Element): () => void
-dom`<div class=${cls}>${children}</div>`: Node          // htm runtime JSX (buildless); htm = alias
-Style(props): Node                                     // scoped css (default) / <style global> global
-Show<T>(props): DocumentFragment                       // conditional render
-For<T>(props): DocumentFragment                          // list render
+render(root: Node, container: Element): () => void       // client mount + dispose
+hydrate(root: Node, container: Element): () => void      // hydrate SSR output
+createPortal(node: Node, target: Element): Node
+Style(props): Node                                       // scoped css (default) / <style global> global
+Show<T>(props): DocumentFragment                         // conditional render
+For<T>(props): DocumentFragment                          // list render (non-keyed)
+Suspend(props): DocumentFragment                         // async/lazy placeholder + fallback
+ErrorBoundary(props): DocumentFragment                   // error isolation with fallback
+lazy<T>(loader: () => Promise<{ default: Component<T> }>): Component<T>
 // JSX namespace: IntrinsicElements (HTML+SVG), Element, ElementChildrenAttribute, …
+
+// @kikojs/dom/server (separate export)
+renderToFragment(root: Node): string                     // SSR fragment with markers
+renderToDocument(root: Node): string                     // full document (adds <!DOCTYPE html>)
 
 // React bridge (separate export; only needed when embedding React components)
 ReactPortal(props: { component: React.ComponentType, ...rest }): HTMLElement
+
+// @kikojs/router
+createRouter(options: { mode: "path" | "hash", ... }): RouterInstance
+getRouteProps(options): { path, ... }
+Router / Route / Link / Outlet / Navigate                 // components (Route: path + component)
+useRouter / useRoute / useParams / useQuery / useLocation / useNavigate
+redirect(to, options?) / redirectReplace(to, options?) / buildPath(path, params?, query?)
+createAuthGuard / combineGuards / createAsyncGuard
+createPathHistory(base?, env?) / createHashHistory(env?)
 ```
+
+htm note: the built-in `dom`/`htm` tagged-template runtime was **removed** (commit `1fb7252`); use the external `htm` package with the ~10-line glue pattern shown in `examples/htm/` (runtime template → same `jsx` factory, no build step).
 
 ## Key Directories
 
@@ -98,8 +145,9 @@ kiko/
 ├── tsconfig.json                     Shared TS base (ESNext, strict, bundler resolution)
 ├── .oxlintrc.json / .oxfmtrc.json    Lint + format config
 ├── .husky/pre-commit                 lint-staged hook
+├── .github/workflows/                ci.yml, deploy-pages.yml (docs site), publish.yml (npm)
 ├── packages/
-│   ├── @kikojs/signal/              Signal primitives
+│   ├── signal/                       @kikojs/signal — signal primitives
 │   │   ├── src/
 │   │   │   ├── index.ts            Barrel re-exports
 │   │   │   ├── signal.ts           createSignal, isSignal
@@ -108,28 +156,44 @@ kiko/
 │   │   │   ├── scope.ts            onCleanup + scope helpers
 │   │   │   ├── scheduler.ts        batch, untrack, scheduleEffect
 │   │   │   ├── on.ts               on() dep helper
+│   │   │   ├── store.ts            createStore, ref/isRef/REF
+│   │   │   ├── resource.ts         createResource
 │   │   │   └── emit.ts             Emitter, createEmitter
 │   │   ├── test/                    *.test.ts (bun:test)
 │   │   └── package.json             exports ".", scripts: build, test
-│   └── @kikojs/dom/                 DOM library
-│       ├── src/
-│       │   ├── index.ts             Barrel re-exports
-│       │   ├── signal.ts            Thin signal-polyfill wrappers
-│       │   ├── jsx-runtime.ts       JSX factory, signal binding, structural swap, cleanup
-│       │   ├── jsx-types.ts         JSX namespace + generic Component<P> (types only)
-│       │   ├── flow.ts              Show / For control flow
-│       │   ├── render.ts            Mount entry point + dispose lifecycle
-│       │   ├── htm.ts               dom/htm tagged-template runtime (buildless JSX)
-│       │   └── react-portal.ts      React ↔ kiko bridge
-│       ├── test/                     *.test.ts(x) (bun:test, happy-dom)
-│       └── package.json             exports ".", "./jsx-runtime", "./jsx-dev-runtime", "./react-portal"
+│   ├── dom/                         @kikojs/dom — DOM library
+│   │   ├── src/
+│   │   │   ├── index.ts             Barrel re-exports
+│   │   │   ├── signal.ts            Thin signal-polyfill wrappers
+│   │   │   ├── jsx-runtime.ts       JSX factory, signal binding, structural swap, cleanup
+│   │   │   ├── jsx-types.ts         JSX namespace + generic Component<P> (types only)
+│   │   │   ├── flow.ts              Show / For / Suspend / ErrorBoundary
+│   │   │   ├── render.ts            Mount entry point + dispose lifecycle
+│   │   │   ├── hydrate.ts           Client hydration (PendingNode lazy alignment)
+│   │   │   ├── ssr.ts / server.ts   SSR string renderer + server entry (bridge registration)
+│   │   │   ├── ssr-mode.ts          ~30-byte SSR runtime bridge (client-safe)
+│   │   │   ├── lazy.ts              lazy code-splitting
+│   │   │   ├── style.ts             Scoped-css engine for <Style>
+│   │   │   ├── portal.ts            createPortal
+│   │   │   ├── shared.ts            Shared value helpers
+│   │   │   └── react-portal.ts      React ↔ kiko bridge
+│   │   ├── test/                     *.test.ts(x) (bun:test, happy-dom)
+│   │   └── package.json             exports ".", "./server", "./jsx-runtime", "./jsx-dev-runtime", "./react-portal"
+│   ├── router/                      @kikojs/router — declarative router
+│   │   ├── src/                     router.ts, components.tsx, hooks.ts, guards.ts,
+│   │   │                            history.ts, matcher.ts, utils.ts, context.ts, types.ts
+│   │   ├── test/                     *.test.ts(x)
+│   │   └── package.json             exports "."
+│   └── benchmark/                   @kikojs/benchmark
+│       ├── store-vs-immer.bench.ts  createStore vs immer benchmark (bun:bench)
+│       └── package.json             deps: @kikojs/signal, immer (scoped here)
 ├── examples/
 │   ├── basic/                       Counter demo (Bun bundler + dev server)
+│   ├── htm/                         htm tagged-template demo (external htm + glue code)
 │   ├── react-portal/                ReactPortal demo
+│   ├── ssr/                         Full-stack SSR + hydration demo (Bun.serve + bundler)
 │   └── tailwind/                    Tailwind + kiko demo
-└── docs/compose/
-    ├── specs/                        Design specs (agentic)
-    └── plans/                        Implementation plans (agentic)
+└── docs/                            Static HTML site (built by bun run docs/build.ts)
 ```
 
 ## Development Commands
@@ -138,24 +202,27 @@ kiko/
 # Install dependencies
 bun install
 
-# Run tests (both packages have a `test` script; root `bun test` runs everything)
+# Run tests (root pretest builds all packages first)
 bun test
-bun test packages/@kikojs/dom/test/
+bun test packages/dom/test/
 
-# Build libraries
-cd packages/@kikojs/signal && bun run build
-cd packages/@kikojs/dom && bun run build
+# Build libraries (signal → dom → router; root `build` chains them)
+bun run build
+cd packages/signal && bun run build
 
 # Lint + format (root scripts)
 bun run lint          # oxlint .
 bun run fmt           # oxfmt --write .
 bun run fmt:check     # oxfmt --check .
 
-# Type-check — per project (root tsc has no DOM lib and scans examples needing react types,
-# so type-check each package/example with its own tsconfig):
-bunx tsc --noEmit -p packages/@kikojs/signal/tsconfig.json
-bunx tsc --noEmit -p packages/@kikojs/dom/tsconfig.json
-bunx tsc --noEmit -p examples/basic/tsconfig.json
+# Type-check — root script covers all packages + all examples (no DOM lib at root, so use per-project tsconfigs)
+bun run typecheck
+
+# Docs site build (static HTML; must stay valid — malformed HTML blocks oxfmt pre-commit)
+bun run site:build
+
+# Benchmark
+cd packages/benchmark && bun run bench
 ```
 
 ## Code Conventions & Common Patterns
@@ -184,10 +251,18 @@ bunx tsc --noEmit -p examples/basic/tsconfig.json
 - `on(deps, fn)` runs `fn` only when `deps` change, untracked otherwise
 - Cleanup via `cleanupWatchers(node)` — recursive, WeakMap-based; uses `Signal.subtle.introspectSources` to actually unwatch
 
+### Store
+
+- `createStore(initial)` wraps every property into a `StoreSignal` (eager wrapping at create/set time): fast writes, slow creates (limu-inspired tradeoff)
+- Access pattern is all-level signals: `store.user.age.set(31)`; plain-object assignment auto-wraps nested values
+- `ref(value)` opts a value out of wrapping; `isRef` / `REF` identify refs
+
 ### Control flow
 
 - `Show({ when, fallback?, children })` — renders `children` (or `fallback`) based on a signal/value; `children` may be a function receiving the truthy value
 - `For({ each, children })` — renders a list, re-rendering on `each` change; `children` receives `(item, index)` where `index` is an accessor. Non-keyed reconciliation.
+- `Suspend` / `ErrorBoundary` — async/error isolation with fallback rendering; `lazy(loader)` code-splits a component
+- Router: `Route path` + `component`, nested via `Outlet`, navigation via `Link`/`Navigate`/`useNavigate`; guards intercept before render
 
 ### Naming
 
@@ -197,36 +272,38 @@ bunx tsc --noEmit -p examples/basic/tsconfig.json
 
 ### Async
 
+- `createResource` handles async data; `lazy` + `Suspend` handle async components
 - `ReactPortal` uses dynamic `import('react')` for lazy loading
 - Tests use `async` `beforeAll` for setup
 
 ### Error Handling
 
 - `effect` and the scheduler isolate errors: a throwing effect reports via the host `reportError` hook and does not stop sibling effects or future re-runs
+- `ErrorBoundary` isolates render errors with a fallback
 - `cleanupWatchers` swallows cleanup-callback errors so one failure does not abort sibling cleanup
 
 ## Important Files
 
-| File                                       | Role                                                                |
-| ------------------------------------------ | ------------------------------------------------------------------- |
-| `packages/@kikojs/signal/src/index.ts`     | Barrel — signal API, scheduler, scope, on, emitter, watcher factory |
-| `packages/@kikojs/signal/src/signal.ts`    | `createSignal` (returns `Signal.State`), `isSignal`                 |
-| `packages/@kikojs/signal/src/computed.ts`  | `computed` / `derived` / `toSignalValue` / `watchValue`             |
-| `packages/@kikojs/signal/src/effect.ts`    | `effect` (batched, error-isolated, cleanup scope)                   |
-| `packages/@kikojs/signal/src/scope.ts`     | `onCleanup` + scope helpers                                         |
-| `packages/@kikojs/signal/src/scheduler.ts` | `batch`, `untrack`, `scheduleEffect`                                |
-| `packages/@kikojs/signal/src/on.ts`        | `on` dep helper                                                     |
-| `packages/@kikojs/signal/src/emit.ts`      | `Emitter`, `createEmitter`                                          |
-| `packages/@kikojs/dom/src/jsx-runtime.ts`  | JSX factory, signal binding, structural swap, cleanup               |
-| `packages/@kikojs/dom/src/jsx-types.ts`    | `JSX` namespace + generic `Component<P>` (types only)               |
-| `packages/@kikojs/dom/src/flow.ts`         | `Show` / `For` control flow                                         |
-| `packages/@kikojs/dom/src/signal.ts`       | Thin signal-polyfill wrappers (self-contained)                      |
-| `packages/@kikojs/dom/src/render.ts`       | Mount entry point + dispose lifecycle                               |
-| `packages/@kikojs/dom/src/htm.ts`          | `dom` / `htm` tagged-template runtime → `jsx` factory (buildless)   |
-| `packages/@kikojs/dom/src/react-portal.ts` | React ↔ kiko bridge                                                 |
-| `packages/@kikojs/dom/package.json`        | Library exports, build config, deps                                 |
-| `tsconfig.json`                            | Shared TypeScript base config                                       |
-| `packages/@kikojs/dom/test/setup.ts`       | Test environment (happy-dom globals)                                |
+| File                                    | Role                                                                |
+| --------------------------------------- | ------------------------------------------------------------------- |
+| `packages/signal/src/index.ts`          | Barrel — signal API, scheduler, scope, on, emitter, watcher factory |
+| `packages/signal/src/signal.ts`         | `createSignal` (returns `Signal.State`), `isSignal`                 |
+| `packages/signal/src/computed.ts`       | `computed` / `derived` / `toSignalValue` / `watchValue`             |
+| `packages/signal/src/effect.ts`         | `effect` (batched, error-isolated, cleanup scope)                   |
+| `packages/signal/src/store.ts`          | `createStore` + `ref`/`isRef`/`REF` (limu-inspired proxy store)     |
+| `packages/signal/src/resource.ts`       | `createResource` async data loading                                 |
+| `packages/dom/src/jsx-runtime.ts`       | JSX factory, signal binding, structural swap, cleanup               |
+| `packages/dom/src/jsx-types.ts`         | `JSX` namespace + generic `Component<P>` (types only)               |
+| `packages/dom/src/flow.ts`              | `Show` / `For` / `Suspend` / `ErrorBoundary` control flow           |
+| `packages/dom/src/render.ts`            | Mount entry point + dispose lifecycle                               |
+| `packages/dom/src/hydrate.ts`           | Client hydration (PendingNode lazy alignment)                       |
+| `packages/dom/src/ssr.ts` / `server.ts` | SSR renderer + `@kikojs/dom/server` entry                           |
+| `packages/dom/src/style.ts`             | Scoped-css engine for `<Style>`                                     |
+| `packages/dom/src/react-portal.ts`      | React ↔ kiko bridge                                                 |
+| `packages/router/src/index.ts`          | Router barrel — createRouter, components, hooks, guards, history    |
+| `packages/dom/package.json`             | Library exports, build config, deps                                 |
+| `tsconfig.json`                         | Shared TypeScript base config                                       |
+| `packages/dom/test/setup.ts`            | Test environment (happy-dom globals)                                |
 
 ## Runtime/Tooling Preferences
 
@@ -234,14 +311,14 @@ bunx tsc --noEmit -p examples/basic/tsconfig.json
 - **Package manager**: Bun (`bun.lock`)
 - **Git hooks**: `husky` pre-commit runs `lint-staged` then `oxlint .` (staged TS/JS get oxfmt --write + oxlint; JSON/MD/CSS/HTML get oxfmt)
 - **Linting/formatting**: `oxlint` + `oxfmt` (configured via `.oxlintrc.json`, `.oxfmtrc.json`, run via root `lint`/`fmt` scripts)
-- **No CI/CD config**
+- **CI/CD**: `.github/workflows/ci.yml` (lint/typecheck/test), `deploy-pages.yml` (docs site → GitHub Pages), `publish.yml` (npm publish). Packages publish as 0.0.1 via `bun run build` + `bun test` in prepublishOnly.
 
 ## Testing & QA
 
 - **Framework**: Bun built-in test runner (`bun:test`)
 - **DOM environment**: `happy-dom` (v17) — injected via `test/setup.ts` which assigns `window`, `document`, `Node`, `HTMLElement`, `DocumentFragment` to `globalThis`
 - **Test pattern**: `describe`/`it` blocks with `expect` assertions (Jest-compatible API)
-- **~95 tests** across 13 files covering: signal primitives, computed/derived, effect + error isolation + cleanup scope, scheduler (batch/untrack), `on`, emitter, JSX factory, render lifecycle, structural-reactive children, `Show`/`For`, JSX types, React portal
+- **~317 tests across 28 files (~674 expect calls)** covering: signal primitives, computed/derived, effect + error isolation + cleanup scope, scheduler (batch/untrack), `on`, store (incl. circular-ref detection), resource, emitter, JSX factory, render lifecycle, structural-reactive children, `Show`/`For`/`Suspend`/`ErrorBoundary`, `Style`, `lazy`, portal, hydrate, SSR, router (components/guards/history/utils), JSX types, React portal
 - **No coverage tooling** (`.gitignore` lists `coverage/` and `*.lcov` but no config exists)
 - **No mocking** — hand-rolled stubs only (e.g., `const MockComp = () => null`)
 - **No fixtures** — test data created inline per test case
@@ -249,14 +326,17 @@ bunx tsc --noEmit -p examples/basic/tsconfig.json
 ### Running Tests
 
 ```bash
-# All tests
+# All tests (root pretest builds packages first)
 bun test
 
 # Specific test file
-bun test packages/@kikojs/dom/test/flow.test.tsx
+bun test packages/dom/test/flow.test.tsx
 
 # Watch mode
 bun test --watch
+
+# Single package
+cd packages/router && bun test
 ```
 
 ### Test File Conventions
