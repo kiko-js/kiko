@@ -51,6 +51,7 @@ The monorepo contains three packages plus a benchmark, all built on `signal-poly
 | `lazy.ts`              | `lazy(loader)` — code-splitting: async component with placeholder/suspense handling                                                                              |
 | `style.ts`             | Scoped-css engine backing `<Style>`: scope-attribute generation, selector rewriting (`&`, `:deep`, `:global`), constructable stylesheets with `<style>` fallback |
 | `portal.ts`            | `createPortal(node, target)` — render a subtree into another DOM node                                                                                            |
+| `context.ts`           | `createContext` / `useContext` — dependency injection; the context object is the provider (React 19 style), children must be a thunk (deferred eval)             |
 | `react-portal.ts`      | `ReactPortal(component, props)` — bridges React components into kiko trees (separate export)                                                                     |
 | `index.ts`             | Barrel re-exports                                                                                                                                                |
 
@@ -109,6 +110,8 @@ Fragment(props): DocumentFragment
 render(root: Node, container: Element): () => void       // client mount + dispose
 hydrate(root: Node, container: Element): () => void      // hydrate SSR output
 createPortal(node: Node, target: Element): Node
+createContext<T>(defaultValue?): Context<T>             // context object IS the provider
+useContext<T>(ctx: Context<T>): T | undefined           // nearest provider value or default
 Style(props): Node                                       // scoped css (default) / <style global> global
 Show<T>(props): DocumentFragment                         // conditional render
 For<T>(props): DocumentFragment                          // list render (keyed via getKey, else non-keyed)
@@ -175,6 +178,7 @@ kiko/
 │   │   │   ├── lazy.ts              lazy code-splitting
 │   │   │   ├── style.ts             Scoped-css engine for <Style>
 │   │   │   ├── portal.ts            createPortal
+│   │   │   ├── context.ts           createContext / useContext (provider = context object)
 │   │   │   ├── shared.ts            Shared value helpers
 │   │   │   └── react-portal.ts      React ↔ kiko bridge
 │   │   ├── test/                     *.test.ts(x) (bun:test, happy-dom)
@@ -264,6 +268,13 @@ cd packages/benchmark && bun run bench
 - `Suspend` / `ErrorBoundary` — async/error isolation with fallback rendering; `lazy(loader)` code-splits a component
 - Router: `Route path` + `component`, nested via `Outlet`, navigation via `Link`/`Navigate`/`useNavigate`; guards intercept before render
 
+### Context
+
+- `createContext(defaultValue?)` returns a `Context<T>` whose object IS the provider component (React 19 style): `<Theme value="dark">{() => <Child/>}</Theme>`
+- **Children MUST be a thunk** — JSX children evaluate eagerly before the provider runs, so eager children can never see the value; eager children throw `TypeError`
+- `useContext(ctx)` returns the nearest provider value (walking the frame stack top-down) or the default; `value` may be a signal, which consumers can bind into props for reactive updates without a re-render cycle
+- Same deferred-evaluation protocol as `Show`/`For`/`ErrorBoundary`; works in SSR and hydration (module-level frame stack, balanced synchronously)
+
 ### Naming
 
 - `camelCase` for variables, functions, parameters
@@ -318,7 +329,7 @@ cd packages/benchmark && bun run bench
 - **Framework**: Bun built-in test runner (`bun:test`)
 - **DOM environment**: `happy-dom` (v17) — injected via `test/setup.ts` which assigns `window`, `document`, `Node`, `HTMLElement`, `DocumentFragment` to `globalThis`
 - **Test pattern**: `describe`/`it` blocks with `expect` assertions (Jest-compatible API)
-- **~317 tests across 28 files (~674 expect calls)** covering: signal primitives, computed/derived, effect + error isolation + cleanup scope, scheduler (batch/untrack), `on`, store (incl. circular-ref detection), resource, emitter, JSX factory, render lifecycle, structural-reactive children, `Show`/`For`/`Suspend`/`ErrorBoundary`, `Style`, `lazy`, portal, hydrate, SSR, router (components/guards/history/utils), JSX types, React portal
+- **~331 tests across 29 files (~697 expect calls)** covering: signal primitives, computed/derived, effect + error isolation + cleanup scope, scheduler (batch/untrack), `on`, store (incl. circular-ref detection), resource, emitter, JSX factory, render lifecycle, structural-reactive children, `Show`/`For`/`Suspend`/`ErrorBoundary`, `Style`, `lazy`, portal, context, hydrate, SSR, router (components/guards/history/utils), JSX types, React portal
 - **No coverage tooling** (`.gitignore` lists `coverage/` and `*.lcov` but no config exists)
 - **No mocking** — hand-rolled stubs only (e.g., `const MockComp = () => null`)
 - **No fixtures** — test data created inline per test case
