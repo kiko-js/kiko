@@ -111,7 +111,7 @@ hydrate(root: Node, container: Element): () => void      // hydrate SSR output
 createPortal(node: Node, target: Element): Node
 Style(props): Node                                       // scoped css (default) / <style global> global
 Show<T>(props): DocumentFragment                         // conditional render
-For<T>(props): DocumentFragment                          // list render (non-keyed)
+For<T>(props): DocumentFragment                          // list render (keyed via getKey, else non-keyed)
 Suspend(props): DocumentFragment                         // async/lazy placeholder + fallback
 ErrorBoundary(props): DocumentFragment                   // error isolation with fallback
 lazy<T>(loader: () => Promise<{ default: Component<T> }>): Component<T>
@@ -260,7 +260,7 @@ cd packages/benchmark && bun run bench
 ### Control flow
 
 - `Show({ when, fallback?, children })` — renders `children` (or `fallback`) based on a signal/value; `children` may be a function receiving the truthy value
-- `For({ each, children })` — renders a list, re-rendering on `each` change; `children` receives `(item, index)` where `index` is an accessor. Non-keyed reconciliation.
+- `For({ each, children, getKey? })` — renders a list, re-rendering on `each` change; `children` receives `(item, index)` where `index` is an accessor. Without `getKey` it reconciles non-keyed; with `getKey` surviving keys keep their DOM nodes and `children` receives an item accessor `() => T`.
 - `Suspend` / `ErrorBoundary` — async/error isolation with fallback rendering; `lazy(loader)` code-splits a component
 - Router: `Route path` + `component`, nested via `Outlet`, navigation via `Link`/`Navigate`/`useNavigate`; guards intercept before render
 
