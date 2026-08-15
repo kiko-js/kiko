@@ -1,6 +1,10 @@
 {
   "name": "@kikojs/router",
   "version": "0.0.2",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kiko-js/kiko.git"
+  },
   "files": [
     "dist"
   ],
@@ -12,7 +16,8 @@
     }
   },
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   },
   "scripts": {
     "build": "bun build.ts",

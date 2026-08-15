@@ -1,6 +1,6 @@
 name: Publish to npm
 
-# Release flow: push a tag matching the package versions (e.g. `v0.0.1`),
+# Release flow: push a tag matching the package versions (e.g. `v0.0.2`),
 # and @kikojs/signal, @kikojs/dom, @kikojs/router are published to npm
 # (in dependency order) after the full quality gate passes.
 
@@ -21,6 +21,12 @@ jobs:
   publish:
     name: Publish to npm
     runs-on: ubuntu-latest
+    environment: npm_token
+
+    permissions:
+      contents: read
+      id-token: write
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -30,6 +36,14 @@ jobs:
         with:
           bun-version: 1.x
           cache: true
+
+      # npm publish needs a standard npm auth context. actions/setup-node writes
+      # the registry auth config that npm will pick up via NODE_AUTH_TOKEN.
+      - name: Setup Node.js for npm auth
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org/
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -48,11 +62,6 @@ jobs:
 
       - name: Build
         run: bun run build
-
-      - name: Authenticate with npm
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > .npmrc
 
       # npm does NOT rewrite the `workspace:` protocol at publish time (it
       # lands in the tarball verbatim and breaks consumers), so resolve the
@@ -79,8 +88,8 @@ jobs:
             console.log('workspace deps rewritten to ' + process.env.VERSION);
           "
 
-      # Order matters: @kikojs/router depends on the other two.
-      - name: Publish packages
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish --workspace @kikojs/signal --workspace @kikojs/dom --workspace @kikojs/router --provenance
+      - name: Preview package contents
+        run: npm pack --dry-run
+
+      - name: Publish package
+        run: npm publish
