@@ -170,11 +170,13 @@ describe("Style — constructable stylesheets", () => {
     expect(el.hasAttribute(first)).toBe(true)
     show.set(false)
     await flush()
-    expect(document.adoptedStyleSheets.length).toBe(0)
+    // 保留式分支:隐藏分支的 watcher/sheet 保持存活(换回后样式直接可用),
+    // 不再在切换时 un-adopt
+    expect(document.adoptedStyleSheets.length).toBe(1)
     show.set(true)
     await flush()
     expect(document.adoptedStyleSheets.length).toBe(1)
-    // same anchor, same scope attr, same sheet — re-adopted on re-insert
+    // same anchor, same scope attr, same sheet — kept alive across toggles
     expect(scopeAttrIn(adoptedRules()[0]!)).toBe(first)
     expect(el.hasAttribute(first)).toBe(true)
   })

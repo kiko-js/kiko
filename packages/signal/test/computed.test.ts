@@ -77,4 +77,31 @@ describe("watchValue", () => {
     await waitForMicrotask()
     expect(calls).toEqual([2, 3])
   })
+
+  it("re-arms the watcher after a throwing callback", async () => {
+    const s = createSignal(1)
+    const calls: number[] = []
+    let shouldThrow = true
+    const errors: unknown[] = []
+    const prevReport = globalThis.reportError
+    globalThis.reportError = (e: unknown) => errors.push(e)
+    try {
+      const w = watchValue(s, v => {
+        calls.push(v)
+        if (shouldThrow) throw new Error("boom")
+      })
+      s.set(2)
+      await waitForMicrotask()
+      expect(calls).toEqual([2])
+      expect(errors.length).toBe(1)
+      // 修复前:回调抛错跳过 re-arm,one-shot watcher 永久失效
+      shouldThrow = false
+      s.set(3)
+      await waitForMicrotask()
+      expect(calls).toEqual([2, 3])
+      w!.unwatch(s)
+    } finally {
+      globalThis.reportError = prevReport
+    }
+  })
 })

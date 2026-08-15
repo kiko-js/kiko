@@ -148,6 +148,25 @@ describe("createRouter path mode", () => {
     router.dispose()
   })
 
+  it("matches nested routes under a root / route (regression)", async () => {
+    // 根路由 "/" 的 prefixRegex 只消费 "/"：修复前 consumed 被剥成空串，
+    // slice(-1) 吃掉剩余路径的首字符，children 永远匹配不上。
+    const router = createRouter({
+      mode: "path",
+      routes: [
+        {
+          path: "/",
+          component: () => document.createTextNode("layout"),
+          children: [{ path: "inner", component: () => document.createTextNode("inner") }],
+        },
+      ],
+    })
+    router.push("/inner")
+    await flushMicrotasks()
+    expect(router.matched.get().map(r => r.route.path)).toEqual(["/", "inner"])
+    router.dispose()
+  })
+
   it("runs route-level beforeEnter guard and blocks", async () => {
     const router = createRouter({
       mode: "path",
@@ -258,6 +277,69 @@ describe("createRouter path mode", () => {
     router.push("/about", { from: "test" })
     await flushMicrotasks()
     expect(router.location.get().state).toEqual({ from: "test" })
+    router.dispose()
+  })
+
+  it("runs guards on initial load and redirects before first paint", async () => {
+    window.history.replaceState(null, "", "/admin")
+    const router = createRouter({
+      mode: "path",
+      routes: [
+        { path: "/", component: () => document.createTextNode("home") },
+        { path: "/login", component: () => document.createTextNode("login") },
+        { path: "/admin", component: () => document.createTextNode("admin") },
+      ],
+      beforeEach: to => (to.path === "/admin" ? "/login" : true),
+    })
+    // 深链初始即命中受保护页面：首帧 location 是 /admin，
+    // 守卫在微任务中落地重定向（早于浏览器绘制）。
+    expect(router.location.get().path).toBe("/admin")
+    await drainMicrotasks()
+    expect(router.location.get().path).toBe("/login")
+    expect(window.location.pathname).toBe("/login")
+    router.dispose()
+  })
+
+  it("keeps the initial location when guards pass", async () => {
+    window.history.replaceState(null, "", "/about")
+    const router = createRouter({ mode: "path", routes: createRoutes() })
+    await drainMicrotasks()
+    expect(router.location.get().path).toBe("/about")
+    router.dispose()
+  })
+
+  it("applies route-level redirect on initial load", async () => {
+    window.history.replaceState(null, "", "/")
+    const router = createRouter({
+      mode: "path",
+      routes: [
+        { path: "/", redirect: "/home", component: () => document.createTextNode("x") },
+        { path: "/home", component: () => document.createTextNode("home") },
+      ],
+    })
+    await drainMicrotasks()
+    expect(router.location.get().path).toBe("/home")
+    router.dispose()
+  })
+
+  it("discards a stale initial-guard redirect once navigation started", async () => {
+    window.history.replaceState(null, "", "/admin")
+    const router = createRouter({
+      mode: "path",
+      routes: [
+        { path: "/", component: () => document.createTextNode("home") },
+        { path: "/login", component: () => document.createTextNode("login") },
+        { path: "/admin", component: () => document.createTextNode("admin") },
+      ],
+      beforeEach: async to => {
+        await Promise.resolve() // 延迟守卫，制造竞态窗口
+        return to.path === "/admin" ? "/login" : true
+      },
+    })
+    // 初始守卫未返回时用户先导航——初始守卫的迟到重定向必须被丢弃
+    router.push("/home")
+    await drainMicrotasks()
+    expect(router.location.get().path).toBe("/home")
     router.dispose()
   })
 

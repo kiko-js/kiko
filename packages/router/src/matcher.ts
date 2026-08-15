@@ -123,7 +123,9 @@ export function createMatcher(routes: RouteRecord[]): Matcher {
       const params = extractParams(item, m)
       const consumed = m[0]!.replace(/\/$/, "")
       matches.push({ route: item.route, params, remaining })
-      remaining = stripLeadingSlash(remaining.slice(consumed.length - 1))
+      // consumed 含前导 "/"，减 1 得到剩余路径应切掉的长度；根路由 "/" 时
+      // consumed 被剥成空串（长度 -1），钳制到 0 避免 slice(-1) 吃掉字符。
+      remaining = stripLeadingSlash(remaining.slice(Math.max(consumed.length - 1, 0)))
       candidates = item.children
     }
 

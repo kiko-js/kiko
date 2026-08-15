@@ -13,6 +13,8 @@ interface RouterProps {
 
 export function Router(props: RouterProps): Node {
   const router = props.router
+  // JSX children 先于本组件体求值，因此这里设置的是"信号"——children 中的
+  // Outlet / Link / Navigate 创建的 effect 依赖它，挂载后自动补跑。
   setActiveRouter(router)
 
   const container = document.createDocumentFragment()
@@ -24,7 +26,8 @@ export function Router(props: RouterProps): Node {
   }
 
   trackCleanup(container, () => {
-    setActiveRouter(null)
+    // 只清除"自己"的占位，避免误清另一个 Router 的活动状态
+    if (getActiveRouter() === router) setActiveRouter(null)
     router.dispose()
   })
 
@@ -58,6 +61,14 @@ interface LinkProps {
   [key: string]: unknown
 }
 
+/** 分段感知的路径匹配：/user 不匹配 /users；/ 匹配所有路径（非 exact 时）。 */
+function isActivePath(path: string, to: string, exact: boolean): boolean {
+  if (exact) return path === to
+  if (to === "/") return path.startsWith("/")
+  const prefix = to.endsWith("/") ? to : to + "/"
+  return path === to || path.startsWith(prefix)
+}
+
 export function Link(props: LinkProps): Node {
   const { to, replace, state, activeClass, exact, children, ...rest } = props
 
@@ -83,13 +94,14 @@ export function Link(props: LinkProps): Node {
   if (activeClass) {
     const el = anchor as HTMLElement
     const stop = effect(() => {
+      // 读取 activeRouter 信号建立依赖：Link 作为 JSX children 先于 Router
+      // 求值时首跑拿不到 router，Router 挂载后本 effect 自动补跑。
       const router = getActiveRouter()
       if (!router) return
       const loc = router.location.get()
-      const match = exact ? loc.path === to : loc.path.startsWith(to)
-      const cls = match ? activeClass : ""
-      if (cls) {
-        el.classList.add(cls)
+      const match = isActivePath(loc.path, to, exact ?? false)
+      if (match) {
+        el.classList.add(activeClass)
       } else {
         const classes = activeClass.split(" ")
         for (const c of classes) {
@@ -115,11 +127,24 @@ interface OutletProps {
   router?: Router
 }
 
+/**
+ * 嵌套布局渲染帧：渲染 route component 期间压栈，嵌套 Outlet 创建时
+ * 从中读取自己的层级（根 Outlet 无帧，depth 为 0）。
+ * 栈仅在同步渲染期间存在——与 @kikojs/dom 的 context 栈同构。
+ */
+interface OutletFrame {
+  router: Router
+  depth: number
+}
+
+const frameStack: OutletFrame[] = []
+
 export function Outlet(props: OutletProps): Node {
-  const router = props.router ?? getActiveRouter()
-  if (!router) {
-    throw new Error("Outlet must be used inside a Router component or receive a router prop")
-  }
+  // 创建时捕获层级：JSX 求值发生在父组件同步渲染期间（帧已压栈），
+  // 响应式重渲染时不再有帧，depth 必须在创建时定格。
+  const creationFrame = frameStack.length > 0 ? frameStack[frameStack.length - 1] : undefined
+  const staticRouter = props.router ?? creationFrame?.router ?? null
+  const depth = creationFrame ? creationFrame.depth : 0
 
   const marker = document.createComment("outlet")
   const parent = document.createDocumentFragment()
@@ -128,12 +153,29 @@ export function Outlet(props: OutletProps): Node {
   let currentNodes: Node[] = []
 
   const dispose = effect(() => {
-    const route = router.currentRoute.get()
+    // 根 Outlet 创建时 Router 尚未挂载（children 先求值）：静态 router 为空时
+    // 响应式读取 activeRouter，Router 挂载后本 effect 自动补跑渲染。
+    const router = staticRouter ?? getActiveRouter()
+    if (!router) {
+      currentNodes = swapNodes(marker, currentNodes, [])
+      return
+    }
+    const matched = router.matched.get()
+    const entry = matched[depth]
+    const component = entry?.route.component
     const next: Node[] = []
-    if (route?.component) {
+    if (component) {
       try {
-        const node = route.component(getRouteProps(router))
-        next.push(node)
+        // 读取 getRouteProps 内的 location/params/query 建立完整依赖：
+        // query-only 导航（path 不变）也会重渲染。
+        const props = getRouteProps(router)
+        frameStack.push({ router, depth: depth + 1 })
+        try {
+          const node = component(props)
+          next.push(node)
+        } finally {
+          frameStack.pop()
+        }
       } catch (err) {
         reportError(err)
         next.push(document.createTextNode(""))
@@ -157,10 +199,19 @@ interface NavigateProps {
 }
 
 export function Navigate(props: NavigateProps): Node {
-  const router = getActiveRouter()
-  if (!router) {
-    throw new Error("Navigate must be used inside a Router component")
-  }
-  router.navigate(props.to, { replace: props.replace ?? true, state: props.state })
-  return document.createComment("navigate")
+  // 与 Outlet 同理：作为 Router 的 JSX children 时创建阶段拿不到 router，
+  // 导航延迟到 effect——Router 挂载后 activeRouter 信号变化触发补跑。
+  const marker = document.createComment("navigate")
+  let done = false
+
+  const dispose = effect(() => {
+    const router = getActiveRouter()
+    if (!router || done) return
+    done = true
+    router.navigate(props.to, { replace: props.replace ?? true, state: props.state })
+  })
+
+  trackCleanup(marker, dispose)
+
+  return marker
 }

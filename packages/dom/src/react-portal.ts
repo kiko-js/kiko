@@ -1,4 +1,4 @@
-import { createWatcher, isSignal } from "./signal"
+import { createWatcher, isSignal, reportError } from "./signal"
 import type { WatchableSignal, Watcher } from "./signal"
 import { trackCleanup, trackWatcher } from "./jsx-runtime"
 
@@ -71,8 +71,14 @@ export function ReactPortal(props: Record<string, unknown>): HTMLElement {
           const signal = val as WatchableSignal<unknown>
           const watcher = createWatcher(() => {
             queueMicrotask(() => {
-              renderReact()
-              watcher.watch(signal)
+              // renderReact 抛错（React 渲染失败）上报后仍在 finally 中 re-arm
+              try {
+                renderReact()
+              } catch (err) {
+                reportError(err)
+              } finally {
+                watcher.watch(signal)
+              }
             })
           })
           watcher.watch(signal)

@@ -1,6 +1,7 @@
 import { Signal } from "signal-polyfill"
-import { scheduleEffect } from "./scheduler"
+import { scheduleEffect, untrack } from "./scheduler"
 import { flushScope, runInScope, type CleanupFn } from "./scope"
+import { reportError } from "./report"
 
 export type EffectCleanup = () => void
 /**
@@ -18,22 +19,28 @@ export type EffectFn = () => unknown
  * produce a single re-run. Errors thrown by `fn` are isolated — they are
  * reported via the host error hook and do not stop sibling effects or future
  * re-runs.
+ *
+ * Cleanup semantics:
+ * - The returned cleanup is registered into the same scope as `onCleanup`
+ *   (as the last entry), so both run in one reverse-registration order on
+ *   re-run and on dispose — no ordering divergence between the two paths.
+ * - Cleanups run inside `untrack`: signal reads in a cleanup never become
+ *   effect dependencies.
+ * - A throwing cleanup is swallowed (`flushScope`) and does not wedge the
+ *   effect — the next run still executes.
  */
 export function effect(fn: EffectFn): EffectCleanup {
-  let cleanup: void | EffectCleanup
   const scope: CleanupFn[] = []
   let disposed = false
 
   const computed = new Signal.Computed(() => {
-    if (cleanup) {
-      cleanup()
-      cleanup = undefined
-    }
-    flushScope(scope)
+    // 清理上一轮（含返回式清理）——untrack 执行，避免清理中的信号读取
+    // 污染 effect 依赖；flushScope 逐条吞错，不会让 effect 楔死。
+    untrack(() => flushScope(scope))
     const result = runInScope(scope, fn)
-    // Only a function return is a cleanup; other values (e.g. a number from
-    // an expression-bodied effect) are discarded.
-    if (typeof result === "function") cleanup = result as EffectCleanup
+    // 返回式清理并入 scope：与 onCleanup 同一机制、同一错误策略、同一
+    // 顺序（逆序注册），重跑与 dispose 两条路径行为一致。
+    if (typeof result === "function") scope.push(result as CleanupFn)
   })
 
   const watcher = new Signal.subtle.Watcher(() => {
@@ -58,10 +65,6 @@ export function effect(fn: EffectFn): EffectCleanup {
     if (disposed) return
     disposed = true
     watcher.unwatch(computed)
-    flushScope(scope)
-    if (cleanup) {
-      cleanup()
-      cleanup = undefined
-    }
+    untrack(() => flushScope(scope))
   }
 }

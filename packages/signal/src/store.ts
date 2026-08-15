@@ -179,12 +179,17 @@ function createProxyNode<T>(context: StoreContext, path: PathKey[]): Store<T> {
       if (prop === Symbol.toPrimitive || prop === "toString" || prop === "valueOf") {
         return () => String(readPath(context.root, path).value)
       }
-      // 仅拒绝内建探测 symbol（可迭代性 / toStringTag）；用户数据可能以
-      // symbol 为 key，必须走代理路径。
+      // 拒绝内建探测：迭代器 / toStringTag 以及 thenable 协议。代理目标是
+      // 可调用函数，未拦截时 `store.then` 返回可调用代理节点 → `await store`
+      // 走 thenable 协议永不 resolve（挂起），`isPromiseLike(store)` 也误判为
+      // true。用户数据仍可能以 symbol 为 key，必须走代理路径。
       if (
         prop === Symbol.iterator ||
         prop === Symbol.asyncIterator ||
-        prop === Symbol.toStringTag
+        prop === Symbol.toStringTag ||
+        prop === "then" ||
+        prop === "catch" ||
+        prop === "finally"
       ) {
         return undefined
       }

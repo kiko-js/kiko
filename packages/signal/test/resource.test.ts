@@ -151,4 +151,28 @@ describe("createResource", () => {
     await tick()
     expect(resource.data.get()).toBeUndefined()
   })
+
+  it("captures a throwing source getter into error state", async () => {
+    const resource = createResource(async () => "x", {
+      source: () => {
+        throw new Error("source boom")
+      },
+    })
+    // 首次 effect 同步运行:source 抛错立即落入 error 态并复位 loading
+    expect(resource.loading.get()).toBe(false)
+    expect((resource.error.get() as Error).message).toBe("source boom")
+    expect(resource.data.get()).toBeUndefined()
+    await tick()
+    expect(resource.loading.get()).toBe(false)
+    resource.dispose()
+  })
+
+  it("dispose while a fetch is in flight resets loading", async () => {
+    const { promise } = Promise.withResolvers<string>()
+    const resource = createResource(() => promise)
+    expect(resource.loading.get()).toBe(true)
+    // 修复前:finally 里的 `!disposed` 守卫让 loading 永久卡 true
+    resource.dispose()
+    expect(resource.loading.get()).toBe(false)
+  })
 })

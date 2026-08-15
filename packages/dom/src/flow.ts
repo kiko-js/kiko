@@ -1,9 +1,10 @@
 import { Signal } from "signal-polyfill"
-import { createWatcher, isSignal } from "./signal"
+import { createWatcher, isSignal, reportError, watchSignal } from "./signal"
 import type { WatchableSignal } from "./signal"
 import {
   applyScopeRoots,
   cleanupWatchers,
+  swapBranch,
   swapNodes,
   toNodes,
   trackCleanup,
@@ -40,6 +41,10 @@ type MaybeSignal<T> = T | WatchableSignal<T>
  * mount `children`, falsy transitions mount `fallback` and dispose the
  * previous subtree. `children` may be a function receiving the truthy value
  * (narrowed to `T`); it re-runs on every `when` change while truthy.
+ *
+ * 静态（非函数）children / fallback 是同一批节点：切换分支时保留其 watcher
+ * （`swapBranch` 保留式换出），换回时内部信号绑定仍然存活——否则
+ * cleanupWatchers 删除 watcher 集后重挂载的节点是"死"的。
  */
 export function Show<T>(props: {
   when: MaybeSignal<T | false | null | undefined>
@@ -57,19 +62,29 @@ export function Show<T>(props: {
   const marker = document.createComment("show")
   frag.appendChild(marker)
   let current: Node[] = []
+  // 静态分支的节点数组（惰性求值一次）；换出时保留，换回时复用
+  let truthyNodes: Node[] | null = null
+  let fallbackNodes: Node[] | null = null
+  // 当前可见分支是否来自静态来源（决定换出时是否保留 watcher）
+  let currentRetained = false
 
   const render = (): void => {
     const cond = unwrap(props.when)
     const truthy = isTruthy(cond)
     if (truthy) {
-      const value =
-        typeof props.children === "function"
-          ? (props.children as (item: T) => unknown)(cond as T)
-          : props.children
-      current = swapNodes(marker, current, toNodes(value))
+      if (typeof props.children === "function") {
+        const value = (props.children as (item: T) => unknown)(cond as T)
+        current = swapBranch(marker, current, toNodes(value), currentRetained)
+        currentRetained = false
+      } else {
+        if (!truthyNodes) truthyNodes = toNodes(props.children)
+        current = swapBranch(marker, current, truthyNodes, currentRetained)
+        currentRetained = true
+      }
     } else {
-      // 首次渲染即 falsy 也渲染 fallback：与 SSR / 水合路径保持一致。
-      current = swapNodes(marker, current, toNodes(props.fallback))
+      if (!fallbackNodes) fallbackNodes = toNodes(props.fallback)
+      current = swapBranch(marker, current, fallbackNodes, currentRetained)
+      currentRetained = true
     }
   }
 
@@ -77,19 +92,22 @@ export function Show<T>(props: {
 
   if (isSignal(props.when)) {
     const signal = props.when as WatchableSignal<unknown>
-    const watcher = createWatcher(() => {
-      queueMicrotask(() => {
-        render()
-        watcher.watch(signal)
-      })
-    })
-    watcher.watch(signal)
+    const watcher = watchSignal(signal, render)
     trackWatcher(marker, watcher)
   }
 
   trackCleanup(marker, () => {
     for (const n of current) cleanupWatchers(n)
+    // 保留中的隐藏分支也要清理（watcher 一直存活）
+    if (truthyNodes && truthyNodes !== current) {
+      for (const n of truthyNodes) cleanupWatchers(n)
+    }
+    if (fallbackNodes && fallbackNodes !== current) {
+      for (const n of fallbackNodes) cleanupWatchers(n)
+    }
     current = []
+    truthyNodes = null
+    fallbackNodes = null
   })
 
   return frag
@@ -218,13 +236,7 @@ export function For<T>(props: {
 
   if (isSignal(props.each)) {
     const signal = props.each as WatchableSignal<readonly T[]>
-    const watcher = createWatcher(() => {
-      queueMicrotask(() => {
-        render()
-        watcher.watch(signal)
-      })
-    })
-    watcher.watch(signal)
+    const watcher = watchSignal(signal, render)
     trackWatcher(marker, watcher)
   }
 
@@ -292,6 +304,9 @@ export function ErrorBoundary(props: {
   const marker = document.createComment("error-boundary")
   frag.appendChild(marker)
   let current: Node[] = []
+  // fallback 为 eager 值时是同一批节点：换出保留 watcher，换回后绑定存活
+  let fallbackNodes: Node[] | null = null
+  let currentIsFallback = false
 
   // Caller-owned signals, when given, are the source of truth so the caller
   // can drive retry/reset. Local fallbacks keep the boundary usable without them.
@@ -312,11 +327,20 @@ export function ErrorBoundary(props: {
         typeof props.fallback === "function"
           ? (props.fallback as (e: unknown) => unknown)(error.get())
           : props.fallback
-      current = swapNodes(marker, current, toNodes(fb))
+      if (typeof props.fallback === "function") {
+        // 动态 fallback：每次重建，换出时完整清理
+        current = swapBranch(marker, current, toNodes(fb), currentIsFallback)
+        currentIsFallback = false
+      } else {
+        if (!fallbackNodes) fallbackNodes = toNodes(fb)
+        current = swapBranch(marker, current, fallbackNodes, currentIsFallback)
+        currentIsFallback = true
+      }
       return
     }
     try {
-      current = swapNodes(marker, current, toNodes(childrenComputed.get()))
+      current = swapBranch(marker, current, toNodes(childrenComputed.get()), currentIsFallback)
+      currentIsFallback = false
     } catch (e) {
       error.set(e)
       try {
@@ -330,7 +354,14 @@ export function ErrorBoundary(props: {
         typeof props.fallback === "function"
           ? (props.fallback as (e: unknown) => unknown)(e)
           : props.fallback
-      current = swapNodes(marker, current, toNodes(fb))
+      if (typeof props.fallback === "function") {
+        current = swapBranch(marker, current, toNodes(fb), currentIsFallback)
+        currentIsFallback = false
+      } else {
+        if (!fallbackNodes) fallbackNodes = toNodes(fb)
+        current = swapBranch(marker, current, fallbackNodes, currentIsFallback)
+        currentIsFallback = true
+      }
     }
   }
 
@@ -338,16 +369,18 @@ export function ErrorBoundary(props: {
 
   // Re-render when the children's signals change. The computed re-evaluates
   // under the watcher; a throw is caught the same way as on initial render.
+  // re-arm 在 finally 中：渲染抛错不会让绑定永久失效。
   const watcher = createWatcher(() => {
     queueMicrotask(() => {
-      // While in error state, ignore children notifications so a still-throwing
-      // children does not loop. `resetWatcher` handles retry.
-      if (error.get() !== null) {
+      try {
+        // While in error state, ignore children notifications so a still-throwing
+        // children does not loop. `resetWatcher` handles retry.
+        if (error.get() === null) render()
+      } catch (err) {
+        reportError(err)
+      } finally {
         watcher.watch(childrenComputed)
-        return
       }
-      render()
-      watcher.watch(childrenComputed)
     })
   })
   watcher.watch(childrenComputed)
@@ -359,17 +392,19 @@ export function ErrorBoundary(props: {
   // also render synchronously so the fallback swaps out immediately.
   const resetWatcher = createWatcher(() => {
     queueMicrotask(() => {
-      if (error.get() === null) {
+      try {
+        // Only react to an explicit `reset.set()` write, not unrelated invalidation.
+        // Consume by re-reading; if the caller wrote reset, the watcher fired.
+        if (error.get() === null) return
+        reset.get()
+        error.set(null)
+        render()
+        watcher.watch(childrenComputed)
+      } catch (err) {
+        reportError(err)
+      } finally {
         resetWatcher.watch(reset)
-        return
       }
-      // Only react to an explicit `reset.set()` write, not unrelated invalidation.
-      // Consume by re-reading; if the caller wrote reset, the watcher fired.
-      reset.get()
-      error.set(null)
-      render()
-      watcher.watch(childrenComputed)
-      resetWatcher.watch(reset)
     })
   })
   resetWatcher.watch(reset)
@@ -377,7 +412,11 @@ export function ErrorBoundary(props: {
 
   trackCleanup(marker, () => {
     for (const n of current) cleanupWatchers(n)
+    if (fallbackNodes && fallbackNodes !== current) {
+      for (const n of fallbackNodes) cleanupWatchers(n)
+    }
     current = []
+    fallbackNodes = null
   })
 
   return frag
@@ -413,15 +452,22 @@ export function Suspend(props: { fallback?: unknown; children: unknown }): Docum
   const marker = document.createComment("suspend")
   frag.appendChild(marker)
   let current: Node[] = []
+  // fallback 是 eager 值：同一批节点反复换入换出，保留 watcher（否则
+  // 挂起 → 解析 → 再挂起后 fallback 内部绑定死亡）
+  let fallbackNodes: Node[] | null = null
+  let currentIsFallback = false
   // 代际计数器：每次重渲染 +1，令在途 promise 的迟到结果失效（supersede）
   let seq = 0
 
   const render = (value: unknown): void => {
-    current = swapNodes(marker, current, toNodes(value))
+    current = swapBranch(marker, current, toNodes(value), currentIsFallback)
+    currentIsFallback = false
   }
 
   const renderFallback = (): void => {
-    current = swapNodes(marker, current, toNodes(props.fallback))
+    if (!fallbackNodes) fallbackNodes = toNodes(props.fallback)
+    current = swapBranch(marker, current, fallbackNodes, currentIsFallback)
+    currentIsFallback = true
   }
 
   // 被 supersede / 清理时丢弃的已解析节点：清理其内部 watcher，避免泄漏
@@ -430,11 +476,7 @@ export function Suspend(props: { fallback?: unknown; children: unknown }): Docum
   }
 
   const handleError = (error: unknown): void => {
-    if (typeof reportError === "function") reportError(error)
-    else
-      queueMicrotask(() => {
-        throw error
-      })
+    reportError(error)
   }
 
   // 收集 children 中的 promise：挂起则先渲染 fallback，settle 后换入结果
@@ -483,20 +525,18 @@ export function Suspend(props: { fallback?: unknown; children: unknown }): Docum
 
   if (isSignal(props.children)) {
     const signal = props.children as WatchableSignal<unknown>
-    const watcher = createWatcher(() => {
-      queueMicrotask(() => {
-        renderValue(unwrap(signal))
-        watcher.watch(signal)
-      })
-    })
-    watcher.watch(signal)
+    const watcher = watchSignal(signal, () => renderValue(unwrap(signal)))
     trackWatcher(marker, watcher)
   }
 
   trackCleanup(marker, () => {
     seq++ // 使在途 promise 的结果失效
     for (const n of current) cleanupWatchers(n)
+    if (fallbackNodes && fallbackNodes !== current) {
+      for (const n of fallbackNodes) cleanupWatchers(n)
+    }
     current = []
+    fallbackNodes = null
   })
 
   return frag

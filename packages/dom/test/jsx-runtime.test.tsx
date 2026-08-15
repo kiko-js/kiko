@@ -293,3 +293,44 @@ describe("jsx", () => {
     expect(div.textContent).toBe("5")
   })
 })
+
+describe("binding reliability", () => {
+  it("a throwing signal render does not permanently kill the binding", async () => {
+    const errors: unknown[] = []
+    const prevReport = globalThis.reportError
+    globalThis.reportError = (e: unknown) => errors.push(e)
+    try {
+      const count = createSignal<unknown>(1)
+      const el = jsx("span", { children: count }) as HTMLElement
+      expect(el.textContent).toBe("1")
+      // 信号值变成 promise:在 Suspend 外渲染 toNodes 抛错
+      count.set(Promise.resolve("x"))
+      await flush()
+      expect(el.textContent).toBe("1")
+      expect(errors.length).toBe(1)
+      // 修复前:re-arm 被跳过,one-shot watcher 永久失效,后续更新全丢
+      count.set(2)
+      await flush()
+      expect(el.textContent).toBe("2")
+    } finally {
+      globalThis.reportError = prevReport
+    }
+  })
+
+  it("nullish IDL props do not render 'undefined' strings", async () => {
+    const input = jsx("input", { value: undefined }) as HTMLInputElement
+    expect(input.getAttribute("value")).toBeNull()
+    const div = jsx("div", { id: null }) as HTMLElement
+    expect(div.getAttribute("id")).toBeNull()
+    // 信号驱动路径同样跳过 nullish
+    const sig = createSignal<string | undefined>("x")
+    const input2 = jsx("input", { value: sig }) as HTMLInputElement
+    expect(input2.value).toBe("x")
+    sig.set(undefined)
+    await flush()
+    expect(input2.getAttribute("value")).toBeNull()
+    sig.set("y")
+    await flush()
+    expect(input2.value).toBe("y")
+  })
+})

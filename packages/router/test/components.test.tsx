@@ -2,6 +2,7 @@
 import "./setup"
 import { describe, it, expect, beforeEach } from "bun:test"
 import { jsx } from "@kikojs/dom"
+import { cleanupWatchers } from "@kikojs/dom/jsx-runtime"
 import { createRouter } from "../src/router"
 import { Router, Link, Outlet, Navigate } from "../src/components"
 import { setActiveRouter } from "../src/context"
@@ -64,12 +65,19 @@ describe("Router components", () => {
     router.dispose()
   })
 
-  it("Outlet throws when no router is available", () => {
-    expect(() => Outlet({})).toThrow(/Outlet must be used inside a Router/)
+  it("Outlet renders nothing (does not throw) when no router is available", () => {
+    // 作为 Router 的 JSX children 时，children 先于 Router 求值——Outlet 创建
+    // 阶段必然没有 router；延迟解析后此处只应渲染空内容，而不是抛错。
+    const outlet = Outlet({})
+    expect(outlet.textContent).toBe("")
+    // 手动清理：孤儿实例的 effect 订阅 activeRouter 信号，不 dispose 会
+    // 在后续测试的 Router 挂载时被触发
+    cleanupWatchers(outlet)
   })
 
-  it("Navigate throws when no router is available", () => {
-    expect(() => Navigate({ to: "/" })).toThrow(/Navigate must be used inside a Router/)
+  it("Navigate renders a marker (does not throw) when no router is available", () => {
+    const marker = Navigate({ to: "/" })
+    cleanupWatchers(marker)
   })
 
   it("Link navigates on click", async () => {
@@ -200,5 +208,101 @@ describe("Router components", () => {
     await flushMicrotasks()
     expect(router.location.get().path).toBe(before)
     router.dispose()
+  })
+})
+
+describe("JSX composition (children evaluate before Router)", () => {
+  beforeEach(() => {
+    window.history.replaceState(null, "", "/")
+    // Router() 挂载时设置模块级 activeRouter，跨测试残留会影响抛错断言
+    setActiveRouter(null)
+  })
+
+  it("Outlet composed as JSX child of Router renders the current route", async () => {
+    const router = createRouter({ mode: "path", routes: createRoutes() })
+    // JSX 求值顺序：Outlet 先于 Router 执行；Router 挂载（setActiveRouter）
+    // 后 Outlet 的 effect 依赖 activeRouter 信号自动补跑。
+    const tree = (
+      <Router router={router}>
+        <Outlet />
+      </Router>
+    ) as DocumentFragment
+    await drainMicrotasks()
+    expect(tree.textContent).toBe("home")
+    router.push("/about")
+    await drainMicrotasks()
+    expect(tree.textContent).toBe("about")
+    cleanupWatchers(tree) // 触发 Router 的 trackCleanup：清 activeRouter + dispose
+  })
+
+  it("Navigate composed as JSX child of Router navigates after mount", async () => {
+    const router = createRouter({ mode: "path", routes: createRoutes() })
+    const tree = Router({ router, children: Navigate({ to: "/about" }) })
+    await drainMicrotasks()
+    expect(router.location.get().path).toBe("/about")
+    cleanupWatchers(tree)
+  })
+
+  it("Link activeClass works when Link is created before Router mounts", async () => {
+    const router = createRouter({ mode: "path", routes: createRoutes() })
+    // Link 先于 Router 求值：activeClass effect 首跑拿不到 router，
+    // 修复前该 effect 零依赖永不重跑，activeClass 完全失效。
+    const tree = Router({
+      router,
+      children: Link({ to: "/about", activeClass: "active", children: "go" }),
+    })
+    const link = (tree as DocumentFragment).firstChild as HTMLAnchorElement
+    expect(link.classList.contains("active")).toBe(false)
+    router.push("/about")
+    await drainMicrotasks()
+    expect(link.classList.contains("active")).toBe(true)
+    router.push("/")
+    await drainMicrotasks()
+    expect(link.classList.contains("active")).toBe(false)
+    cleanupWatchers(tree)
+  })
+
+  it("Link activeClass does not match partial segments", async () => {
+    const router = createRouter({ mode: "path", routes: createRoutes() })
+    Router({ router })
+    const link = Link({ to: "/use", activeClass: "active", children: "u" }) as HTMLAnchorElement
+    router.push("/users")
+    await drainMicrotasks()
+    expect(link.classList.contains("active")).toBe(false)
+    router.push("/use")
+    await drainMicrotasks()
+    expect(link.classList.contains("active")).toBe(true)
+    router.dispose()
+  })
+
+  it("Outlet renders nested layouts level by level", async () => {
+    const routes: RouteRecord[] = [
+      {
+        path: "/",
+        component: () =>
+          jsx("main", {
+            children: [
+              document.createTextNode("layout:"),
+              // 布局组件内的 Outlet：渲染 matched 的下一层
+              Outlet({}),
+            ],
+          }),
+        children: [{ path: "/inner", component: () => jsx("p", { children: "inner" }) }],
+      },
+    ]
+    const router = createRouter({ mode: "path", routes })
+    const tree = (
+      <Router router={router}>
+        <Outlet />
+      </Router>
+    ) as DocumentFragment
+    await drainMicrotasks()
+    // 初始在 "/"：根 Outlet 渲染布局，布局内 Outlet 无下一层可渲染
+    expect(tree.textContent).toBe("layout:")
+    router.push("/inner")
+    await drainMicrotasks()
+    // 根 Outlet 渲染布局（matched[0]），布局内 Outlet 渲染 inner（matched[1]）
+    expect(tree.textContent).toBe("layout:inner")
+    cleanupWatchers(tree)
   })
 })

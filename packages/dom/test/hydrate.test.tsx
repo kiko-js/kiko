@@ -1,6 +1,7 @@
 /** @jsxImportSource @kikojs/dom */
 import { describe, it, expect, beforeAll, afterAll } from "bun:test"
-import { jsx, Fragment } from "../src/jsx-runtime"
+import { Signal } from "signal-polyfill"
+import { jsx, Fragment, Style } from "../src/jsx-runtime"
 import { Show, For, ErrorBoundary, Suspend } from "../src/flow"
 import { lazy } from "../src/lazy"
 import { renderToFragment, ssrRuntime } from "../src/ssr"
@@ -250,7 +251,12 @@ describe("hydrate", () => {
         For({
           each: list,
           getKey: item => item.id,
-          children: item => jsx("li", { children: item().v }),
+          children: item => {
+            // keyed 语义:accessor 必须在绑定中读取(item().v 快照读不会更新);
+            // 与客户端 keyed For 测试同构
+            const v = new Signal.Computed(() => (item() as { v: string }).v)
+            return jsx("li", { children: v })
+          },
         }),
       container,
     )
@@ -260,6 +266,7 @@ describe("hydrate", () => {
       { id: 2, v: "b" },
     ])
     await flush()
+    await flush() // keyed 原地更新是两跳:For render → state.set → 绑定 watcher
     expect(container.textContent).toBe("Ab")
     dispose()
   })
@@ -291,5 +298,69 @@ describe("hydrate", () => {
     count.set(99)
     await flush()
     expect(container.textContent).toBe("1")
+  })
+})
+
+describe("hydrated reactivity (post-hydration bindings)", () => {
+  it("hydrated ErrorBoundary re-runs children when their signals change", async () => {
+    const container = document.createElement("div")
+    const flag = createSignal(true)
+    const dispose = await ssrThenHydrate(
+      () =>
+        ErrorBoundary({
+          children: () =>
+            flag.get() ? jsx("p", { children: "on" }) : jsx("p", { children: "off" }),
+        }),
+      container,
+    )
+    expect(container.textContent).toBe("on")
+    flag.set(false)
+    await flush()
+    // 修复前:水合后 ErrorBoundary 无 watcher,children 信号变化不重渲染
+    expect(container.textContent).toBe("off")
+    dispose()
+  })
+
+  it("hydrated Suspend re-renders when the children signal changes", async () => {
+    const container = document.createElement("div")
+    const state = createSignal<unknown>("a")
+    const dispose = await ssrThenHydrate(
+      () => Suspend({ fallback: jsx("span", { children: "loading" }), children: state }),
+      container,
+    )
+    expect(container.textContent).toBe("a")
+    state.set("b")
+    await flush()
+    // 修复前:水合后 Suspend 不订阅信号,变化被忽略
+    expect(container.textContent).toBe("b")
+    dispose()
+  })
+
+  it("hydrated Show with a direct Style call rebuilds on toggle", async () => {
+    const container = document.createElement("div")
+    const show = createSignal(true)
+    const dispose = await ssrThenHydrate(
+      () =>
+        jsx("div", {
+          children: Show({
+            when: show,
+            fallback: jsx("span", { children: "off" }),
+            children: Style({ children: ".x { color: red }" }),
+          }),
+        }),
+      container,
+    )
+    expect(container.querySelector("style")).not.toBeNull()
+    show.set(false)
+    await flush()
+    expect(container.textContent).toBe("off")
+    show.set(true)
+    await flush()
+    // 修复前:hydrateStyle 的 PendingNode 无 rebuild → toNodes 兜底成 "[object Object]"
+    expect(container.textContent).not.toContain("[object Object]")
+    // rebuild 后的 Style 是 constructable sheet 锚点(注释):scope attr 落在 div 上
+    const host = container.firstElementChild as HTMLElement
+    expect(Array.from(host.attributes).some(a => a.name.startsWith("data-kiko-v"))).toBe(true)
+    dispose()
   })
 })

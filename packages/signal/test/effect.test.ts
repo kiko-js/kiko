@@ -1,6 +1,7 @@
 import { describe, it, expect } from "bun:test"
 import { effect } from "../src/effect"
 import { createSignal } from "../src/signal"
+import { onCleanup } from "../src/scope"
 
 function waitForMicrotask(): Promise<void> {
   const { promise, resolve } = Promise.withResolvers<void>()
@@ -92,6 +93,82 @@ describe("effect", () => {
     count.set(1)
     await waitForMicrotask()
     expect(cleanups).toBe(1)
+  })
+})
+
+describe("effect cleanup semantics", () => {
+  it("cleanup signal reads do not become effect dependencies", async () => {
+    const a = createSignal(1)
+    const b = createSignal(10)
+    let runs = 0
+    const cleanupReads: number[] = []
+    const stop = effect(() => {
+      runs++
+      a.get()
+      onCleanup(() => {
+        cleanupReads.push(b.get())
+      })
+    })
+    expect(runs).toBe(1)
+    // 修复前:清理在 computed 内执行,b 被记为依赖,b 变化导致 effect 重跑。
+    // 修复后:b 变化不触发重跑(清理读取不订阅),清理也未执行。
+    b.set(20)
+    await waitForMicrotask()
+    expect(runs).toBe(1)
+    expect(cleanupReads).toEqual([])
+    // 真正重跑时清理照常执行,读到当前 b 值
+    a.set(2)
+    await waitForMicrotask()
+    expect(runs).toBe(2)
+    expect(cleanupReads).toEqual([20])
+    stop()
+  })
+
+  it("a throwing returned cleanup does not wedge the effect", async () => {
+    const a = createSignal(1)
+    let runs = 0
+    let shouldThrow = true
+    const errors: unknown[] = []
+    const prevReport = globalThis.reportError
+    globalThis.reportError = (e: unknown) => errors.push(e)
+    try {
+      const stop = effect(() => {
+        runs++
+        a.get()
+        return () => {
+          if (shouldThrow) throw new Error("cleanup boom")
+        }
+      })
+      expect(runs).toBe(1)
+      a.set(2)
+      await waitForMicrotask()
+      // 修复前:清理抛错 → computed 缓存 ERRORED,effect 体不再执行
+      expect(runs).toBe(2)
+      shouldThrow = false
+      a.set(3)
+      await waitForMicrotask()
+      expect(runs).toBe(3)
+      stop()
+    } finally {
+      globalThis.reportError = prevReport
+    }
+  })
+
+  it("returned cleanup and onCleanup share one reverse order on re-run and dispose", async () => {
+    const a = createSignal(0)
+    const order: string[] = []
+    const dispose = effect(() => {
+      a.get()
+      onCleanup(() => order.push("scope"))
+      return () => order.push("returned")
+    })
+    expect(order).toEqual([])
+    a.set(1)
+    await waitForMicrotask()
+    // 返回式清理最后注册 → 逆序最先执行;重跑与 dispose 顺序一致
+    expect(order).toEqual(["returned", "scope"])
+    dispose()
+    expect(order).toEqual(["returned", "scope", "returned", "scope"])
   })
 })
 

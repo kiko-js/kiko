@@ -182,11 +182,23 @@ test("effect self-cycle is bounded", async () => {
 
 test("effect cross-cycle is bounded", async () => {
   const store = createStore({ a: 1, b: 1 })
-  effect(() => store.a.set(store.b.get() + 1))
-  effect(() => store.b.set(store.a.get() + 1))
-  await flush()
-  expect(typeof store.a.get()).toBe("number")
-  expect(typeof store.b.get()).toBe("number")
+  // 两个 effect 互相写入构成循环:调度器的逐 effect 预算会切断它。
+  // Bun 的 reportError 会把上报错误视为测试失败,这里捕获断言。
+  const errors: unknown[] = []
+  const prevReport = globalThis.reportError
+  globalThis.reportError = (e: unknown) => errors.push(e)
+  try {
+    effect(() => store.a.set(store.b.get() + 1))
+    effect(() => store.b.set(store.a.get() + 1))
+    // 外部写入触发级联:两个 effect 交替重排,预算在 ~200 轮后切断循环
+    store.b.set(5)
+    for (let i = 0; i < 300; i++) await flush()
+    expect(typeof store.a.get()).toBe("number")
+    expect(typeof store.b.get()).toBe("number")
+    expect(errors.length).toBeGreaterThan(0)
+  } finally {
+    globalThis.reportError = prevReport
+  }
 })
 
 test("circular references do not cause infinite loops", () => {
@@ -296,4 +308,19 @@ test("reading a missing path yields undefined without throwing", () => {
   // 缺失路径的深层访问：运行时返回 undefined 而非抛错
   const deep = (store as unknown as { a: { b: { get(): unknown } } }).a.b
   expect(deep.get()).toBeUndefined()
+})
+
+test("store nodes are not thenable", async () => {
+  const store = createStore({ a: 1 })
+  // 修复前:get trap 对未知属性返回可调用代理,store.then 是函数 →
+  // await store 走 thenable 协议永不 resolve;isPromiseLike(store) 误判 true。
+  expect(typeof (store as unknown as { then: unknown }).then).toBe("undefined")
+  expect(typeof (store as unknown as { catch: unknown }).catch).toBe("undefined")
+  expect(typeof (store as unknown as { finally: unknown }).finally).toBe("undefined")
+  // 即使误入 Promise 决议路径也不应挂起
+  const result = await Promise.race([Promise.resolve("ok"), store as unknown as Promise<string>])
+  expect(result).toBe("ok")
+  // 数据访问不受影响
+  expect(store.a.get()).toBe(1)
+  expect(store.get()).toEqual({ a: 1 })
 })

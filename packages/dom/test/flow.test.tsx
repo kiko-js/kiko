@@ -1,7 +1,7 @@
 /** @jsxImportSource @kikojs/dom */
 import { describe, it, expect, beforeAll } from "bun:test"
 import { jsx, cleanupWatchers } from "../src/jsx-runtime"
-import { Show, For } from "../src/flow"
+import { Show, For, Suspend, ErrorBoundary } from "../src/flow"
 import { Signal } from "signal-polyfill"
 import { createSignal } from "../src/signal"
 
@@ -335,5 +335,97 @@ describe("For", () => {
     list.set([{ id: 3, v: "c" }, items[1]!, items[0]!])
     await sync()
     expect(texts()).toEqual(["c:0", "b:1", "a:2"])
+  })
+})
+
+describe("static branch retention", () => {
+  it("Show static children keep signal bindings across toggles", async () => {
+    const show = createSignal(true)
+    const count = createSignal(1)
+    const staticChildren = jsx("span", { children: count })
+    const el = jsx("div", {
+      children: Show({ when: show, children: staticChildren }),
+    }) as HTMLElement
+    expect(el.textContent).toBe("1")
+    show.set(false)
+    await flush()
+    expect(el.textContent).toBe("")
+    show.set(true)
+    await flush()
+    expect(el.textContent).toBe("1")
+    // 修复前:换出时 cleanupWatchers 删除绑定,重挂载后 count 变化不再更新
+    count.set(2)
+    await flush()
+    expect(el.textContent).toBe("2")
+  })
+
+  it("Suspend fallback keeps signal bindings across repeated pendings", async () => {
+    const count = createSignal(1)
+    const fallback = jsx("span", { children: count })
+    const state = createSignal<unknown>(null)
+    let resolve1!: (v: unknown) => void
+    state.set(
+      new Promise<unknown>(r => {
+        resolve1 = r
+      }),
+    )
+    const el = jsx("div", {
+      children: Suspend({ fallback, children: state }),
+    }) as HTMLElement
+    expect(el.textContent).toBe("1") // fallback
+    resolve1(jsx("b", { children: "one" }))
+    await flush()
+    await flush()
+    expect(el.textContent).toBe("one")
+    // 再次挂起:fallback 重新显示,绑定必须仍然存活
+    let resolve2!: (v: unknown) => void
+    state.set(
+      new Promise<unknown>(r => {
+        resolve2 = r
+      }),
+    )
+    await flush()
+    expect(el.textContent).toBe("1")
+    count.set(2)
+    await flush()
+    expect(el.textContent).toBe("2")
+    resolve2(jsx("i", { children: "two" }))
+    await flush()
+    await flush()
+    expect(el.textContent).toBe("two")
+  })
+
+  it("ErrorBoundary fallback keeps signal bindings across retries", async () => {
+    const count = createSignal(1)
+    const fallback = jsx("span", { children: count })
+    const reset = new Signal.State(0)
+    const flag = createSignal(true)
+    const el = jsx("div", {
+      children: ErrorBoundary({
+        fallback,
+        resetSignal: reset,
+        children: () => {
+          if (flag.get()) throw new Error("boom")
+          return jsx("b", { children: "ok" })
+        },
+      }),
+    }) as HTMLElement
+    // 初始抛错 → fallback
+    expect(el.textContent).toBe("1")
+    // 重试成功 → 换出 fallback(保留 watcher)
+    flag.set(false)
+    reset.set(1)
+    await flush()
+    await flush()
+    expect(el.textContent).toBe("ok")
+    // 再次出错 → fallback 重挂载,绑定必须存活
+    flag.set(true)
+    reset.set(2)
+    await flush()
+    await flush()
+    expect(el.textContent).toBe("1")
+    count.set(2)
+    await flush()
+    expect(el.textContent).toBe("2")
   })
 })

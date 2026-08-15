@@ -1,4 +1,5 @@
 import { Signal } from "signal-polyfill"
+import { reportError } from "./report"
 
 /**
  * Microtask-batched effect scheduler shared by `effect()` and the DOM runtime.
@@ -20,8 +21,11 @@ const untrackFn: <U>(cb: () => U) => U = Signal.subtle["untrack"]
 let batchDepth = 0
 let flushScheduled = false
 let pendingEffects: Set<EffectRun> = new Set()
-let flushDepth = 0
-const MAX_FLUSH_DEPTH = 100
+// 逐 effect 的循环预算：同一 flush 级联内（pending 持续非空）每个 run 累计的
+// 重排轮数。连续重排超限的 run 被单独丢弃——不再像旧实现那样用全局深度
+// 清空全部待跑 effect（会误伤级联期间由外部写入调度进来的无关 effect）。
+const MAX_RESCHEDULE_ROUNDS = 100
+let rescheduleRounds = new Map<EffectRun, number>()
 
 /** Enqueue `run` for the next flush. Idempotent within a flush cycle. */
 export function scheduleEffect(run: EffectRun): void {
@@ -35,19 +39,21 @@ export function scheduleEffect(run: EffectRun): void {
 function flushEffects(): void {
   flushScheduled = false
   if (pendingEffects.size === 0) {
-    flushDepth = 0
+    rescheduleRounds.clear()
     return
   }
-  // Safety net for circular effect dependencies: each round that re-schedules
-  // work advances the depth, so a pathological cycle is stopped instead of
-  // queueing microtasks forever. Normal flows drain `pendingEffects` and reset.
-  if (flushDepth > MAX_FLUSH_DEPTH) {
-    pendingEffects = new Set()
-    flushDepth = 0
-    console.error("Circular dependency detected in effects")
+  // 丢弃连续重排超限的 run（循环参与者）；其余排队 effect 不受影响。
+  for (const [run, rounds] of rescheduleRounds) {
+    if (rounds > MAX_RESCHEDULE_ROUNDS) {
+      pendingEffects.delete(run)
+      rescheduleRounds.delete(run)
+      reportError(new Error("Circular dependency detected in effects"))
+    }
+  }
+  if (pendingEffects.size === 0) {
+    rescheduleRounds.clear()
     return
   }
-  flushDepth++
   const effects = pendingEffects
   pendingEffects = new Set()
   for (const run of effects) {
@@ -59,7 +65,20 @@ function flushEffects(): void {
       reportError(err)
     }
   }
-  if (pendingEffects.size === 0) flushDepth = 0
+  if (pendingEffects.size === 0) {
+    rescheduleRounds.clear()
+    return
+  }
+  // 统计重排：本轮执行后仍在排队的 run 又调度了一次。轮数在同一级联内
+  // 累计（自循环/交替循环都会持续增长），级联结束后整体清零。
+  const next = new Map<EffectRun, number>()
+  for (const [run, rounds] of rescheduleRounds) {
+    next.set(run, pendingEffects.has(run) ? rounds + 1 : rounds)
+  }
+  for (const run of pendingEffects) {
+    if (!next.has(run)) next.set(run, 1)
+  }
+  rescheduleRounds = next
 }
 
 /**

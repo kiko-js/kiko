@@ -1,5 +1,6 @@
 import { Signal } from "signal-polyfill"
 import { isSignal } from "./signal"
+import { reportError } from "./report"
 
 /**
  * Create a standard `Signal.Computed<T>` — the TC39 Signals interface.
@@ -43,8 +44,15 @@ export function watchValue<T>(
   const signal = value as Signal.State<T> | Signal.Computed<T>
   const watcher = new Signal.subtle.Watcher(() => {
     queueMicrotask(() => {
-      callback(signal.get())
-      watcher.watch(signal)
+      // 回调抛错不得让 one-shot watcher 永久失效：错误上报后仍在
+      // finally 中 re-arm，后续更新照常送达。
+      try {
+        callback(signal.get())
+      } catch (err) {
+        reportError(err)
+      } finally {
+        watcher.watch(signal)
+      }
     })
   })
   watcher.watch(signal)

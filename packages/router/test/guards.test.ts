@@ -88,7 +88,11 @@ describe("guard helpers", () => {
     router.push("/admin")
     await drainMicrotasks()
     expect(router.location.get().path).toBe("/login")
-    expect(calls).toEqual(["first", "second", "first", "second", "third"])
+    // 初始加载也会跑守卫：初始 runGuards("/") 与 push("/admin") 的 runGuards
+    // 并发执行（combineGuards 对每个守卫 await，即使同步守卫也 yield），
+    // 各自先跑 first，再在微任务里跑 second → 交错为 first,first,second,second；
+    // 之后重定向到 /login 再完整跑一轮 first,second,third。
+    expect(calls).toEqual(["first", "first", "second", "second", "first", "second", "third"])
     router.dispose()
   })
 

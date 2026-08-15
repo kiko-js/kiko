@@ -1,5 +1,5 @@
 import { Signal } from "signal-polyfill"
-import { createWatcher, isSignal } from "./signal"
+import { createWatcher, isSignal, reportError, watchSignal } from "./signal"
 import type { WatchableSignal, Watcher } from "./signal"
 import {
   createScopeAttr,
@@ -153,6 +153,30 @@ export function swapNodes(marker: Node, old: Node[], next: Node[]): Node[] {
   return next
 }
 
+/**
+ * 分支换出/换入。`retainOld` 为 true 时旧分支只从 DOM 移除、保留
+ * watcher/cleanup——用于 Show/Suspend/ErrorBoundary 的静态分支（同一批节点
+ * 可能再次换入，cleanupWatchers 会删除其 watcher 集，导致重挂载后内部信号
+ * 绑定"死亡"）。为 false 时与 `swapNodes` 相同（完整清理）。
+ */
+export function swapBranch(marker: Node, old: Node[], next: Node[], retainOld: boolean): Node[] {
+  const parent = marker.parentNode
+  if (!parent) {
+    if (!retainOld) for (const n of old) cleanupWatchers(n)
+    return next
+  }
+  for (const n of old) {
+    parent.removeChild(n)
+    if (!retainOld) cleanupWatchers(n)
+  }
+  const ref = marker.nextSibling
+  for (const n of next) {
+    applyScopeRoots(n, parent)
+    parent.insertBefore(n, ref)
+  }
+  return next
+}
+
 function appendChild(parent: Node, child: unknown): void {
   if (child == null || child === false || child === true) return
   if (isPromiseLike(child)) {
@@ -177,13 +201,9 @@ function appendChild(parent: Node, child: unknown): void {
       current = swapNodes(marker, current, toNodes(signal.get()))
     }
 
-    const watcher = createWatcher(() => {
-      queueMicrotask(() => {
-        render()
-        watcher.watch(signal)
-      })
-    })
-    watcher.watch(signal)
+    // watchSignal 保证 re-arm:渲染抛错(如 Promise 渲染到 Suspend 外)后
+    // 绑定不会永久失效
+    const watcher = watchSignal(signal, render)
     trackWatcher(marker, watcher)
     return
   }
@@ -337,10 +357,16 @@ function applyProp(el: StyledElement, key: string, value: unknown): void {
   // `stroke-width`) land on the right DOM attribute name.
   if (key in el) {
     const host = el as unknown as Record<string, unknown>
+    if (value == null) {
+      // IDL 属性赋 null/undefined 会被 WebIDL 转成 "null"/"undefined" 字符串
+      // （如 <input value={undefined}> 会显示 "undefined"）；移除属性回退默认值
+      el.removeAttribute(key)
+      return
+    }
     try {
       host[key] = value
     } catch {
-      el.setAttribute(key, value == null ? "" : String(value))
+      el.setAttribute(key, String(value))
     }
   } else {
     const name = /[A-Z]/.test(key) ? key.replace(/[A-Z]/g, m => "-" + m.toLowerCase()) : key
@@ -420,13 +446,8 @@ export function setProp(el: StyledElement, key: string, value: unknown): void {
 
     apply()
 
-    const watcher = createWatcher(() => {
-      queueMicrotask(() => {
-        apply()
-        watcher.watch(signal)
-      })
-    })
-    watcher.watch(signal)
+    // watchSignal 保证 re-arm:apply 抛错后绑定不会永久失效
+    const watcher = watchSignal(signal, apply)
     trackWatcher(el, watcher)
     return
   }
@@ -545,7 +566,7 @@ function collectCssSignals(children: unknown): WatchableSignal<unknown>[] {
  * is disposed via `cleanupWatchers`.
  */
 export function Style(props: StyleProps): Node {
-  if (isHydrating()) return hydrateStyle() as unknown as Node
+  if (isHydrating()) return hydrateStyle(props) as unknown as Node
   const ssr = getSSRRuntime()
   if (ssr) return ssr.style(props as unknown as Record<string, unknown>) as unknown as Node
   const scoped = !props.global
@@ -590,8 +611,14 @@ export function Style(props: StyleProps): Node {
   if (signals.length > 0) {
     const watcher = createWatcher(() => {
       queueMicrotask(() => {
-        render()
-        watcher.watch(...signals)
+        // render 抛错（如非法 css 值）上报后仍在 finally 中 re-arm
+        try {
+          render()
+        } catch (err) {
+          reportError(err)
+        } finally {
+          watcher.watch(...signals)
+        }
       })
     })
     watcher.watch(...signals)

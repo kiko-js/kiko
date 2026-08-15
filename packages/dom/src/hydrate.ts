@@ -1,10 +1,13 @@
-import { createWatcher, isSignal } from "./signal"
+import { Signal } from "signal-polyfill"
+import { createWatcher, isSignal, reportError, watchSignal } from "./signal"
 import type { WatchableSignal } from "./signal"
 import {
+  applyScopeRoots,
   cleanupWatchers,
   jsx,
   setProp,
   Style,
+  swapBranch,
   swapNodes,
   toNodes,
   trackCleanup,
@@ -176,8 +179,14 @@ export function hydrateFragment(children: unknown): PendingNode {
   return new PendingNode("group", () => hydrateValue(children))
 }
 
-export function hydrateStyle(): PendingNode {
-  return new PendingNode("element", el => [el!])
+export function hydrateStyle(props: StyleProps): PendingNode {
+  return new PendingNode(
+    "element",
+    el => [el!],
+    // 水合后分支切换（如 Show 重建）走客户端 Style:没有 rebuild 时
+    // PendingNode 会被 toNodes 兜底转成 "[object Object]" 文本
+    () => Style(props),
+  )
 }
 
 /** 信号子节点：采纳 `<!---->` 标记 + 快照内容，挂 watcher */
@@ -191,13 +200,7 @@ function hydrateSignalChild(signal: WatchableSignal<unknown>): Node[] {
   const render = (): void => {
     current = swapNodes(marker, current, toNodes(signal.get()))
   }
-  const watcher = createWatcher(() => {
-    queueMicrotask(() => {
-      render()
-      watcher.watch(signal)
-    })
-  })
-  watcher.watch(signal)
+  const watcher = watchSignal(signal, render)
   trackWatcher(marker, watcher)
   trackCleanup(marker, () => {
     for (const n of current) cleanupWatchers(n)
@@ -232,19 +235,20 @@ export function hydrateShow(props: {
       if (value instanceof PendingNode && value.rebuild) return toNodes(value.rebuild())
       return toNodes(value)
     }
+    // 静态（非函数、非 PendingNode）分支值是同一批节点：换出保留 watcher，
+    // 换回后内部绑定存活（与客户端 Show 的保留语义一致）
+    const retainable = (value: unknown): boolean =>
+      typeof value !== "function" && !(value instanceof PendingNode)
     let current = hydrateValue(branch())
+    let currentRetained = false
+    const render = (): void => {
+      const value = branch()
+      current = swapBranch(marker, current, toBranchNodes(value), currentRetained)
+      currentRetained = retainable(value)
+    }
     if (isSignal(props.when)) {
       const signal = props.when as WatchableSignal<unknown>
-      const render = (): void => {
-        current = swapNodes(marker, current, toBranchNodes(branch()))
-      }
-      const watcher = createWatcher(() => {
-        queueMicrotask(() => {
-          render()
-          watcher.watch(signal)
-        })
-      })
-      watcher.watch(signal)
+      const watcher = watchSignal(signal, render)
       trackWatcher(marker, watcher)
     }
     trackCleanup(marker, () => {
@@ -253,6 +257,13 @@ export function hydrateShow(props: {
     })
     return [marker, ...current]
   })
+}
+
+interface HydratedForEntry {
+  nodes: Node[]
+  state: Signal.State<unknown>
+  accessor: Signal.Computed<unknown>
+  idx: Signal.State<number>
 }
 
 export function hydrateFor(props: {
@@ -266,42 +277,104 @@ export function hydrateFor(props: {
       warn("expected for marker")
       return []
     }
-    const items = (): readonly unknown[] => unwrap(props.each) as readonly unknown[]
-    const renderList = (): Node[] => {
+    const getKey = props.getKey
+    let current: Node[] = []
+    let entries: Map<unknown, HydratedForEntry> = new Map()
+
+    // 初次：水合采纳。keyed 模式每项建 state/accessor/idx——与 flow.ts
+    // 相同的条目模型，保证水合后的首次更新就走 keyed 重排（存活 key
+    // 保留 DOM 与 watcher，children 不重跑）。
+    const adopt = (): void => {
       const out: Node[] = []
-      const list = items()
+      const list = unwrap(props.each) as readonly unknown[]
       for (let i = 0; i < list.length; i++) {
+        const item = list[i]
         const index = (): number => i
-        const arg = props.getKey ? () => list[i] : list[i]
-        out.push(...hydrateValue(props.children(arg, index)))
+        if (getKey) {
+          const key = getKey(item, i)
+          const state = new Signal.State<unknown>(item)
+          const accessor = new Signal.Computed<unknown>(() => state.get())
+          const entry: HydratedForEntry = { nodes: [], state, accessor, idx: new Signal.State(i) }
+          entry.nodes = hydrateValue(
+            props.children(
+              () => accessor.get(),
+              () => entry.idx.get(),
+            ),
+          )
+          entries.set(key, entry)
+          out.push(...entry.nodes)
+        } else {
+          out.push(...hydrateValue(props.children(item, index)))
+        }
       }
-      return out
+      current = out
     }
-    let current = renderList()
-    if (isSignal(props.each)) {
-      const signal = props.each as WatchableSignal<readonly unknown[]>
-      const render = (): void => {
+
+    // 更新：keyed 与 flow.ts 的 renderKeyed 相同；非 keyed 全量重建
+    const render = (): void => {
+      const list = unwrap(props.each) as readonly unknown[]
+      if (!getKey) {
         const next: Node[] = []
-        const list = unwrap(signal)
         for (let i = 0; i < list.length; i++) {
           const index = (): number => i
-          const arg = props.getKey ? () => list[i] : list[i]
-          next.push(...toNodes(props.children(arg, index)))
+          next.push(...toNodes(props.children(list[i], index)))
         }
         current = swapNodes(marker, current, next)
+        return
       }
-      const watcher = createWatcher(() => {
-        queueMicrotask(() => {
-          render()
-          watcher.watch(signal)
-        })
-      })
-      watcher.watch(signal)
+      const parent = marker.parentNode
+      const next: Node[] = []
+      const nextEntries = new Map<unknown, HydratedForEntry>()
+      const childFn = props.children as (item: () => unknown, index: () => number) => unknown
+      for (let i = 0; i < list.length; i++) {
+        const item = list[i]
+        const key = getKey(item, i)
+        const existing = entries.get(key)
+        if (existing) {
+          existing.state.set(item)
+          existing.idx.set(i)
+          entries.delete(key)
+          nextEntries.set(key, existing)
+          next.push(...existing.nodes)
+        } else {
+          const state = new Signal.State<unknown>(item)
+          const accessor = new Signal.Computed<unknown>(() => state.get())
+          const entry: HydratedForEntry = { nodes: [], state, accessor, idx: new Signal.State(i) }
+          entry.nodes = toNodes(
+            childFn(
+              () => accessor.get(),
+              () => entry.idx.get(),
+            ),
+          )
+          nextEntries.set(key, entry)
+          next.push(...entry.nodes)
+        }
+      }
+      if (parent) for (const n of current) parent.removeChild(n)
+      for (const entry of entries.values()) {
+        for (const n of entry.nodes) cleanupWatchers(n)
+      }
+      if (parent) {
+        const ref = marker.nextSibling
+        for (const n of next) {
+          applyScopeRoots(n, parent)
+          parent.insertBefore(n, ref)
+        }
+      }
+      current = next
+      entries = nextEntries
+    }
+
+    adopt()
+    if (isSignal(props.each)) {
+      const signal = props.each as WatchableSignal<readonly unknown[]>
+      const watcher = watchSignal(signal, render)
       trackWatcher(marker, watcher)
     }
     trackCleanup(marker, () => {
       for (const n of current) cleanupWatchers(n)
       current = []
+      entries = new Map()
     })
     return [marker, ...current]
   })
@@ -318,23 +391,94 @@ export function hydrateErrorBoundary(props: {
       warn("expected error-boundary marker")
       return []
     }
-    let current: Node[]
+    let current: Node[] = []
+    // 与客户端 ErrorBoundary 相同的驱动信号：children 在 computed 内求值，
+    // 信号变化 / reset 都能重渲染——修复水合后完全失去响应性的问题。
+    const reset = new Signal.State<unknown>(undefined)
+    const error = new Signal.State<unknown>(null)
+    const childrenComputed = new Signal.Computed<unknown>(() => {
+      reset.get()
+      return props.children()
+    })
+
+    const renderFallback = (err: unknown): Node[] => {
+      const fb =
+        typeof props.fallback === "function"
+          ? (props.fallback as (error: unknown) => unknown)(err)
+          : props.fallback
+      return toNodes(fb)
+    }
+
+    // 初次水合：通过 childrenComputed 采纳（依赖在水合期就建立，
+    // 信号变化才能驱动后续重渲染）；抛错采纳 fallback
     try {
-      current = hydrateValue(props.children())
+      current = hydrateValue(childrenComputed.get())
     } catch (e) {
       try {
         props.onError?.(e)
       } catch {
         // onError 是用户代码，不能破坏错误边界
       }
-      const fb =
+      current = hydrateValue(
         typeof props.fallback === "function"
           ? (props.fallback as (error: unknown) => unknown)(e)
-          : props.fallback
-      current = hydrateValue(fb)
+          : props.fallback,
+      )
     }
+
+    const render = (): void => {
+      if (error.get() !== null) {
+        current = swapNodes(marker, current, renderFallback(error.get()))
+        return
+      }
+      try {
+        current = swapNodes(marker, current, toNodes(childrenComputed.get()))
+      } catch (e) {
+        error.set(e)
+        try {
+          props.onError?.(e)
+        } catch {
+          // onError 是用户代码，不能破坏错误边界
+        }
+        current = swapNodes(marker, current, renderFallback(e))
+      }
+    }
+
+    const watcher = createWatcher(() => {
+      queueMicrotask(() => {
+        try {
+          if (error.get() === null) render()
+        } catch (err) {
+          reportError(err)
+        } finally {
+          watcher.watch(childrenComputed)
+        }
+      })
+    })
+    watcher.watch(childrenComputed)
+    trackWatcher(marker, watcher)
+
+    const resetWatcher = createWatcher(() => {
+      queueMicrotask(() => {
+        try {
+          if (error.get() === null) return
+          reset.get()
+          error.set(null)
+          render()
+          watcher.watch(childrenComputed)
+        } catch (err) {
+          reportError(err)
+        } finally {
+          resetWatcher.watch(reset)
+        }
+      })
+    })
+    resetWatcher.watch(reset)
+    trackWatcher(marker, resetWatcher)
+
     trackCleanup(marker, () => {
       for (const n of current) cleanupWatchers(n)
+      current = []
     })
     return [marker, ...current]
   })
@@ -388,19 +532,75 @@ export function hydrateSuspend(props: { fallback?: unknown; children: unknown })
       if (node) adopted.push(node)
     }
     let current = adopted
+    let seq = 0
+
+    const renderFallback = (): void => {
+      current = swapNodes(marker, current, toNodes(props.fallback))
+    }
+
+    const discard = (value: unknown): void => {
+      for (const n of toNodes(value)) cleanupWatchers(n)
+    }
+
     const children = unwrap(props.children)
     if (isPromiseLike(children)) {
-      // 内容解析后：PendingNode 对齐到采纳节点（绑定生效），真实节点直接换入
+      // 初始 promise：SSR 内容即当前状态（不闪 fallback），解析后对齐换入
       Promise.resolve(children).then(
         resolved => {
           current = swapNodes(marker, current, hydrateResolvedContent(resolved, adopted))
         },
         rejected => {
-          if (typeof reportError === "function") reportError(rejected)
+          reportError(rejected)
         },
       )
     }
+    if (isSignal(props.children)) {
+      const signal = props.children as WatchableSignal<unknown>
+      const watcher = watchSignal(signal, () => {
+        // 修复：水合后信号驱动的 Suspend 重渲染（此前完全没有订阅）
+        const mySeq = ++seq
+        const value = unwrap(signal)
+        const settle = (v: unknown): void => {
+          if (isPromiseLike(v)) {
+            renderFallback()
+            Promise.resolve(v).then(
+              resolved => {
+                if (mySeq !== seq) {
+                  discard(resolved)
+                  return
+                }
+                current = swapNodes(marker, current, toNodes(resolved))
+              },
+              rejected => {
+                if (mySeq === seq) reportError(rejected)
+              },
+            )
+            return
+          }
+          if (Array.isArray(v) && v.some(isPromiseLike)) {
+            renderFallback()
+            Promise.all(v).then(
+              resolved => {
+                if (mySeq !== seq) {
+                  discard(resolved)
+                  return
+                }
+                current = swapNodes(marker, current, toNodes(resolved))
+              },
+              rejected => {
+                if (mySeq === seq) reportError(rejected)
+              },
+            )
+            return
+          }
+          current = swapNodes(marker, current, toNodes(v))
+        }
+        settle(value)
+      })
+      trackWatcher(marker, watcher)
+    }
     trackCleanup(marker, () => {
+      seq++ // 使在途 promise 的结果失效
       for (const n of current) cleanupWatchers(n)
       current = []
     })

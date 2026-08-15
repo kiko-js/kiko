@@ -227,7 +227,11 @@ export function createRouter(options: RouterOptions): Router {
     }
   }
 
+  let disposed = false
+
   function dispose(): void {
+    if (disposed) return
+    disposed = true
     unlisten()
     history.dispose()
   }
@@ -268,6 +272,23 @@ export function createRouter(options: RouterOptions): Router {
     beforeEach,
     afterEach,
   }
+
+  // 初始加载同样走守卫：深链到 /admin + 鉴权守卫时先重定向，避免首屏渲染
+  // 受保护内容。结果在微任务中落地（早于浏览器绘制，通常无闪烁）；若守卫
+  // 返回前用户已发起导航，则放弃本次结果，避免覆盖更新的导航意图。
+  const initialKey = location.get().key
+  runGuards(location.get(), null)
+    .then(outcome => {
+      if (disposed || location.get().key !== initialKey) return
+      if (outcome === false) return
+      if (outcome) {
+        history.replace(outcome.path, outcome.state)
+        updateLocation(outcome.path, outcome.state, nextKey())
+      }
+    })
+    .catch(err => {
+      reportError(err)
+    })
 
   return router
 }
