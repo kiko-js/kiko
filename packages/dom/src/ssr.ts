@@ -126,8 +126,15 @@ function extractCssText(children: unknown): string {
   return parts.join("\n")
 }
 
+function escapeStyleText(css: string): string {
+  // Prevent `</style>` in CSS from closing the element early and enabling
+  // markup injection. The backslash keeps the HTML parser from seeing a tag
+  // while remaining valid CSS text for the common breaking sequence.
+  return css.replace(/<\/style/gi, "<\\/style")
+}
+
 export function ssrStyle(props: StyleProps): SSRValue {
-  const css = extractCssText(props.children)
+  const css = escapeStyleText(extractCssText(props.children))
   if (props.global) {
     return new SSRElement(`<style>${css}</style>`)
   }

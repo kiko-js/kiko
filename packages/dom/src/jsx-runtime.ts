@@ -88,29 +88,33 @@ function isAdopted(sheet: CSSStyleSheet): boolean {
 }
 
 export function cleanupWatchers(root: Node): void {
-  const cleanupSet = nodeCleanups.get(root)
-  if (cleanupSet) {
-    for (const fn of cleanupSet) {
-      try {
-        fn()
-      } catch {
-        // cleanup errors must not abort sibling cleanup
+  const stack: Node[] = [root]
+  while (stack.length > 0) {
+    const node = stack.pop()!
+    const cleanupSet = nodeCleanups.get(node)
+    if (cleanupSet) {
+      for (const fn of cleanupSet) {
+        try {
+          fn()
+        } catch {
+          // cleanup errors must not abort sibling cleanup
+        }
       }
+      nodeCleanups.delete(node)
     }
-    nodeCleanups.delete(root)
-  }
-  const watcherSet = nodeWatchers.get(root)
-  if (watcherSet) {
-    for (const w of watcherSet) {
-      // `watcher.unwatch()` with no args is a no-op in signal-polyfill — the
-      // filter loop only removes signals passed in. Introspect the watched
-      // sources and remove them explicitly so cleanup actually disconnects.
-      const sources = Signal.subtle.introspectSources(w)
-      if (sources.length > 0) w.unwatch(...sources)
+    const watcherSet = nodeWatchers.get(node)
+    if (watcherSet) {
+      for (const w of watcherSet) {
+        // `watcher.unwatch()` with no args is a no-op in signal-polyfill — the
+        // filter loop only removes signals passed in. Introspect the watched
+        // sources and remove them explicitly so cleanup actually disconnects.
+        const sources = Signal.subtle.introspectSources(w)
+        if (sources.length > 0) w.unwatch(...sources)
+      }
+      nodeWatchers.delete(node)
     }
-    nodeWatchers.delete(root)
+    for (const child of node.childNodes) stack.push(child)
   }
-  for (const child of root.childNodes) cleanupWatchers(child)
 }
 
 export function toNodes(value: unknown): Node[] {

@@ -395,6 +395,131 @@ describe("createRouter path mode", () => {
   })
 })
 
+describe("guard result validation", () => {
+  beforeEach(() => {
+    window.history.replaceState(null, "", "/")
+  })
+
+  it("reports an invalid global beforeEach result", async () => {
+    const reported: unknown[] = []
+    const prevReport = globalThis.reportError
+    globalThis.reportError = (e: unknown) => reported.push(e)
+    let router: ReturnType<typeof createRouter> | undefined
+    try {
+      router = createRouter({
+        mode: "path",
+        routes: createRoutes(),
+        beforeEach: () => ({}) as never,
+      })
+      router.push("/about")
+      await drainMicrotasks()
+      expect(reported.length).toBeGreaterThan(0)
+      expect((reported[0] as Error).message).toMatch(/Invalid guard result/)
+      expect(router.location.get().path).toBe("/")
+    } finally {
+      globalThis.reportError = prevReport
+      router?.dispose()
+    }
+  })
+
+  it("reports an invalid route-level beforeEnter result", async () => {
+    const reported: unknown[] = []
+    const prevReport = globalThis.reportError
+    globalThis.reportError = (e: unknown) => reported.push(e)
+    let router: ReturnType<typeof createRouter> | undefined
+    try {
+      router = createRouter({
+        mode: "path",
+        routes: [
+          { path: "/", component: () => document.createTextNode("home") },
+          {
+            path: "/admin",
+            beforeEnter: () => ({}) as never,
+            component: () => document.createTextNode("admin"),
+          },
+        ],
+      })
+      router.push("/admin")
+      await drainMicrotasks()
+      expect(reported.length).toBeGreaterThan(0)
+      expect((reported[0] as Error).message).toMatch(/Invalid guard result/)
+      expect(router.location.get().path).toBe("/")
+    } finally {
+      globalThis.reportError = prevReport
+      router?.dispose()
+    }
+  })
+})
+
+describe("popstate guards and hooks", () => {
+  beforeEach(() => {
+    window.history.replaceState(null, "", "/")
+  })
+
+  it("runs afterEach on an accepted popstate", async () => {
+    const visited: string[] = []
+    const router = createRouter({
+      mode: "path",
+      routes: createRoutes(),
+      afterEach: [to => visited.push(to.path)],
+    })
+    window.history.pushState(null, "", "/about")
+    window.dispatchEvent(new Event("popstate"))
+    await drainMicrotasks()
+    expect(router.location.get().path).toBe("/about")
+    expect(visited).toContain("/about")
+    router.dispose()
+  })
+
+  it("blocks a protected popstate and does not run afterEach", async () => {
+    const visited: string[] = []
+    const router = createRouter({
+      mode: "path",
+      routes: createRoutes(),
+      beforeEach: to => to.path !== "/about",
+      afterEach: [to => visited.push(to.path)],
+    })
+    window.history.pushState(null, "", "/about")
+    window.dispatchEvent(new Event("popstate"))
+    await drainMicrotasks()
+    expect(router.location.get().path).toBe("/")
+    expect(window.location.pathname).toBe("/")
+    expect(visited).toEqual([])
+
+    // happy-dom 不会为 history.go(-1) 自动派发 popstate；模拟浏览器的补偿事件。
+    window.dispatchEvent(new Event("popstate"))
+    await drainMicrotasks()
+
+    // 补偿事件后，下一次真实 popstate 不应被吞掉。
+    window.history.pushState(null, "", "/search")
+    window.dispatchEvent(new Event("popstate"))
+    await drainMicrotasks()
+    expect(router.location.get().path).toBe("/search")
+    router.dispose()
+  })
+
+  it("redirects a protected popstate and runs afterEach with the target", async () => {
+    const visited: string[] = []
+    const router = createRouter({
+      mode: "path",
+      routes: [
+        { path: "/", component: () => document.createTextNode("home") },
+        { path: "/login", component: () => document.createTextNode("login") },
+        { path: "/admin", component: () => document.createTextNode("admin") },
+      ],
+      beforeEach: to => (to.path === "/admin" ? "/login" : true),
+      afterEach: [to => visited.push(to.path)],
+    })
+    window.history.pushState(null, "", "/admin")
+    window.dispatchEvent(new Event("popstate"))
+    await drainMicrotasks()
+    expect(router.location.get().path).toBe("/login")
+    expect(window.location.pathname).toBe("/login")
+    expect(visited).toContain("/login")
+    router.dispose()
+  })
+})
+
 describe("createRouter hash mode", () => {
   beforeEach(() => {
     window.history.replaceState(null, "", "#/")

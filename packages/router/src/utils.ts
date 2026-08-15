@@ -40,7 +40,7 @@ export function pathsEqual(a: string, b: string): boolean {
 /** 在当前 router 上执行导航 */
 export function useNavigate(
   router: Router,
-): (to: string | number, options?: { replace?: boolean; state?: unknown }) => void {
+): (to: string | number, options?: { replace?: boolean; state?: unknown }) => Promise<void> {
   return (to, options) => router.navigate(to, options)
 }
 

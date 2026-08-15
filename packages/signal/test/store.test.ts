@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test"
-import { createStore, effect, computed, ref, isRef, REF } from "../src/index.ts"
+import { createStore, effect, computed, ref, isRef, REF, STORE_RAW } from "../src/index.ts"
 
 function flush(): Promise<void> {
   const { promise, resolve } = Promise.withResolvers<void>()
@@ -323,4 +323,65 @@ test("store nodes are not thenable", async () => {
   // 数据访问不受影响
   expect(store.a.get()).toBe(1)
   expect(store.get()).toEqual({ a: 1 })
+})
+
+test("STORE_RAW exposes the raw root even when data keys collide with the API", () => {
+  const raw = { get: 1, set: 2, signal: 3, then: 4 }
+  const store = createStore(raw)
+
+  expect(store[STORE_RAW]).toBe(raw)
+  // API surface still shadows the colliding data keys
+  expect(typeof store.get).toBe("function")
+  expect(typeof store.set).toBe("function")
+  expect(typeof store.signal).not.toBe("undefined")
+  // raw escape hatch can reach the colliding data values
+  const rawStore = store[STORE_RAW] as { get: number; set: number; then: number }
+  expect(rawStore.get).toBe(1)
+  expect(rawStore.set).toBe(2)
+  expect(rawStore.then).toBe(4)
+})
+
+test("proxy traps expose callable stores, keys, descriptors, and reject writes", () => {
+  const store = createStore({ a: 1, b: 2 })
+
+  const callableStore = store as unknown as { (): { a: number; b: number }; a: () => number }
+  expect(callableStore()).toEqual({ a: 1, b: 2 })
+  expect(callableStore.a()).toBe(1)
+
+  expect(Object.keys(store)).toEqual(["a", "b"])
+  expect("a" in store).toBe(true)
+  expect("missing" in store).toBe(false)
+
+  const desc = Object.getOwnPropertyDescriptor(store, "a")
+  expect(desc?.value).toBe(1)
+  expect(desc?.configurable).toBe(true)
+
+  expect(() => {
+    ;(store as unknown as Record<string, unknown>).a = 2
+  }).toThrow(TypeError)
+  expect(store.a.get()).toBe(1)
+})
+
+test("non-ref class instances and built-ins stay opaque terminals", () => {
+  const date = new Date("2020-01-01T00:00:00Z")
+  const map = new Map([["a", 1]])
+  const store = createStore({ date, map, nested: { list: [1, 2] } })
+
+  // opaque terminals are returned by reference
+  expect(store.date.get()).toBe(date)
+  expect(store.map.get()).toBe(map)
+  expect(store.map.get().get("a")).toBe(1)
+
+  // 终端对象本身可以整体替换
+  const nextDate = new Date("2021-01-01T00:00:00Z")
+  store.date.set(nextDate)
+  expect(store.date.get()).toBe(nextDate)
+
+  // 但不可下钻到终端对象内部去 set（保持 opaque）
+  ;(store.date as unknown as { getTime: { set(v: number): void } }).getTime.set(123)
+  expect(store.date.get().getTime()).toBe(nextDate.getTime())
+
+  // plain nested objects remain reactive
+  store.nested.list.set([3])
+  expect(store.nested.list.get()).toEqual([3])
 })

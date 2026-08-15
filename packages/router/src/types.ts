@@ -100,12 +100,13 @@ export interface RouterState {
 /** 路由器实例（在 router.ts 中实现，此处只声明类型） */
 export interface Router {
   readonly mode: RouteMode
+  readonly base: string
   readonly location: Signal.State<RouteLocation>
   readonly params: Signal.Computed<RouteParams>
   readonly query: Signal.Computed<RouteQuery>
   readonly matched: Signal.Computed<RouteMatch[]>
   readonly currentRoute: Signal.Computed<RouteRecord | null>
-  navigate(to: string | number, options?: NavigateOptions): void
+  navigate(to: string | number, options?: NavigateOptions): Promise<void>
   push(to: string, state?: unknown): void
   replace(to: string, state?: unknown): void
   back(): void
@@ -121,7 +122,7 @@ export interface RouterOptions {
   /** 路由模式，默认 path */
   mode?: RouteMode
   /** 路由表 */
-  routes: RouteRecord[]
+  routes?: RouteRecord[]
   /** 全局前置守卫 */
   beforeEach?: RouteGuard | RouteGuard[]
   /** 全局后置钩子 */

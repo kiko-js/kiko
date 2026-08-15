@@ -1,6 +1,6 @@
 import { Signal } from "signal-polyfill"
 import { effect } from "./effect"
-import { onCleanup } from "./scope"
+import { getCurrentScope } from "./scope"
 
 /**
  * 异步数据的信号封装：把一次（或依赖驱动的多次）异步拉取映射为
@@ -43,6 +43,9 @@ export function createResource<T>(
 
   let seq = 0
   let disposed = false
+  // If this resource is created inside an effect, its owner should dispose
+  // the whole resource (not just the internal effect) when it re-runs.
+  const parentScope = getCurrentScope()
 
   async function run(): Promise<void> {
     if (disposed) return
@@ -88,7 +91,7 @@ export function createResource<T>(
   const stop = effect(() => {
     run()
   })
-  onCleanup(dispose)
+  if (parentScope) parentScope.push(dispose)
 
   return { data, loading, error, refetch, dispose }
 }

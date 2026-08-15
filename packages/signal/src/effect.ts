@@ -1,6 +1,6 @@
 import { Signal } from "signal-polyfill"
 import { scheduleEffect, untrack } from "./scheduler"
-import { flushScope, runInScope, type CleanupFn } from "./scope"
+import { flushScope, onCleanup, runInScope, type CleanupFn } from "./scope"
 import { reportError } from "./report"
 
 export type EffectCleanup = () => void
@@ -61,10 +61,16 @@ export function effect(fn: EffectFn): EffectCleanup {
 
   runEffect()
 
-  return () => {
+  const dispose = (): void => {
     if (disposed) return
     disposed = true
     watcher.unwatch(computed)
     untrack(() => flushScope(scope))
   }
+  // Nested effects are owned by the enclosing effect: when the outer effect
+  // re-runs or is disposed, automatically dispose effects created during its
+  // last run. At top level this is a no-op (no active scope).
+  onCleanup(dispose)
+
+  return dispose
 }

@@ -69,13 +69,27 @@ function isActivePath(path: string, to: string, exact: boolean): boolean {
   return path === to || path.startsWith(prefix)
 }
 
-export function Link(props: LinkProps): Node {
-  const { to, replace, state, activeClass, exact, children, ...rest } = props
+/** Build an href that works with the active router mode/base for middle-click,
+ *  new-tab, and copy-link. Absolute URLs pass through unchanged. */
+function resolveHref(router: Router | null, to: string): string {
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(to) || to.startsWith("//")) return to
+  if (!router) return to
+  const normalized = to.startsWith("/") ? to : "/" + to
+  if (router.mode === "hash") return "#" + normalized
+  return router.base + normalized
+}
 
+export function Link(props: LinkProps): Node {
+  const { to, replace, state, activeClass, exact, children, onClick: userOnClick, ...rest } = props
+
+  const userClickHandler = userOnClick as ((e: MouseEvent) => void) | undefined
   const anchor = jsx("a", {
     ...rest,
-    href: to,
+    href: resolveHref(getActiveRouter(), to),
     onClick: (e: MouseEvent) => {
+      // Preserve user-supplied onClick: call it first and respect preventDefault.
+      userClickHandler?.(e)
+      if (e.defaultPrevented) return
       if (e.ctrlKey || e.metaKey || e.shiftKey || e.button !== 0) return
       const target = (e.currentTarget as HTMLAnchorElement).getAttribute("target")
       if (target && target !== "_self") return
@@ -84,34 +98,36 @@ export function Link(props: LinkProps): Node {
       // 因此点击时惰性解析——模块槽位在 Router 挂载后保持有效。
       const router = getActiveRouter()
       if (router) {
-        router.navigate(to, { replace, state })
+        void router.navigate(to, { replace, state }).catch(err => {
+          reportError(err)
+        })
       } else {
         window.location.href = to
       }
     },
   })
 
-  if (activeClass) {
-    const el = anchor as HTMLElement
-    const stop = effect(() => {
-      // 读取 activeRouter 信号建立依赖：Link 作为 JSX children 先于 Router
-      // 求值时首跑拿不到 router，Router 挂载后本 effect 自动补跑。
-      const router = getActiveRouter()
-      if (!router) return
-      const loc = router.location.get()
-      const match = isActivePath(loc.path, to, exact ?? false)
-      if (match) {
-        el.classList.add(activeClass)
-      } else {
-        const classes = activeClass.split(" ")
-        for (const c of classes) {
-          if (c) el.classList.remove(c)
-        }
+  const anchorEl = anchor as HTMLAnchorElement
+  const el = anchorEl as HTMLElement
+  const stop = effect(() => {
+    // Update href when the router appears (JSX children evaluate before Router
+    // mounts) so middle-click/new-tab use the correct mode/base.
+    const router = getActiveRouter()
+    anchorEl.setAttribute("href", resolveHref(router, to))
+    if (!activeClass || !router) return
+    const loc = router.location.get()
+    const match = isActivePath(loc.path, to, exact ?? false)
+    if (match) {
+      el.classList.add(activeClass)
+    } else {
+      const classes = activeClass.split(" ")
+      for (const c of classes) {
+        if (c) el.classList.remove(c)
       }
-    })
-    // effect 的 watcher 不挂在 anchor 上，不 track 会在 Router 卸载后泄漏
-    trackCleanup(anchor, stop)
-  }
+    }
+  })
+  // effect 的 watcher 不挂在 anchor 上，不 track 会在 Router 卸载后泄漏
+  trackCleanup(anchor, stop)
 
   if (children) {
     const nodes = toNodes(children)
@@ -208,7 +224,11 @@ export function Navigate(props: NavigateProps): Node {
     const router = getActiveRouter()
     if (!router || done) return
     done = true
-    router.navigate(props.to, { replace: props.replace ?? true, state: props.state })
+    void router
+      .navigate(props.to, { replace: props.replace ?? true, state: props.state })
+      .catch(err => {
+        reportError(err)
+      })
   })
 
   trackCleanup(marker, dispose)

@@ -1,6 +1,8 @@
 import { Signal } from "signal-polyfill"
 
 export const REF = Symbol("ref")
+/** Escape hatch for reading the raw store root when a data key collides with the store API. */
+export const STORE_RAW = Symbol("kiko.store.raw")
 
 export type PathKey = string | number | symbol
 
@@ -25,6 +27,8 @@ interface StoreNode<T> {
   set(value: UnwrapRef<T> | T): void
   /** Internal signal for this exact path. Undefined when the node is under a ref. */
   readonly signal: Signal.State<UnwrapRef<T>> | undefined
+  /** Raw store root escape hatch for data keys that collide with the store API. */
+  readonly [STORE_RAW]: unknown
 }
 
 interface SignalEntry<T> {
@@ -40,6 +44,8 @@ interface SignalTrieNode {
 interface StoreContext {
   root: unknown
   signals: SignalTrieNode
+  /** Objects already frozen as read-only snapshots by `get()`. */
+  frozen: WeakSet<object>
 }
 
 export function ref<T>(value: T): Ref<T> {
@@ -50,6 +56,14 @@ export function isRef<T>(value: unknown): value is Ref<T> {
   return (
     value !== null && typeof value === "object" && (value as Record<symbol, unknown>)[REF] === true
   )
+}
+
+/** Plain objects and arrays are store containers; other objects are treated as opaque terminals. */
+function isPlainObject(value: unknown): boolean {
+  if (value === null || typeof value !== "object") return false
+  if (Array.isArray(value)) return true
+  const proto = Object.getPrototypeOf(value)
+  return proto === Object.prototype || proto === null
 }
 
 function readPath(
@@ -63,6 +77,10 @@ function readPath(
       return { value: undefined, isRef: false, underRef }
     if (isRef(current)) {
       current = current.value
+      underRef = true
+    } else if (!isPlainObject(current)) {
+      // Non-plain objects (Date, Map, class instances) are opaque terminals:
+      // reading through them must stay raw and never be signal-tracked.
       underRef = true
     }
     current = (current as Record<PathKey, unknown>)[key]
@@ -98,6 +116,18 @@ function setValueAtPath(root: unknown, path: PathKey[], value: unknown): unknown
     typeof key === "number" ? ([] as unknown as Record<PathKey, unknown>) : {}
   container[key] = nextChild
   return container
+}
+
+function deepFreeze<T>(value: T, seen: WeakSet<object>): T {
+  if (value === null || typeof value !== "object") return value
+  if (isRef(value) || !isPlainObject(value)) return value
+  if (seen.has(value)) return value
+  seen.add(value)
+  Object.freeze(value)
+  for (const key of Reflect.ownKeys(value)) {
+    deepFreeze((value as Record<PropertyKey, unknown>)[key], seen)
+  }
+  return value
 }
 
 function getTrieNode(root: SignalTrieNode, path: PathKey[], create: true): SignalTrieNode
@@ -155,13 +185,22 @@ function getSignal<T>(context: StoreContext, path: PathKey[]): Signal.State<T> {
 }
 
 function createProxyNode<T>(context: StoreContext, path: PathKey[]): Store<T> {
-  const node = new Proxy(function () {} as unknown as StoreNode<T>, {
+  // 箭头函数作为 callable target：没有非可配置的 `prototype`，因此 `ownKeys`
+  // 可以安全地只返回数据键，`Object.keys(store)` 不会触发 Proxy invariant 错误。
+  const node = new Proxy((() => {}) as unknown as StoreNode<T>, {
     get(_target, prop) {
+      if (prop === STORE_RAW) {
+        return context.root
+      }
       if (prop === "get") {
         return (): T => {
-          const { value, underRef } = readPath(context.root, path)
+          const { value, underRef, isRef } = readPath(context.root, path)
           if (underRef) return value as T
-          return getSignal<T>(context, path).get()
+          const current = getSignal<T>(context, path).get()
+          if (!isRef && current !== null && typeof current === "object") {
+            deepFreeze(current, context.frozen)
+          }
+          return current
         }
       }
       if (prop === "set") {
@@ -239,6 +278,7 @@ export function createStore<T>(initialState: T): Store<T> {
   const context: StoreContext = {
     root: initialState,
     signals: { children: new Map() },
+    frozen: new WeakSet(),
   }
   return createProxyNode<T>(context, [])
 }

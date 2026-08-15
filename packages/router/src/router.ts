@@ -42,7 +42,16 @@ function normalizeGuardResult(result: boolean | string | RedirectDescriptor | vo
   if (result === false) return false
   if (result === undefined || result === null || result === true) return null
   if (typeof result === "string") return { path: result }
-  return result
+  if (
+    result !== null &&
+    typeof result === "object" &&
+    typeof (result as RedirectDescriptor).path === "string"
+  ) {
+    return result as RedirectDescriptor
+  }
+  throw new TypeError(
+    "Invalid guard result: expected boolean, string, or RedirectDescriptor with a string path",
+  )
 }
 
 function resolveLocation(path: string, state: unknown, key: string): RouteLocation {
@@ -74,7 +83,7 @@ export function createRouter(options: RouterOptions): Router {
     return path + (hash ? "#" + hash : "")
   }
 
-  const routes = options.routes
+  const routes = options.routes ?? []
   const matcher = createMatcher(routes)
 
   const beforeEachOpt = options.beforeEach
@@ -148,14 +157,34 @@ export function createRouter(options: RouterOptions): Router {
 
   const MAX_REDIRECT_DEPTH = 10
 
-  async function commit(path: string, opts: NavigateOptions, redirectDepth = 0): Promise<void> {
+  // Monotonic navigation id: async guard results from older navigations are
+  // discarded once a newer navigation starts.
+  let navigationSeq = 0
+  // Set while we are issuing a compensating go(-1) after a blocked popstate;
+  // the resulting popstate must not re-enter guard handling.
+  let handlingPopstate = false
+
+  async function commit(
+    path: string,
+    opts: NavigateOptions,
+    redirectDepth = 0,
+    seq = ++navigationSeq,
+  ): Promise<void> {
+    if (seq !== navigationSeq) return
     if (redirectDepth > MAX_REDIRECT_DEPTH) {
       throw new Error(`Too many redirects when navigating to ${path}`)
     }
     const state = opts.state
     const from = location.get()
     const to = resolveLocation(path, state, nextKey())
+    // Avoid duplicate history entries for the same URL (unless explicitly
+    // replacing). Query-only and hash-only changes still navigate because
+    // fullPath differs.
+    if (!opts.replace && to.fullPath === from.fullPath && to.state === from.state) {
+      return
+    }
     const guardOutcome = await runGuards(to, from)
+    if (seq !== navigationSeq) return
     if (guardOutcome === false) {
       // 被守卫阻止，不执行导航
       return
@@ -166,10 +195,12 @@ export function createRouter(options: RouterOptions): Router {
         guardOutcome.path,
         { state: guardOutcome.state, replace: guardOutcome.replace ?? true },
         redirectDepth + 1,
+        seq,
       )
       return
     }
 
+    if (seq !== navigationSeq) return
     if (opts.replace) {
       history.replace(path, state)
     } else {
@@ -181,22 +212,25 @@ export function createRouter(options: RouterOptions): Router {
     }
   }
 
-  function navigate(to: string | number, opts: NavigateOptions = {}): void {
+  function navigate(to: string | number, opts: NavigateOptions = {}): Promise<void> {
     if (typeof to === "number") {
       history.go(to)
-      return
+      return Promise.resolve()
     }
-    commit(to, opts).catch(err => {
+    const seq = ++navigationSeq
+    return commit(to, opts, 0, seq)
+  }
+
+  function push(to: string, state?: unknown): void {
+    void navigate(to, { state }).catch(err => {
       reportError(err)
     })
   }
 
-  function push(to: string, state?: unknown): void {
-    navigate(to, { state })
-  }
-
   function replace(to: string, state?: unknown): void {
-    navigate(to, { replace: true, state })
+    void navigate(to, { replace: true, state }).catch(err => {
+      reportError(err)
+    })
   }
 
   function back(): void {
@@ -238,25 +272,48 @@ export function createRouter(options: RouterOptions): Router {
 
   // 监听浏览器前进/后退
   const unlisten = history.listen(() => {
+    // Ignore the popstate caused by our own compensating go(-1) after a
+    // blocked navigation, preventing infinite bounce on fully protected
+    // history stacks.
+    if (handlingPopstate) {
+      handlingPopstate = false
+      return
+    }
+    const seq = ++navigationSeq
     const from = location.get()
-    const to = resolveLocation(currentPath(), undefined, nextKey())
-    runGuards(to, from).then(outcome => {
-      if (outcome === false) {
-        // 被阻止时回退到上一个历史记录
-        history.go(-1)
-        return
-      }
-      if (outcome) {
-        history.replace(outcome.path, outcome.state)
-        updateLocation(outcome.path, outcome.state, nextKey())
-        return
-      }
-      updateLocation(to.fullPath, undefined, to.key)
-    })
+    const state = history.getState()
+    const to = resolveLocation(currentPath(), state, nextKey())
+    runGuards(to, from)
+      .then(outcome => {
+        if (seq !== navigationSeq) return
+        if (outcome === false) {
+          // 被阻止时回退到上一个历史记录
+          handlingPopstate = true
+          history.go(-1)
+          return
+        }
+        if (outcome) {
+          const redirected = resolveLocation(outcome.path, outcome.state, nextKey())
+          history.replace(outcome.path, outcome.state)
+          updateLocation(outcome.path, outcome.state, redirected.key)
+          for (const hook of globalAfter) {
+            hook(redirected, from)
+          }
+          return
+        }
+        updateLocation(to.fullPath, state, to.key)
+        for (const hook of globalAfter) {
+          hook(to, from)
+        }
+      })
+      .catch(err => {
+        reportError(err)
+      })
   })
 
   const router: Router = {
     mode,
+    base,
     location,
     params,
     query,

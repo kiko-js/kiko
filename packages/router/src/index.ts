@@ -8,6 +8,7 @@ export {
   useRoute,
   tryUseRouter,
   setActiveRouter,
+  type ReactiveSnapshot,
 } from "./hooks"
 export {
   redirect,

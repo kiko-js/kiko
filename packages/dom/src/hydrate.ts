@@ -383,6 +383,8 @@ export function hydrateFor(props: {
 export function hydrateErrorBoundary(props: {
   fallback?: unknown | ((error: unknown) => unknown)
   onError?: (error: unknown) => void
+  resetSignal?: Signal.State<unknown>
+  errorSignal?: Signal.State<unknown>
   children: () => unknown
 }): PendingNode {
   return new PendingNode("group", () => {
@@ -392,10 +394,12 @@ export function hydrateErrorBoundary(props: {
       return []
     }
     let current: Node[] = []
+    let fallbackNodes: Node[] | null = null
+    let currentIsFallback = false
     // 与客户端 ErrorBoundary 相同的驱动信号：children 在 computed 内求值，
     // 信号变化 / reset 都能重渲染——修复水合后完全失去响应性的问题。
-    const reset = new Signal.State<unknown>(undefined)
-    const error = new Signal.State<unknown>(null)
+    const reset = props.resetSignal ?? new Signal.State<unknown>(undefined)
+    const error = props.errorSignal ?? new Signal.State<unknown>(null)
     const childrenComputed = new Signal.Computed<unknown>(() => {
       reset.get()
       return props.children()
@@ -406,33 +410,45 @@ export function hydrateErrorBoundary(props: {
         typeof props.fallback === "function"
           ? (props.fallback as (error: unknown) => unknown)(err)
           : props.fallback
-      return toNodes(fb)
+      if (typeof props.fallback === "function") return toNodes(fb)
+      if (!fallbackNodes) fallbackNodes = toNodes(fb)
+      return fallbackNodes
     }
 
     // 初次水合：通过 childrenComputed 采纳（依赖在水合期就建立，
     // 信号变化才能驱动后续重渲染）；抛错采纳 fallback
     try {
       current = hydrateValue(childrenComputed.get())
+      currentIsFallback = false
     } catch (e) {
+      error.set(e)
       try {
         props.onError?.(e)
       } catch {
         // onError 是用户代码，不能破坏错误边界
       }
-      current = hydrateValue(
+      const fb =
         typeof props.fallback === "function"
           ? (props.fallback as (error: unknown) => unknown)(e)
-          : props.fallback,
-      )
+          : props.fallback
+      current = hydrateValue(fb)
+      if (typeof props.fallback !== "function") {
+        fallbackNodes = current
+        currentIsFallback = true
+      } else {
+        currentIsFallback = false
+      }
     }
 
     const render = (): void => {
       if (error.get() !== null) {
-        current = swapNodes(marker, current, renderFallback(error.get()))
+        current = swapBranch(marker, current, renderFallback(error.get()), currentIsFallback)
+        currentIsFallback = typeof props.fallback !== "function"
         return
       }
       try {
-        current = swapNodes(marker, current, toNodes(childrenComputed.get()))
+        current = swapBranch(marker, current, toNodes(childrenComputed.get()), currentIsFallback)
+        currentIsFallback = false
       } catch (e) {
         error.set(e)
         try {
@@ -440,7 +456,8 @@ export function hydrateErrorBoundary(props: {
         } catch {
           // onError 是用户代码，不能破坏错误边界
         }
-        current = swapNodes(marker, current, renderFallback(e))
+        current = swapBranch(marker, current, renderFallback(e), currentIsFallback)
+        currentIsFallback = typeof props.fallback !== "function"
       }
     }
 

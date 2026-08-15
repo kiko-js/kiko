@@ -12,6 +12,10 @@
  */
 
 import type { Props } from "./jsx-runtime"
+import type { WatchableSignal } from "./signal"
+
+/** A plain value or a signal of that value, as accepted by the runtime. */
+type MaybeSignal<T> = T | WatchableSignal<T>
 
 /** A function component: receives `props`, returns a DOM node. Generic over the
  *  concrete props shape so callers get type-checking at the call site. */
@@ -19,31 +23,51 @@ export type Component<P extends Props = Props> = (props: P) => Node
 
 /** Event handler maps — the DOM prop name (`onClick`) → handler signature. */
 export interface DOMEventHandlers {
-  onClick?: (event: MouseEvent) => void
-  onAuxClick?: (event: MouseEvent) => void
-  onDblClick?: (event: MouseEvent) => void
-  onMouseDown?: (event: MouseEvent) => void
-  onMouseUp?: (event: MouseEvent) => void
-  onMouseMove?: (event: MouseEvent) => void
-  onMouseEnter?: (event: MouseEvent) => void
-  onMouseLeave?: (event: MouseEvent) => void
-  onMouseOver?: (event: MouseEvent) => void
-  onMouseOut?: (event: MouseEvent) => void
-  onKeyDown?: (event: KeyboardEvent) => void
-  onKeyUp?: (event: KeyboardEvent) => void
-  onKeyPress?: (event: KeyboardEvent) => void
-  onInput?: (event: InputEvent) => void
-  onChange?: (event: Event) => void
-  onFocus?: (event: FocusEvent) => void
-  onBlur?: (event: FocusEvent) => void
-  onSubmit?: (event: SubmitEvent) => void
-  onReset?: (event: Event) => void
-  onScroll?: (event: Event) => void
-  onLoad?: (event: Event) => void
-  onError?: (event: Event) => void
-  onTouchStart?: (event: TouchEvent) => void
-  onTouchMove?: (event: TouchEvent) => void
-  onTouchEnd?: (event: TouchEvent) => void
+  onClick?: MaybeSignal<(event: MouseEvent) => void>
+  onAuxClick?: MaybeSignal<(event: MouseEvent) => void>
+  onDblClick?: MaybeSignal<(event: MouseEvent) => void>
+  onMouseDown?: MaybeSignal<(event: MouseEvent) => void>
+  onMouseUp?: MaybeSignal<(event: MouseEvent) => void>
+  onMouseMove?: MaybeSignal<(event: MouseEvent) => void>
+  onMouseEnter?: MaybeSignal<(event: MouseEvent) => void>
+  onMouseLeave?: MaybeSignal<(event: MouseEvent) => void>
+  onMouseOver?: MaybeSignal<(event: MouseEvent) => void>
+  onMouseOut?: MaybeSignal<(event: MouseEvent) => void>
+  onKeyDown?: MaybeSignal<(event: KeyboardEvent) => void>
+  onKeyUp?: MaybeSignal<(event: KeyboardEvent) => void>
+  onKeyPress?: MaybeSignal<(event: KeyboardEvent) => void>
+  onInput?: MaybeSignal<(event: InputEvent) => void>
+  onChange?: MaybeSignal<(event: Event) => void>
+  onFocus?: MaybeSignal<(event: FocusEvent) => void>
+  onBlur?: MaybeSignal<(event: FocusEvent) => void>
+  onSubmit?: MaybeSignal<(event: SubmitEvent) => void>
+  onReset?: MaybeSignal<(event: Event) => void>
+  onScroll?: MaybeSignal<(event: Event) => void>
+  onLoad?: MaybeSignal<(event: Event) => void>
+  onError?: MaybeSignal<(event: Event) => void>
+  onTouchStart?: MaybeSignal<(event: TouchEvent) => void>
+  onTouchMove?: MaybeSignal<(event: TouchEvent) => void>
+  onTouchEnd?: MaybeSignal<(event: TouchEvent) => void>
+  onPointerDown?: MaybeSignal<(event: PointerEvent) => void>
+  onPointerUp?: MaybeSignal<(event: PointerEvent) => void>
+  onPointerMove?: MaybeSignal<(event: PointerEvent) => void>
+  onPointerOver?: MaybeSignal<(event: PointerEvent) => void>
+  onPointerOut?: MaybeSignal<(event: PointerEvent) => void>
+  onPointerEnter?: MaybeSignal<(event: PointerEvent) => void>
+  onPointerLeave?: MaybeSignal<(event: PointerEvent) => void>
+  onPointerCancel?: MaybeSignal<(event: PointerEvent) => void>
+  onWheel?: MaybeSignal<(event: WheelEvent) => void>
+  onContextMenu?: MaybeSignal<(event: MouseEvent) => void>
+  onDrag?: MaybeSignal<(event: DragEvent) => void>
+  onDragStart?: MaybeSignal<(event: DragEvent) => void>
+  onDragEnd?: MaybeSignal<(event: DragEvent) => void>
+  onDragEnter?: MaybeSignal<(event: DragEvent) => void>
+  onDragLeave?: MaybeSignal<(event: DragEvent) => void>
+  onDragOver?: MaybeSignal<(event: DragEvent) => void>
+  onDrop?: MaybeSignal<(event: DragEvent) => void>
+  onCopy?: MaybeSignal<(event: ClipboardEvent) => void>
+  onCut?: MaybeSignal<(event: ClipboardEvent) => void>
+  onPaste?: MaybeSignal<(event: ClipboardEvent) => void>
 }
 
 /** Attributes shared by every HTML element. The index signature keeps kiko's
@@ -52,21 +76,22 @@ export interface HTMLAttributes<T extends HTMLElement> {
   children?: unknown
   ref?: ((el: T) => void | (() => void)) | { current: T | null }
   key?: string | number
-  id?: string
-  class?: string
-  className?: string
-  style?: string | Record<string, string>
-  title?: string
-  lang?: string
-  dir?: string
-  hidden?: boolean
-  tabIndex?: number
-  role?: string
-  draggable?: boolean
-  spellcheck?: boolean
-  contentEditable?: boolean | "true" | "false"
-  dataset?: Record<string, string>
-  [key: string]: unknown
+  id?: MaybeSignal<string>
+  class?: MaybeSignal<string>
+  className?: MaybeSignal<string>
+  style?: MaybeSignal<string | Record<string, string>>
+  title?: MaybeSignal<string>
+  lang?: MaybeSignal<string>
+  dir?: MaybeSignal<string>
+  hidden?: MaybeSignal<boolean>
+  tabIndex?: MaybeSignal<number>
+  role?: MaybeSignal<string>
+  draggable?: MaybeSignal<boolean>
+  spellcheck?: MaybeSignal<boolean>
+  contentEditable?: MaybeSignal<boolean | "true" | "false">
+  dataset?: MaybeSignal<Record<string, string>>
+  [data: `data-${string}`]: unknown
+  [aria: `aria-${string}`]: unknown
 }
 
 /** HTML attributes + DOM event handlers. */
@@ -74,47 +99,47 @@ export interface HTMLProps<T extends HTMLElement> extends HTMLAttributes<T>, DOM
 
 /** Form-specific attributes. */
 export interface FormProps extends HTMLProps<HTMLInputElement> {
-  type?: string
-  value?: string | number | boolean
-  checked?: boolean
-  disabled?: boolean
-  placeholder?: string
-  name?: string
-  required?: boolean
-  readOnly?: boolean
-  autoFocus?: boolean
-  multiple?: boolean
-  min?: number | string
-  max?: number | string
-  step?: number | string
-  pattern?: string
-  autocomplete?: string
+  type?: MaybeSignal<string>
+  value?: MaybeSignal<string | number | boolean>
+  checked?: MaybeSignal<boolean>
+  disabled?: MaybeSignal<boolean>
+  placeholder?: MaybeSignal<string>
+  name?: MaybeSignal<string>
+  required?: MaybeSignal<boolean>
+  readOnly?: MaybeSignal<boolean>
+  autoFocus?: MaybeSignal<boolean>
+  multiple?: MaybeSignal<boolean>
+  min?: MaybeSignal<number | string>
+  max?: MaybeSignal<number | string>
+  step?: MaybeSignal<number | string>
+  pattern?: MaybeSignal<string>
+  autocomplete?: MaybeSignal<string>
 }
 
 /** `<a>`-specific. */
 export interface AnchorProps extends HTMLProps<HTMLAnchorElement> {
-  href?: string
-  target?: string
-  rel?: string
-  download?: string | boolean
+  href?: MaybeSignal<string>
+  target?: MaybeSignal<string>
+  rel?: MaybeSignal<string>
+  download?: MaybeSignal<string | boolean>
 }
 
 /** `<img>`-specific. */
 export interface ImgProps extends HTMLProps<HTMLImageElement> {
-  src?: string
-  alt?: string
-  width?: number | string
-  height?: number | string
-  loading?: "lazy" | "eager"
+  src?: MaybeSignal<string>
+  alt?: MaybeSignal<string>
+  width?: MaybeSignal<number | string>
+  height?: MaybeSignal<number | string>
+  loading?: MaybeSignal<"lazy" | "eager">
 }
 
 /** `<button>`-specific. */
 export interface ButtonProps extends HTMLProps<HTMLButtonElement> {
-  type?: "button" | "submit" | "reset"
-  disabled?: boolean
-  name?: string
-  value?: string
-  form?: string
+  type?: MaybeSignal<"button" | "submit" | "reset">
+  disabled?: MaybeSignal<boolean>
+  name?: MaybeSignal<string>
+  value?: MaybeSignal<string>
+  form?: MaybeSignal<string>
 }
 
 /** SVG attributes — a permissive subset; SVG has its own attribute set. */
@@ -122,30 +147,31 @@ export interface SVGProps<T extends SVGElement> {
   children?: unknown
   ref?: ((el: T) => void | (() => void)) | { current: T | null }
   key?: string | number
-  class?: string
-  className?: string
-  style?: string | Record<string, string>
-  id?: string
-  width?: number | string
-  height?: number | string
-  viewBox?: string
-  fill?: string
-  stroke?: string
-  strokeWidth?: number | string
-  d?: string
-  cx?: number | string
-  cy?: number | string
-  r?: number | string
-  x?: number | string
-  y?: number | string
-  x1?: number | string
-  y1?: number | string
-  x2?: number | string
-  y2?: number | string
-  points?: string
-  transform?: string
-  href?: string
-  [key: string]: unknown
+  class?: MaybeSignal<string>
+  className?: MaybeSignal<string>
+  style?: MaybeSignal<string | Record<string, string>>
+  id?: MaybeSignal<string>
+  width?: MaybeSignal<number | string>
+  height?: MaybeSignal<number | string>
+  viewBox?: MaybeSignal<string>
+  fill?: MaybeSignal<string>
+  stroke?: MaybeSignal<string>
+  strokeWidth?: MaybeSignal<number | string>
+  d?: MaybeSignal<string>
+  cx?: MaybeSignal<number | string>
+  cy?: MaybeSignal<number | string>
+  r?: MaybeSignal<number | string>
+  x?: MaybeSignal<number | string>
+  y?: MaybeSignal<number | string>
+  x1?: MaybeSignal<number | string>
+  y1?: MaybeSignal<number | string>
+  x2?: MaybeSignal<number | string>
+  y2?: MaybeSignal<number | string>
+  points?: MaybeSignal<string>
+  transform?: MaybeSignal<string>
+  href?: MaybeSignal<string>
+  [data: `data-${string}`]: unknown
+  [aria: `aria-${string}`]: unknown
 }
 
 /** Map of intrinsic HTML tag → props. */

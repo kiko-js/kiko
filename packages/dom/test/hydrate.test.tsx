@@ -364,3 +364,113 @@ describe("hydrated reactivity (post-hydration bindings)", () => {
     dispose()
   })
 })
+
+describe("hydrate exception paths", () => {
+  it("hydrated ErrorBoundary catches signal-driven errors and retries via reset", async () => {
+    const container = document.createElement("div")
+    const flag = createSignal(0)
+    const reset = createSignal(0)
+    const dispose = await ssrThenHydrate(
+      () =>
+        ErrorBoundary({
+          resetSignal: reset,
+          fallback: "fb",
+          children: () => {
+            const v = flag.get()
+            if (v === 2) throw new Error("boom")
+            return jsx("p", { children: `v=${v}` })
+          },
+        }),
+      container,
+    )
+    expect(container.textContent).toBe("v=0")
+
+    flag.set(2)
+    await flush()
+    expect(container.textContent).toBe("fb")
+
+    flag.set(3)
+    reset.set(1)
+    await flush()
+    await flush()
+    expect(container.textContent).toBe("v=3")
+    dispose()
+  })
+
+  it("hydrated ErrorBoundary supports a function fallback", async () => {
+    const container = document.createElement("div")
+    const Boom = (): Node => {
+      throw new Error("boom")
+    }
+    const dispose = await ssrThenHydrate(
+      () =>
+        ErrorBoundary({
+          fallback: (e: unknown) => `err:${(e as Error).message}`,
+          children: () => jsx(Boom, {}),
+        }),
+      container,
+    )
+    expect(container.textContent).toBe("err:boom")
+    dispose()
+  })
+
+  it("hydrated Suspend keeps fallback on rejection", async () => {
+    const reported: unknown[] = []
+    const originalReportError = globalThis.reportError
+    // @ts-ignore
+    globalThis.reportError = (e: unknown) => {
+      reported.push(e)
+    }
+    try {
+      const { promise, reject } = Promise.withResolvers<Node>()
+      const state = createSignal<unknown>(promise)
+      reject(new Error("boom"))
+      const container = document.createElement("div")
+      const dispose = await ssrThenHydrate(
+        () => Suspend({ fallback: "loading", children: state }),
+        container,
+      )
+      expect(container.textContent).toBe("loading")
+      await flush()
+      expect(container.textContent).toBe("loading")
+      expect(reported.length).toBeGreaterThan(0)
+      expect((reported[0] as Error).message).toBe("boom")
+      dispose()
+    } finally {
+      // @ts-ignore
+      globalThis.reportError = originalReportError
+    }
+  })
+
+  it("hydrated Suspend discards stale resolved promises when the signal changes", async () => {
+    const container = document.createElement("div")
+    const state = createSignal<unknown>("a")
+    const dispose = await ssrThenHydrate(
+      () => Suspend({ fallback: "loading", children: state }),
+      container,
+    )
+    expect(container.textContent).toBe("a")
+
+    const { promise: first, resolve: resolveFirst } = Promise.withResolvers<Node>()
+    const { promise: second, resolve: resolveSecond } = Promise.withResolvers<Node>()
+
+    state.set(first)
+    await flush()
+    expect(container.textContent).toBe("loading")
+
+    state.set(second)
+    await flush()
+    expect(container.textContent).toBe("loading")
+
+    resolveFirst(jsx("span", { children: "stale" }))
+    await first
+    await flush()
+    expect(container.textContent).toBe("loading")
+
+    resolveSecond(jsx("span", { children: "fresh" }))
+    await second
+    await flush()
+    expect(container.textContent).toBe("fresh")
+    dispose()
+  })
+})

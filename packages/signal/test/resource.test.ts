@@ -102,6 +102,31 @@ describe("createResource", () => {
     expect(inner!.dispose).toBeDefined()
   })
 
+  it("auto-disposes resources created inside an effect when the effect re-runs", async () => {
+    const trigger = createSignal(0)
+    const resources: Resource<string>[] = []
+    const never = new Promise<string>(() => {})
+
+    const stop = effect(() => {
+      trigger.get()
+      resources.push(createResource(() => never))
+    })
+    await tick()
+    expect(resources).toHaveLength(1)
+    expect(resources[0]!.loading.get()).toBe(true)
+
+    trigger.set(1)
+    await tick()
+    expect(resources).toHaveLength(2)
+    // 旧 resource 被自动 dispose：loading 被复位，不再停留在 pending
+    expect(resources[0]!.loading.get()).toBe(false)
+    // 新 resource 仍然存活并处于加载中
+    expect(resources[1]!.loading.get()).toBe(true)
+
+    stop()
+    expect(resources[1]!.loading.get()).toBe(false)
+  })
+
   it("refetch clears a previous error before retrying", async () => {
     let fail = true
     const resource = createResource(async () => {

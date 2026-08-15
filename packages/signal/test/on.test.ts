@@ -131,4 +131,36 @@ describe("on", () => {
     await waitForMicrotask()
     expect(log).toEqual(["cleanup", "fn:1", "cleanup", "fn:2"])
   })
+
+  it("defers the first run and still runs cleanup before the next run and on dispose", async () => {
+    const a = createSignal(1)
+    const log: string[] = []
+    const dispose = effect(
+      on(
+        () => a.get(),
+        p => {
+          if (p !== undefined) log.push(`fn:${p}`)
+          return () => log.push(`cleanup:${p}`)
+        },
+        { defer: true },
+      ),
+    )
+
+    // defer 首轮不执行 fn，也不注册 cleanup
+    expect(log).toEqual([])
+
+    a.set(2)
+    await waitForMicrotask()
+    // 第一次真正执行：prev 是 1，此时还没有可清理的上一次 fn
+    expect(log).toEqual(["fn:1"])
+
+    a.set(3)
+    await waitForMicrotask()
+    // 第二次执行前先清理上一次 fn(1)，再执行 fn(2)
+    expect(log).toEqual(["fn:1", "cleanup:1", "fn:2"])
+
+    dispose()
+    // dispose 时清理最后一次 fn(2)
+    expect(log).toEqual(["fn:1", "cleanup:1", "fn:2", "cleanup:2"])
+  })
 })

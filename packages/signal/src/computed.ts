@@ -1,13 +1,37 @@
 import { Signal } from "signal-polyfill"
 import { isSignal } from "./signal"
 import { reportError } from "./report"
+import { runWithoutScope } from "./scope"
+
+/**
+ * User-facing `computed()` values are read-only: writing inside them is almost
+ * always a bug. signal-polyfill enables writes for every Computed, so we guard
+ * only the computeds created through this module (internal `new
+ * Signal.Computed` users, such as `effect()` and control flow, are unaffected).
+ */
+let computedWriteDepth = 0
+
+const originalStateSet = Signal.State.prototype.set
+Signal.State.prototype.set = function (this: Signal.State<unknown>, newValue: unknown): void {
+  if (computedWriteDepth > 0) {
+    throw new Error("Signal writes are not allowed inside a computed")
+  }
+  return originalStateSet.call(this, newValue)
+}
 
 /**
  * Create a standard `Signal.Computed<T>` — the TC39 Signals interface.
  * Other kiko packages consume only this standard type.
  */
 export function computed<T>(fn: () => T): Signal.Computed<T> {
-  return new Signal.Computed(fn)
+  return new Signal.Computed(() => {
+    computedWriteDepth++
+    try {
+      return runWithoutScope(fn)
+    } finally {
+      computedWriteDepth--
+    }
+  })
 }
 
 /** Alias for `computed`. */

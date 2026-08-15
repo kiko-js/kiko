@@ -26,6 +26,17 @@ describe("computed", () => {
     const c = computed(() => 1)
     expect((c as unknown as Record<string, unknown>).set).toBeUndefined()
   })
+
+  it("forbids signal writes inside the computed body", () => {
+    const s = createSignal(1)
+    const c = computed(() => {
+      s.set(2)
+      return s.get()
+    })
+    expect(() => c.get()).toThrow(/Signal writes are not allowed inside a computed/)
+    // 写入被拒绝后，computed 不应留下半个更新结果
+    expect(s.get()).toBe(1)
+  })
 })
 
 describe("derived", () => {

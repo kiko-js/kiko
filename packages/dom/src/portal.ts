@@ -1,4 +1,5 @@
 import { cleanupWatchers, trackCleanup } from "./jsx-runtime"
+import { getSSRRuntime } from "./ssr-mode"
 
 /**
  * 将 `node` 渲染到 `container`（如 `document.body`），返回留在原位置的锚点注释。
@@ -11,6 +12,9 @@ import { cleanupWatchers, trackCleanup } from "./jsx-runtime"
  * 更新与清理机制保持不变。
  */
 export function createPortal(node: Node, container: Element): Comment {
+  if (getSSRRuntime()) {
+    throw new Error("createPortal is client-only and cannot be used during SSR")
+  }
   const anchor = document.createComment("portal")
   const nodes = node instanceof DocumentFragment ? Array.from(node.childNodes) : [node]
   for (const n of nodes) container.appendChild(n)

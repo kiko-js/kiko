@@ -58,8 +58,8 @@ function compileRoute(route: RouteRecord): CompiledRoute {
   }
 
   const hasChildren = (route.children?.length ?? 0) > 0
-  const exactRegex = new RegExp(`^${pattern}(?:/)?$`, "i")
-  const prefixRegex = hasChildren ? new RegExp(`^${pattern}(?:/|$)`, "i") : null
+  const exactRegex = new RegExp(`^${pattern}(?:/)?$`)
+  const prefixRegex = hasChildren ? new RegExp(`^${pattern}(?:/|$)`) : null
 
   return {
     route,

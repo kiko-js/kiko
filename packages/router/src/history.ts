@@ -9,6 +9,8 @@ export interface HistoryAdapter {
   replace(path: string, state?: unknown): void
   /** 前进/后退 */
   go(delta: number): void
+  /** 获取当前 history.state */
+  getState(): unknown
   /** 监听变化 */
   listen(callback: () => void): () => void
   /** 清理 */
@@ -17,7 +19,7 @@ export interface HistoryAdapter {
 
 interface BrowserHistoryEnv {
   location: Pick<Location, "pathname" | "search" | "hash">
-  history: Pick<History, "pushState" | "replaceState" | "go">
+  history: Pick<History, "pushState" | "replaceState" | "go" | "state">
   addEventListener: Window["addEventListener"]
   removeEventListener: Window["removeEventListener"]
 }
@@ -40,9 +42,10 @@ export function createPathHistory(
 
   function getPath(): string {
     const full = env.location.pathname + env.location.search
-    return normalizedBase && full.startsWith(normalizedBase)
-      ? full.slice(normalizedBase.length) || "/"
-      : full || "/"
+    if (normalizedBase && (full === normalizedBase || full.startsWith(normalizedBase + "/"))) {
+      return full.slice(normalizedBase.length) || "/"
+    }
+    return full || "/"
   }
 
   function getHash(): string {
@@ -75,6 +78,7 @@ export function createPathHistory(
     push,
     replace,
     go: (delta: number) => env.history.go(delta),
+    getState: () => env.history.state,
     listen,
     dispose: () => {},
   }
@@ -114,6 +118,7 @@ export function createHashHistory(env: BrowserHistoryEnv = getBrowserEnv()): His
     push,
     replace,
     go: (delta: number) => env.history.go(delta),
+    getState: () => env.history.state,
     listen,
     dispose: () => {},
   }

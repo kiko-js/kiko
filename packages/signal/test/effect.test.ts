@@ -94,6 +94,31 @@ describe("effect", () => {
     await waitForMicrotask()
     expect(cleanups).toBe(1)
   })
+
+  it("disposes nested effects when the owner re-runs or disposes", async () => {
+    const trigger = createSignal(0)
+    let innerRuns = 0
+    let innerCleanups = 0
+
+    const stop = effect(() => {
+      trigger.get()
+      effect(() => {
+        innerRuns++
+        return () => {
+          innerCleanups++
+        }
+      })
+    })
+
+    expect(innerRuns).toBe(1)
+    trigger.set(1)
+    await waitForMicrotask()
+    expect(innerCleanups).toBe(1)
+    expect(innerRuns).toBe(2)
+
+    stop()
+    expect(innerCleanups).toBe(2)
+  })
 })
 
 describe("effect cleanup semantics", () => {

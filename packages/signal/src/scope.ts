@@ -18,6 +18,26 @@ export function onCleanup(fn: CleanupFn): void {
   if (currentScope !== null) currentScope.push(fn)
 }
 
+/** Returns the active cleanup scope, or `null` outside an effect. */
+export function getCurrentScope(): CleanupFn[] | null {
+  return currentScope
+}
+
+/**
+ * Run `fn` with no active cleanup scope, returning whatever `fn` returns.
+ * Used by `computed()` so `onCleanup` calls inside a computed do not leak into
+ * an enclosing effect scope.
+ */
+export function runWithoutScope<T>(fn: () => T): T {
+  const prev = currentScope
+  currentScope = null
+  try {
+    return fn()
+  } finally {
+    currentScope = prev
+  }
+}
+
 /**
  * Run `fn` with `scope` as the active cleanup scope, returning whatever `fn`
  * returns. Restores the previous scope on exit. Used by `effect()`.

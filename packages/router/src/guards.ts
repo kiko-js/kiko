@@ -7,7 +7,7 @@ export function createAuthGuard(
 ): RouteGuard {
   return async (_to: RouteLocation, _from: RouteLocation | null, _router: Router) => {
     const target = typeof redirectTo === "string" ? redirectTo : redirectTo.path
-    if (_to.path === target) return true
+    if (_to.fullPath === target) return true
     const ok = await predicate()
     if (ok) return true
     return typeof redirectTo === "string" ? { path: redirectTo } : redirectTo
@@ -37,7 +37,7 @@ export function createAsyncGuard(
   redirectTo: string,
 ): RouteGuard {
   return async (to, from, router) => {
-    if (to.path === redirectTo) return true
+    if (to.fullPath === redirectTo) return true
     const ok = await check(to, from, router)
     return ok || { path: redirectTo }
   }
