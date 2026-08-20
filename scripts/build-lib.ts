@@ -24,11 +24,12 @@ export interface BuildOptions {
   target?: "browser" | "node"
   /** Minify output; defaults to `true`. */
   minify?: boolean
+  /** Code-splitting into chunks; defaults to `true` (shared deps extracted). */
+  splitting?: boolean
 }
 
 export async function buildPackage(opts: BuildOptions): Promise<void> {
   await rm("dist", { recursive: true, force: true })
-
   const result = await build({
     entrypoints: opts.entrypoints,
     outdir: "dist",
@@ -36,7 +37,7 @@ export async function buildPackage(opts: BuildOptions): Promise<void> {
     format: "esm",
     // Extract modules shared between entry points into chunks instead of
     // duplicating them per entry (e.g. dom's jsx core is used by 3 entries).
-    splitting: true,
+    splitting: opts.splitting ?? true,
     // Published artifacts are minified; consumers re-bundle from dist anyway.
     minify: opts.minify ?? true,
     external: opts.external,

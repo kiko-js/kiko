@@ -96,16 +96,24 @@ const SCOPE_MARKER_SUFFIX = "-->"
 
 function extractScopeMarkers(html: string): { cleaned: string; attrs: string[] } {
   const attrs: string[] = []
-  let cleaned = html
-  let idx = cleaned.indexOf(SCOPE_MARKER_PREFIX)
-  while (idx >= 0) {
-    const end = cleaned.indexOf(SCOPE_MARKER_SUFFIX, idx)
-    if (end < 0) break
-    attrs.push(cleaned.slice(idx + SCOPE_MARKER_PREFIX.length, end))
-    cleaned = cleaned.slice(0, idx) + cleaned.slice(end + SCOPE_MARKER_SUFFIX.length)
-    idx = cleaned.indexOf(SCOPE_MARKER_PREFIX)
+  const parts: string[] = []
+  let pos = 0
+  while (true) {
+    const idx = html.indexOf(SCOPE_MARKER_PREFIX, pos)
+    if (idx < 0) {
+      parts.push(html.slice(pos))
+      break
+    }
+    const end = html.indexOf(SCOPE_MARKER_SUFFIX, idx + SCOPE_MARKER_PREFIX.length)
+    if (end < 0) {
+      parts.push(html.slice(pos))
+      break
+    }
+    attrs.push(html.slice(idx + SCOPE_MARKER_PREFIX.length, end))
+    parts.push(html.slice(pos, idx))
+    pos = end + SCOPE_MARKER_SUFFIX.length
   }
-  return { cleaned, attrs }
+  return { cleaned: parts.join(""), attrs }
 }
 
 function extractCssText(children: unknown): string {

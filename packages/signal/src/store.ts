@@ -39,6 +39,7 @@ interface SignalEntry<T> {
 interface SignalTrieNode {
   entry?: SignalEntry<unknown>
   children: Map<PathKey, SignalTrieNode>
+  proxy?: Store<unknown>
 }
 
 interface StoreContext {
@@ -221,13 +222,23 @@ function enumeratePaths(
 
 /** Drop trie entries (and empty subtrees) for paths no longer reachable from root (S5). */
 function pruneTrie(node: SignalTrieNode, prefix: PathKey[], reachable: Set<string>): void {
-  if (node.entry && !reachable.has(pathKey(prefix))) {
+  const key = pathKey(prefix)
+  if (node.entry && !reachable.has(key)) {
     node.entry = undefined
   }
-  for (const [key, child] of Array.from(node.children.entries())) {
-    pruneTrie(child, [...prefix, key], reachable)
-    if (!child.entry && child.children.size === 0) {
-      node.children.delete(key)
+  if (node.proxy && !reachable.has(key)) {
+    node.proxy = undefined
+  }
+  for (const [childKey, child] of Array.from(node.children.entries())) {
+    const childPath = [...prefix, childKey]
+    pruneTrie(child, childPath, reachable)
+    if (
+      !reachable.has(pathKey(childPath)) &&
+      !child.entry &&
+      child.children.size === 0 &&
+      !child.proxy
+    ) {
+      node.children.delete(childKey)
     }
   }
 }
@@ -243,8 +254,9 @@ function getSignal<T>(context: StoreContext, path: PathKey[]): Signal.State<T> {
   }
   return node.entry.signal as Signal.State<T>
 }
-
 function createProxyNode<T>(context: StoreContext, path: PathKey[]): Store<T> {
+  const trieNode = getTrieNode(context.signals, path, true)
+  if (trieNode.proxy) return trieNode.proxy as Store<T>
   // 箭头函数作为 callable target：没有非可配置的 `prototype`，因此 `ownKeys`
   // 可以安全地只返回数据键，`Object.keys(store)` 不会触发 Proxy invariant 错误。
   const node = new Proxy((() => {}) as unknown as StoreNode<T>, {
@@ -351,6 +363,7 @@ function createProxyNode<T>(context: StoreContext, path: PathKey[]): Store<T> {
       return prop in value
     },
   })
+  trieNode.proxy = node as Store<unknown>
   return node as Store<T>
 }
 

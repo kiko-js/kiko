@@ -486,3 +486,21 @@ test("S5: dropped dynamic keys release their trie signals instead of leaking", a
   // the new signal notifies the (new) effect subscription, not the disposed one
   expect(store.byId.a!.get()).toBe(5)
 })
+
+test("store proxy nodes keep identity across accesses and mutations", () => {
+  const store = createStore({ a: { b: 1 }, arr: [1, 2] })
+  // same path yields same proxy instance
+  expect(store.a).toBe(store.a)
+  expect(store.arr).toBe(store.arr)
+  expect(store.a.b).toBe(store.a.b)
+  // identity survives unrelated mutations
+  const arrBefore = store.arr
+  store.a.set({ b: 2 })
+  expect(store.arr).toBe(arrBefore)
+  expect(store.a).toBe(store.a)
+  // identity survives the mutated path itself
+  const aBefore = store.a
+  store.a.b.set(3)
+  expect(store.a).toBe(aBefore)
+  expect(store.a.b.get()).toBe(3)
+})

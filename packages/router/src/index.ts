@@ -7,6 +7,7 @@ export {
   useLocation,
   useRoute,
   tryUseRouter,
+  useNavigate,
   setActiveRouter,
   type ReactiveSnapshot,
 } from "./hooks"
@@ -17,7 +18,6 @@ export {
   getQueryValue,
   pathsEqual,
   navigateFrom,
-  useNavigate,
 } from "./utils"
 export { createAuthGuard, combineGuards, createAsyncGuard } from "./guards"
 export { createPathHistory, createHashHistory } from "./history"
