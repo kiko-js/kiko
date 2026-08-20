@@ -16,6 +16,7 @@ export {
   buildPath,
   getQueryValue,
   pathsEqual,
+  navigateFrom,
   useNavigate,
 } from "./utils"
 export { createAuthGuard, combineGuards, createAsyncGuard } from "./guards"
@@ -32,7 +33,6 @@ export type {
   RedirectDescriptor,
   RouteGuard,
   RouteMatch,
-  RouterState,
   Router as RouterInstance,
   RouterOptions,
 } from "./types"

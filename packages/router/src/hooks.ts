@@ -1,16 +1,17 @@
 import { getActiveRouter, useRouter as useRouterContext } from "./context"
+import { isActivePath } from "./components"
+import { createMatcher } from "./matcher"
+import { navigateFrom } from "./utils"
 import { Signal } from "signal-polyfill"
 import type { RouteLocation, RouteParams, RouteQuery, Router } from "./types"
 
 /** A live snapshot: call it like an accessor, read `.get()`, or access fields directly. */
-export type ReactiveSnapshot<T extends object> = T & {
+export type ReactiveSnapshot<T> = T & {
   (): T
   get(): T
 }
 
-function toReactive<T extends object>(
-  signal: Signal.State<T> | Signal.Computed<T>,
-): ReactiveSnapshot<T> {
+function toReactive<T>(signal: Signal.State<T> | Signal.Computed<T>): ReactiveSnapshot<T> {
   const accessor = (() => signal.get()) as unknown as ReactiveSnapshot<T>
   return new Proxy(accessor, {
     apply: () => signal.get(),
@@ -67,4 +68,38 @@ export function useRoute(): ReactiveSnapshot<{
 /** 安全获取 router，可能返回 null */
 export function tryUseRouter(): Router | null {
   return getActiveRouter()
+}
+
+/**
+ * 返回当前路径是否命中 `to` 的响应式访问器（与 `Link` 同款分段感知逻辑）。
+ * 默认非精确：/users 也会匹配 /users/:id 前缀；`exact` 时仅全等算命中。
+ */
+export function useIsActive(to: string, opts?: { exact?: boolean }): ReactiveSnapshot<boolean> {
+  const router = useRouter()
+  const exact = opts?.exact ?? false
+  const signal = new Signal.Computed(() => isActivePath(router.location.get().path, to, exact))
+  return toReactive(signal)
+}
+
+/**
+ * 返回当前路径对 `pattern` 的匹配参数（响应式），未匹配时为 null。
+ * 复用独立 matcher，不依赖已配置的路由表。
+ */
+export function useMatch(pattern: string): ReactiveSnapshot<RouteParams | null> {
+  const router = useRouter()
+  const matcher = createMatcher([{ path: pattern }])
+  const signal = new Signal.Computed(() => {
+    const matches = matcher.matchAll(router.location.get().path)
+    return matches.length > 0 ? matches[matches.length - 1]!.params : null
+  })
+  return toReactive(signal)
+}
+
+/** 真实 hook：读取活动 router 并返回其 navigate 绑定函数 */
+export function useNavigate(): (
+  to: string | number,
+  options?: { replace?: boolean; state?: unknown },
+) => Promise<void> {
+  const router = useRouter()
+  return navigateFrom(router)
 }

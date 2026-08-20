@@ -88,15 +88,6 @@ export interface RouteMatch {
   remaining: string
 }
 
-/** 路由状态 */
-export interface RouterState {
-  location: RouteLocation
-  params: RouteParams
-  query: RouteQuery
-  matched: RouteMatch[]
-  currentRoute: RouteRecord | null
-}
-
 /** 路由器实例（在 router.ts 中实现，此处只声明类型） */
 export interface Router {
   readonly mode: RouteMode

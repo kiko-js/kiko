@@ -33,7 +33,14 @@ function getBrowserEnv(): BrowserHistoryEnv {
   }
 }
 
-/** path 模式 history 适配器 */
+/**
+ * path 模式 history 适配器。
+ *
+ * ⚠️ 客户端专用：构造时会立即读取 `window.location` / `window.history`，
+ * 因此只能在浏览器/DOM 环境中实例化。SSR 场景不应在服务器上创建本适配器——
+ * 应在服务端根据请求路径解析出对应 route 并直接预渲染该路由内容，客户端
+ * 水合时再创建本适配器接管后续的导航。
+ */
 export function createPathHistory(
   base: string = "",
   env: BrowserHistoryEnv = getBrowserEnv(),
@@ -84,7 +91,13 @@ export function createPathHistory(
   }
 }
 
-/** hash 模式 history 适配器 */
+/**
+ * hash 模式 history 适配器。
+ *
+ * ⚠️ 客户端专用：同样在构造时读取 `window.location` / `window.history`，仅
+ * 适用于浏览器/DOM 环境。SSR 请服务端预渲染解析出的 route，客户端水合时
+ * 再创建本适配器。
+ */
 export function createHashHistory(env: BrowserHistoryEnv = getBrowserEnv()): HistoryAdapter {
   function getPath(): string {
     const raw = env.location.hash.slice(1) || "/"

@@ -37,12 +37,15 @@ export function pathsEqual(a: string, b: string): boolean {
   return normalize(a) === normalize(b)
 }
 
-/** 在当前 router 上执行导航 */
-export function useNavigate(
+/** 在当前 router 上执行导航（注意：这是柯里化函数，不是 hook）。 */
+export function navigateFrom(
   router: Router,
 ): (to: string | number, options?: { replace?: boolean; state?: unknown }) => Promise<void> {
   return (to, options) => router.navigate(to, options)
 }
+
+/** 向后兼容别名：保留旧的 useNavigate 名字指向 navigateFrom。 */
+export const useNavigate = navigateFrom
 
 /** 跳转到外部链接 */
 export function openExternal(url: string, target: string = "_blank"): void {

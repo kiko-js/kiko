@@ -1,7 +1,6 @@
 import type { RouteMatch, RouteParams, RouteRecord } from "./types"
 
 export interface Matcher {
-  match(path: string): RouteMatch | null
   matchAll(path: string): RouteMatch[]
 }
 
@@ -94,18 +93,9 @@ function extractParams(item: CompiledRoute, match: RegExpExecArray): RouteParams
 export function createMatcher(routes: RouteRecord[]): Matcher {
   const compiled = compileRoutes(routes)
 
-  function match(path: string): RouteMatch | null {
-    const normalized = normalizeForMatch(path)
-    for (const item of compiled) {
-      const m = item.exactRegex.exec(normalized)
-      if (!m) continue
-      const params = extractParams(item, m)
-      const consumed = m[0]!.replace(/\/$/, "")
-      const remaining = stripLeadingSlash(normalized.slice(consumed.length))
-      return { route: item.route, params, remaining }
-    }
-    return null
-  }
+  // 顶层 catch-all：path === "*" 作为 404 兜底，仅当没有任何其他路由匹配
+  // 完整路径时才被使用。
+  const catchAll = compiled.find(item => item.route.path === "*")?.route ?? null
 
   function matchAll(path: string): RouteMatch[] {
     const normalized = normalizeForMatch(path)
@@ -129,8 +119,13 @@ export function createMatcher(routes: RouteRecord[]): Matcher {
       candidates = item.children
     }
 
+    // 没有任何匹配（或最深的匹配未消费完整路径）→ 追加 catch-all 兜底。
+    if (catchAll && matches.length === 0) {
+      matches.push({ route: catchAll, params: {}, remaining: "" })
+    }
+
     return matches
   }
 
-  return { match, matchAll }
+  return { matchAll }
 }

@@ -272,6 +272,81 @@ describe("Router components", () => {
     router.dispose()
   })
 
+  it("R9: catch-all route renders 404 for unmatched paths", async () => {
+    const router = createRouter({
+      mode: "path",
+      routes: [
+        { path: "/", component: () => jsx("div", { children: "home" }) },
+        { path: "*", component: () => jsx("div", { children: "404" }) },
+      ],
+    })
+    const node = Router({ router })
+    const outlet = Outlet({})
+    await flushMicrotasks()
+    expect(router.currentRoute.get()?.path).toBe("/")
+    expect(outlet.textContent).toBe("home")
+
+    router.push("/does-not-exist")
+    await flushMicrotasks()
+    expect(router.currentRoute.get()?.path).toBe("*")
+    expect(outlet.textContent).toBe("404")
+
+    cleanupWatchers(outlet)
+    cleanupWatchers(node)
+    router.dispose()
+  })
+
+  it("R5½: Outlet memoizes subtree — component not re-invoked on query-only nav", async () => {
+    window.history.replaceState(null, "", "/search?q=1")
+    let renderCount = 0
+    const Search = () => {
+      renderCount++
+      return jsx("div", { children: "search" })
+    }
+    const NotFound = () => {
+      renderCount++
+      return jsx("div", { children: "404" })
+    }
+    const router = createRouter({
+      mode: "path",
+      routes: [
+        { path: "/search", component: Search },
+        { path: "*", component: NotFound },
+      ],
+    })
+    Router({ router })
+    const outlet = Outlet({})
+    await flushMicrotasks()
+    expect(outlet.textContent).toBe("search")
+
+    // 记录 query-only 导航前已渲染次数（忽略上游测试残留 effect 造成的常量偏移）
+    const beforeQuery = renderCount
+
+    // query-only 变化：pathname 不变 → 复用旧节点，component 不再被调用
+    router.push("/search?q=2")
+    await flushMicrotasks()
+    expect(renderCount).toBe(beforeQuery)
+    expect(router.query.get().q).toBe("2")
+    expect(outlet.textContent).toBe("search")
+
+    // pathname 变化：应重建子树，新 component 被调用（计数 +1）
+    router.push("/404?q=2")
+    await flushMicrotasks()
+    expect(renderCount).toBe(beforeQuery + 1)
+    expect(outlet.textContent).toBe("404")
+
+    cleanupWatchers(outlet)
+    router.dispose()
+  })
+})
+
+describe("JSX composition (children evaluate before Router)", () => {
+  beforeEach(() => {
+    window.history.replaceState(null, "", "/")
+    // Router() 挂载时设置模块级 activeRouter，跨测试残留会影响抛错断言
+    setActiveRouter(null)
+  })
+
   it("Outlet composed as JSX child of Router renders the current route", async () => {
     const router = createRouter({ mode: "path", routes: createRoutes() })
     // JSX 求值顺序：Outlet 先于 Router 执行；Router 挂载（setActiveRouter）

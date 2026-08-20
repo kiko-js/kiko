@@ -205,6 +205,13 @@ export function Outlet(props: OutletProps): Node {
 
   let currentNodes: Node[] = []
 
+  // 子树记忆化缓存：按 (route 标识, 匹配到的 pathname) 缓存已渲染的节点。
+  // query/hash 变化只改 query 信号，pathname 不变 → 复用旧节点（其内部的
+  // useParams/useQuery/useLocation 信号仍然响应），无需重跑 component。
+  // 仅在 route 身份或 pathname 改变时才重建子树并清理旧节点的 watchers。
+  let cachedKey: string | null = null
+  let cachedNodes: Node[] = []
+
   const dispose = effect(() => {
     // 根 Outlet 创建时 Router 尚未挂载（children 先求值）：静态 router 为空时
     // 响应式读取 activeRouter，Router 挂载后本 effect 自动补跑渲染。
@@ -221,7 +228,17 @@ export function Outlet(props: OutletProps): Node {
       currentNodes = swapNodes(marker, currentNodes, [])
       return
     }
-    // 移除当前 DOM 中的旧节点（swapNodes 会清理其 watchers），重建新子树。
+    // pathname = location.path，忽略 query/hash。route 身份用 path 作为
+    // 稳定键（同一 path 模式编译后 route 对象引用恒定）。
+    const pathname = router.location.get().path
+    const key = `${route.path}${pathname}`
+    // key 未变：复用缓存节点（不重跑 component），保持其内部信号响应式。
+    if (cachedKey === key && cachedNodes.length > 0) {
+      currentNodes = swapNodes(marker, currentNodes, cachedNodes)
+      return
+    }
+    // key 变化（或首次）：移除当前 DOM 中的旧节点（swapNodes 会清理其
+    // watchers），重建新子树。
     const next: Node[] = []
     try {
       // 读取 getRouteProps 内的 location/params/query 建立完整依赖：
@@ -238,6 +255,8 @@ export function Outlet(props: OutletProps): Node {
       reportError(err)
       next.push(document.createTextNode(""))
     }
+    cachedKey = key
+    cachedNodes = next
     currentNodes = swapNodes(marker, currentNodes, next)
   })
 

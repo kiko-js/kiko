@@ -10,6 +10,8 @@ import {
   useQuery,
   useRoute,
   useRouter,
+  useIsActive,
+  useMatch,
   useNavigate,
   type ReactiveSnapshot,
 } from "../src/hooks"
@@ -181,5 +183,66 @@ describe("router hooks", () => {
     expect(router.location.get().path).toBe("/")
 
     cleanupWatchers(tree)
+  })
+
+  it("R13: useIsActive is reactive and segment-aware", async () => {
+    window.history.replaceState(null, "", "/users/42")
+    const router = createRouter({ mode: "path", routes })
+    setActiveRouter(router)
+
+    const active = useIsActive("/users", { exact: true })
+    expect(active.get()).toBe(false)
+
+    // 非 exact：/users 前缀匹配 /users/42
+    const loose = useIsActive("/users")
+    expect(loose.get()).toBe(true)
+
+    router.push("/about")
+    await drainMicrotasks()
+    expect(active.get()).toBe(false)
+    expect(loose.get()).toBe(false)
+
+    router.push("/users/7")
+    await drainMicrotasks()
+    expect(active.get()).toBe(false) // exact 不匹配 /users/7
+    expect(loose.get()).toBe(true) // 前缀匹配
+
+    setActiveRouter(null)
+    router.dispose()
+  })
+
+  it("R13: useMatch is reactive and returns params", async () => {
+    window.history.replaceState(null, "", "/users/42")
+    const router = createRouter({ mode: "path", routes })
+    setActiveRouter(router)
+
+    const match = useMatch("/users/:id")
+    expect(match.get()).toEqual({ id: "42" })
+
+    router.push("/about")
+    await drainMicrotasks()
+    expect(match.get()).toBeNull()
+
+    router.push("/users/99")
+    await drainMicrotasks()
+    expect(match.get()).toEqual({ id: "99" })
+
+    setActiveRouter(null)
+    router.dispose()
+  })
+
+  it("P10: useNavigate hook reads the active router", async () => {
+    const router = createRouter({ mode: "path", routes })
+    setActiveRouter(router)
+
+    const navigate = useNavigate()
+    await navigate("/about")
+    expect(router.location.get().path).toBe("/about")
+
+    await navigate("/search", { replace: true })
+    expect(router.location.get().path).toBe("/search")
+
+    setActiveRouter(null)
+    router.dispose()
   })
 })
