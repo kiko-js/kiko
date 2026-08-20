@@ -16,10 +16,10 @@ npm install @kikojs/signal
 import { createSignal, computed, effect } from "@kikojs/signal"
 
 const count = createSignal(0)
-const doubled = computed(() => count() * 2)
+const doubled = computed(() => count.get() * 2)
 
 effect(() => {
-  console.log(`count = ${count()}, doubled = ${doubled()}`)
+  console.log(`count = ${count.get()}, doubled = ${doubled.get()}`)
 })
 
 count.set(1) // count = 1, doubled = 2
