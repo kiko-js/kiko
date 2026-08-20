@@ -519,7 +519,7 @@ describe("popstate guards and hooks", () => {
     router.dispose()
   })
 
-  it("R3: popstate reads history state through getState()", async () => {
+  it("reads state from history on popstate", async () => {
     const router = createRouter({ mode: "path", routes: createRoutes() })
     // a real history entry carries an arbitrary state object; the popstate
     // handler must read it via history.getState() instead of ignoring it.
