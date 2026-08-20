@@ -28,15 +28,31 @@ export function on<T>(
   fn: (prev: T | T[] | undefined) => void | EffectCleanup,
   options?: { defer?: boolean },
 ): EffectFn {
-  const depArr = Array.isArray(deps) ? deps : [deps]
-  const single = !Array.isArray(deps)
   const defer = options?.defer ?? false
   let prev: T | T[] | undefined
   let first = true
 
+  // Single-dependency (non-array) fast path: no array allocation per run.
+  if (!Array.isArray(deps)) {
+    const get = deps
+    return (() => {
+      const input = get()
+      if (first && defer) {
+        prev = input
+        first = false
+        return undefined
+      }
+      const result = untrack(() => fn(prev)) as void | EffectCleanup
+      prev = input
+      first = false
+      return result
+    }) as EffectFn
+  }
+
+  const depArr = deps
   return (() => {
     const inputs = depArr.map(d => d())
-    const input: T | T[] = single ? (inputs[0] as T) : inputs
+    const input: T[] = inputs
 
     if (first && defer) {
       prev = input

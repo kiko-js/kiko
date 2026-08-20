@@ -163,4 +163,42 @@ describe("on", () => {
     // dispose 时清理最后一次 fn(2)
     expect(log).toEqual(["fn:1", "cleanup:1", "fn:2", "cleanup:2"])
   })
+
+  it("P6: single-dependency on() passes the previous value (no array path)", async () => {
+    const a = createSignal(1)
+    const prevs: (number | undefined)[] = []
+    effect(
+      on(
+        () => a.get(),
+        p => {
+          prevs.push(p)
+        },
+      ),
+    )
+    expect(prevs).toEqual([undefined])
+    a.set(5)
+    await waitForMicrotask()
+    expect(prevs).toEqual([undefined, 1])
+    a.set(9)
+    await waitForMicrotask()
+    expect(prevs).toEqual([undefined, 1, 5])
+  })
+
+  it("P6: single-dependency on() with defer passes the previous value", async () => {
+    const a = createSignal(1)
+    const prevs: (number | undefined)[] = []
+    effect(
+      on(
+        () => a.get(),
+        p => {
+          prevs.push(p)
+        },
+        { defer: true },
+      ),
+    )
+    expect(prevs).toEqual([])
+    a.set(5)
+    await waitForMicrotask()
+    expect(prevs).toEqual([1])
+  })
 })
