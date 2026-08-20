@@ -1,5 +1,14 @@
 import { test, expect } from "bun:test"
-import { createStore, effect, computed, ref, isRef, REF, STORE_RAW } from "../src/index.ts"
+import {
+  createStore,
+  effect,
+  computed,
+  ref,
+  isRef,
+  REF,
+  STORE_RAW,
+  isSignal,
+} from "../src/index.ts"
 
 function flush(): Promise<void> {
   const { promise, resolve } = Promise.withResolvers<void>()
@@ -362,6 +371,34 @@ test("proxy traps expose callable stores, keys, descriptors, and reject writes",
   expect(store.a.get()).toBe(1)
 })
 
+test("S2: get() returns a deep-frozen snapshot that cannot pollute the root", () => {
+  const store = createStore({ a: { b: { c: 1 } } })
+  const ab = store.a.b.get()
+  // the returned object and its plain nested children are frozen
+  expect(Object.isFrozen(ab)).toBe(true)
+  expect(Object.isFrozen((store.a.get() as { b: unknown }).b)).toBe(true)
+  expect(Object.isFrozen(store.get())).toBe(true)
+
+  const before = store.a.b.c.get()
+  // mutating the frozen snapshot must not change the underlying store value
+  try {
+    ;(ab as { c: number }).c = 999
+  } catch {
+    // strict-mode ESM throws on frozen writes — that is the intended guard
+  }
+  expect(store.a.b.c.get()).toBe(before)
+  expect(store.a.b.get()).toEqual({ c: before })
+})
+
+test("S2: ref and opaque values are returned by reference and not frozen", () => {
+  const date = new Date("2020-01-01T00:00:00Z")
+  const store = createStore({ refVal: ref({ x: 1 }), date })
+  // ref child is returned raw, never deep-frozen
+  expect(Object.isFrozen(store.refVal.get())).toBe(false)
+  // opaque built-ins are returned by reference, not frozen
+  expect(Object.isFrozen(store.date.get())).toBe(false)
+})
+
 test("non-ref class instances and built-ins stay opaque terminals", () => {
   const date = new Date("2020-01-01T00:00:00Z")
   const map = new Map([["a", 1]])
@@ -384,4 +421,68 @@ test("non-ref class instances and built-ins stay opaque terminals", () => {
   // plain nested objects remain reactive
   store.nested.list.set([3])
   expect(store.nested.list.get()).toEqual([3])
+})
+
+test("P2: Symbol.toPrimitive honors the coercion hint (store.a + 1 === 51)", () => {
+  const store = createStore({ a: 50 })
+  // "default"/"number" hint yields a Number so arithmetic is numeric, not concat
+  expect((store.a as unknown as number) + 1).toBe(51)
+  expect((store.a as unknown as number) * 2).toBe(100)
+  // "string" hint yields a String
+  expect(`${store.a}`).toBe("50")
+  expect(String(store.a.get())).toBe("50")
+  // non-numeric values fall back to String
+  const s = createStore({ name: "kiko" })
+  expect(`${s.name}`).toBe("kiko")
+})
+
+test("P3: native methods on a plain container operate on the live value", () => {
+  const store = createStore({ items: [1, 2, 3] })
+  const doubled = (store.items as unknown as number[]).map((n: number) => n * 2)
+  expect(doubled).toEqual([2, 4, 6])
+  // opaque terminals and nested store nodes keep their proxy-node behavior
+  const withDate = createStore({ date: new Date("2020-01-01T00:00:00Z") })
+  expect(typeof (withDate.date as unknown as { getTime: unknown }).getTime).toBe("function")
+})
+
+test("P4: store.<path>.signal.set() routes into the store root", async () => {
+  const store = createStore({ a: 1, nested: { b: 2 } })
+  // writing through the signal updates the store (and stays in sync with .get)
+  store.a.signal!.set(9)
+  expect(store.a.get()).toBe(9)
+  expect(store.get()).toEqual({ a: 9, nested: { b: 2 } })
+  store.nested.b.signal!.set(20)
+  expect(store.nested.b.get()).toBe(20)
+  expect(store.get()).toEqual({ a: 9, nested: { b: 20 } })
+
+  // and it is reactive
+  const log: number[] = []
+  effect(() => log.push(store.a.get()))
+  log.length = 0
+  store.a.signal!.set(42)
+  await flush()
+  expect(log).toEqual([42])
+})
+
+test("P4: the exposed signal is a real, watchable Signal.State", () => {
+  const store = createStore({ a: 1 })
+  expect(isSignal(store.a.signal)).toBe(true)
+})
+
+test("S5: dropped dynamic keys release their trie signals instead of leaking", async () => {
+  const store = createStore<{ byId: Record<string, number> }>({ byId: { a: 1, b: 2 } })
+  // reading byId.a creates a trie Signal for that dynamic key
+  const log: number[] = []
+  effect(() => log.push(store.byId.a!.get()))
+  expect(log).toEqual([1])
+  log.length = 0
+  // replace the whole map, dropping key "a"
+  store.byId.set({ b: 2 })
+  await flush()
+  expect(log).toEqual([]) // old signal was disposed, no further notifications
+  // re-adding the key creates a fresh signal (not resurrecting the old one)
+  store.byId.set({ a: 5, b: 2 })
+  await flush()
+  // the new signal notifies the (new) effect subscription, not the disposed one
+  expect(store.byId.a!.get()).toBe(5)
 })

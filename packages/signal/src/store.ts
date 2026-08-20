@@ -172,13 +172,73 @@ function collectAffected(root: SignalTrieNode, path: PathKey[]): SignalEntry<unk
   return affected
 }
 
+/**
+ * A `Signal.State` whose `.set()` routes back into the store, so writing
+ * `store.a.signal.set(5)` (P4) actually mutates the store root and stays in
+ * sync with `store.a.set(5)`. The raw set used by `setNodeValue`/pruning goes
+ * through the inherited `Signal.State.set` (via `rawSetSignal`) to avoid
+ * re-entering `setNodeValue` and looping.
+ */
+class StoreSignal<T> extends Signal.State<T> {
+  private readonly ctx: StoreContext
+  private readonly storePath: PathKey[]
+  constructor(initial: T, ctx: StoreContext, path: PathKey[]) {
+    super(initial)
+    this.ctx = ctx
+    this.storePath = path
+  }
+  override set(value: T): void {
+    setNodeValue(this.ctx, this.storePath, value)
+  }
+}
+
+/** Set a signal's value directly, bypassing any `StoreSignal` routing override. */
+function rawSetSignal<T>(signal: Signal.State<T>, value: T): void {
+  Object.getPrototypeOf(StoreSignal.prototype).set.call(signal, value)
+}
+
+/** Stable string key for a path (handles symbol keys, collision-free). */
+function pathKey(path: PathKey[]): string {
+  return JSON.stringify(path.map(k => (typeof k === "symbol" ? `sym:${k.toString()}` : k)))
+}
+
+/** Enumerate every reachable data path from `value` (plain objects/arrays only). */
+function enumeratePaths(
+  value: unknown,
+  prefix: PathKey[],
+  out: Set<string>,
+  seen: WeakSet<object> = new WeakSet(),
+): void {
+  out.add(pathKey(prefix))
+  if (value === null || typeof value !== "object") return
+  if (isRef(value) || !isPlainObject(value)) return // opaque terminal: do not descend
+  if (seen.has(value)) return // cycle guard (self-referencing stores)
+  seen.add(value)
+  for (const key of Reflect.ownKeys(value)) {
+    enumeratePaths((value as Record<PropertyKey, unknown>)[key], [...prefix, key], out, seen)
+  }
+}
+
+/** Drop trie entries (and empty subtrees) for paths no longer reachable from root (S5). */
+function pruneTrie(node: SignalTrieNode, prefix: PathKey[], reachable: Set<string>): void {
+  if (node.entry && !reachable.has(pathKey(prefix))) {
+    node.entry = undefined
+  }
+  for (const [key, child] of Array.from(node.children.entries())) {
+    pruneTrie(child, [...prefix, key], reachable)
+    if (!child.entry && child.children.size === 0) {
+      node.children.delete(key)
+    }
+  }
+}
+
 function getSignal<T>(context: StoreContext, path: PathKey[]): Signal.State<T> {
   const node = getTrieNode(context.signals, path, true)
   if (!node.entry) {
     const { value } = readPath(context.root, path)
     node.entry = {
       path: path.slice(),
-      signal: new Signal.State(value) as Signal.State<unknown>,
+      signal: new StoreSignal(value, context, path.slice()) as Signal.State<unknown>,
     }
   }
   return node.entry.signal as Signal.State<T>
@@ -215,8 +275,39 @@ function createProxyNode<T>(context: StoreContext, path: PathKey[]): Store<T> {
         if (underRef) return undefined
         return getSignal<T>(context, path)
       }
-      if (prop === Symbol.toPrimitive || prop === "toString" || prop === "valueOf") {
+      if (prop === Symbol.toPrimitive) {
+        // Honor the coercion hint: "number"/"default" yield a Number for
+        // numeric values (so `store.a + 1 === 51`), "string" yields a String.
+        return (hint: string): string | number => {
+          const value = readPath(context.root, path).value
+          if (hint === "string") return String(value)
+          const num = Number(value)
+          return Number.isNaN(num) ? String(value) : num
+        }
+      }
+      if (prop === "toString" || prop === "valueOf") {
         return () => String(readPath(context.root, path).value)
+      }
+      // P3: method-style access. A native function on the underlying PLAIN
+      // container value — e.g. `store.items.map(fn)` — is bound to a live read of
+      // the container so it operates on the CURRENT value instead of silently
+      // yielding a detached proxy node. Only when the container is a plain
+      // object/array: opaque terminals (Date, class instances) and nested store
+      // nodes must keep their proxy-node behavior (so `.set`/`.get` still work).
+      if (typeof prop === "string") {
+        const container = readPath(context.root, path).value
+        if (isPlainObject(container)) {
+          const childVal = readPath(context.root, [...path, prop]).value
+          if (
+            typeof childVal === "function" &&
+            (childVal as unknown as Record<symbol, unknown>)[STORE_RAW] === undefined
+          ) {
+            return (...args: unknown[]): unknown => {
+              const live = getSignal(context, path).get() as Record<string, unknown>
+              return (live[prop] as (...a: unknown[]) => unknown)(...args)
+            }
+          }
+        }
       }
       // 拒绝内建探测：迭代器 / toStringTag 以及 thenable 协议。代理目标是
       // 可调用函数，未拦截时 `store.then` 返回可调用代理节点 → `await store`
@@ -270,8 +361,15 @@ function setNodeValue(context: StoreContext, path: PathKey[], value: unknown): v
   if (Object.is(context.root, nextRoot)) return
   context.root = nextRoot
   for (const entry of collectAffected(context.signals, path)) {
-    entry.signal.set(readPath(context.root, entry.path).value)
+    // raw set (not StoreSignal.set) so this does not re-enter setNodeValue
+    rawSetSignal(entry.signal as Signal.State<unknown>, readPath(context.root, entry.path).value)
   }
+  // S5: drop trie entries whose path is no longer reachable from the new root
+  // (e.g. a dropped dynamic key like `store.byId[id]`) so their signals can be
+  // reclaimed instead of leaking for the store's lifetime.
+  const reachable = new Set<string>()
+  enumeratePaths(context.root, [], reachable)
+  pruneTrie(context.signals, [], reachable)
 }
 
 export function createStore<T>(initialState: T): Store<T> {
