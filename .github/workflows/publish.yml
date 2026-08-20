@@ -1,14 +1,12 @@
 name: Publish to npm
 
-# Release flow: push a tag matching the package versions (e.g. `v0.0.2`),
-# and @kikojs/signal, @kikojs/dom, @kikojs/router are published to npm
-# (in dependency order) after the full quality gate passes.
+# Release flow: create a GitHub Release with tag matching the package versions
+# (e.g. `v0.0.2`), and @kikojs/signal, @kikojs/dom, @kikojs/router are
+# published to npm (in dependency order) after the full quality gate passes.
 
 on:
-  push:
-    tags: ["v*"]
-  workflow_dispatch:
-
+  release:
+    types: [published]
 permissions:
   contents: read
   id-token: write # npm provenance attestations
@@ -74,7 +72,7 @@ jobs:
       #   v0.0.2-rc1      -> packages version 0.0.2-rc1, dist-tag beta
       - name: Set package versions from tag and resolve workspace deps
         env:
-          VERSION: ${{ github.ref_name }}
+          VERSION: ${{ github.event.release.tag_name }}
         run: |
           VERSION="${VERSION#v}"
           node -e "
@@ -117,7 +115,7 @@ jobs:
       # publishing; no NODE_AUTH_TOKEN / NPM_TOKEN secret is required.
       - name: Publish packages
         env:
-          VERSION: ${{ github.ref_name }}
+          VERSION: ${{ github.event.release.tag_name }}
         run: |
           VERSION="${VERSION#v}"
           if [[ "$VERSION" == *-* ]]; then
