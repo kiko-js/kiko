@@ -5,27 +5,24 @@
     "docs"
   ],
   "type": "module",
-  "module": "index.ts",
   "scripts": {
     "prepare": "husky",
     "lint": "oxlint .",
     "fmt": "oxfmt --write .",
     "fmt:check": "oxfmt --check .",
-    "build": "bun run --cwd packages/signal build && bun run --cwd packages/dom build && bun run --cwd packages/router build",
-    "pretypecheck": "bun run build",
-    "typecheck": "tsc --noEmit -p packages/signal/tsconfig.json && tsc --noEmit -p packages/dom/tsconfig.json && tsc --noEmit -p packages/router/tsconfig.json && tsc --noEmit -p examples/basic/tsconfig.json && tsc --noEmit -p examples/ssr/tsconfig.json && tsc --noEmit -p examples/htm/tsconfig.json && tsc --noEmit -p examples/react-portal/tsconfig.json && tsc --noEmit -p examples/tailwind/tsconfig.json",
-    "pretest": "bun run build",
+    "build": "bun run --cwd packages/signal build && bun run --cwd packages/dom build && bun run --cwd packages/ssr build && bun run --cwd packages/router build",
+    "typecheck": "tsc --noEmit -p packages/signal/tsconfig.json && tsc --noEmit -p packages/dom/tsconfig.json && tsc --noEmit -p packages/ssr/tsconfig.json && tsc --noEmit -p packages/router/tsconfig.json && tsc --noEmit -p examples/basic/tsconfig.json && tsc --noEmit -p examples/ssr/tsconfig.json && tsc --noEmit -p examples/htm/tsconfig.json && tsc --noEmit -p examples/react-portal/tsconfig.json && tsc --noEmit -p examples/tailwind/tsconfig.json",
+    "docs:typecheck": "tsc --noEmit -p docs/tsconfig.json",
     "test": "bun test",
-    "presite:build": "bun run build",
     "site:build": "bun run docs/build.ts"
   },
   "devDependencies": {
-    "@types/bun": "latest",
+    "@types/bun": "^1.3.14",
     "husky": "^9.1.7",
-    "lint-staged": "^17.0.8",
+    "lint-staged": "^17.3.0",
     "oxfmt": "^0.59.0",
-    "oxlint": "^1.74.0",
-    "typescript": "^7.0.2"
+    "oxlint": "^1.79.0",
+    "typescript": "7.0.2"
   },
   "lint-staged": {
     "*.{ts,tsx,js,jsx,mjs,cjs}": [
@@ -35,5 +32,6 @@
     "*.{json,md,yml,yaml,css,html}": [
       "oxfmt --write"
     ]
-  }
+  },
+  "packageManager": "bun@1.3.14"
 }
