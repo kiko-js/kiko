@@ -206,20 +206,27 @@ export function For<T>(props: {
         next.push(...entry.nodes)
       }
     }
-    // Detach all current nodes first so a fixed `ref` re-inserts in order
-    // (insertBefore(n, ref) with live survivors in place would reverse them).
-    // removeChild keeps survivor watchers intact — only DOM position changes.
-    if (parent) for (const n of current) parent.removeChild(n)
-    // Dispose entries that dropped out of the list (watchers only — DOM
-    // already detached above).
+    // Dispose entries that dropped out of the list (watchers only — their
+    // DOM nodes are still attached among `current` and get removed below).
     for (const entry of entries.values()) {
       for (const n of entry.nodes) cleanupWatchers(n)
     }
+    // Minimal-move reconciliation (SolidJS-style): only detach/reattach a node
+    // when its DOM location actually needs to change. Dropped keys are removed
+    // once; surviving keys keep their watchers (insertBefore/removeChild do not
+    // lose them) and are repositioned with a single backward pass that anchors
+    // each node immediately before the one we just placed (ending at `marker`).
     if (parent) {
-      const ref = marker.nextSibling
-      for (const n of next) {
-        applyScopeRoots(n, parent)
-        parent.insertBefore(n, ref)
+      const keep = new Set(next)
+      for (const n of current) {
+        if (!keep.has(n)) parent.removeChild(n)
+      }
+      let ref: Node = marker
+      for (let i = next.length - 1; i >= 0; i--) {
+        const node = next[i] as Node
+        if (node.nextSibling !== ref) parent.insertBefore(node, ref)
+        applyScopeRoots(node, parent)
+        ref = node
       }
     }
     current = next

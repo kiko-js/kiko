@@ -26,6 +26,9 @@ const nodeCleanups = new WeakMap<Node, Set<() => void>>()
 // Sheets owned by scoped-style anchors, so a re-inserted anchor (Show/For
 // remount after cleanup) re-adopts its sheet instead of silently losing css.
 const scopeSheets = new WeakMap<Node, CSSStyleSheet>()
+// Accounting set so `isAdopted` is O(1) instead of an O(n) linear scan over
+// `document.adoptedStyleSheets` (which would make many `<Style>` sheets O(n²)).
+const adoptedSheets = new WeakSet<CSSStyleSheet>()
 
 export function trackWatcher(node: Node, watcher: Watcher): void {
   let set = nodeWatchers.get(node)
@@ -79,12 +82,16 @@ export function applyScopeRoots(child: Node, parent: Node): void {
   const sheet = scopeSheets.get(child)
   if (sheet !== undefined && !isAdopted(sheet)) {
     adoptSheet(sheet, document)
-    trackCleanup(child, () => unadoptSheet(sheet, document))
+    adoptedSheets.add(sheet)
+    trackCleanup(child, () => {
+      adoptedSheets.delete(sheet)
+      unadoptSheet(sheet, document)
+    })
   }
 }
 
 function isAdopted(sheet: CSSStyleSheet): boolean {
-  return (document.adoptedStyleSheets as unknown as CSSStyleSheet[]).includes(sheet)
+  return adoptedSheets.has(sheet)
 }
 
 export function cleanupWatchers(root: Node): void {
@@ -125,10 +132,13 @@ export function toNodes(value: unknown): Node[] {
   if (value instanceof Node) return [value]
   if (Array.isArray(value)) {
     const out: Node[] = []
+    const frag = document.createDocumentFragment()
     for (const c of value) {
-      const frag = document.createDocumentFragment()
       appendChild(frag, c)
-      for (const n of frag.childNodes) out.push(n as Node)
+      // Drain `frag` into `out`, reusing the single fragment across items.
+      // `removeChild` detaches each node so the loop terminates and the node
+      // is owned by `out` (and ultimately by its insertion parent).
+      while (frag.firstChild) out.push(frag.removeChild(frag.firstChild))
     }
     return out
   }
@@ -607,8 +617,12 @@ export function Style(props: StyleProps): Node {
   if (sheet !== null) {
     scopeSheets.set(anchor, sheet)
     adoptSheet(sheet, document)
+    adoptedSheets.add(sheet)
     const adopted = sheet
-    trackCleanup(anchor, () => unadoptSheet(adopted, document))
+    trackCleanup(anchor, () => {
+      adoptedSheets.delete(adopted)
+      unadoptSheet(adopted, document)
+    })
   }
 
   const signals = collectCssSignals(props.children)

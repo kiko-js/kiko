@@ -336,6 +336,39 @@ describe("For", () => {
     await sync()
     expect(texts()).toEqual(["c:0", "b:1", "a:2"])
   })
+
+  it("D4 — append keeps surviving keyed nodes attached (no detach/reattach)", async () => {
+    const list = createSignal<{ id: number }[]>([{ id: 1 }, { id: 2 }, { id: 3 }])
+    const container = document.createElement("div")
+    document.body.appendChild(container)
+    container.appendChild(
+      jsx("ul", {
+        children: For({
+          each: list,
+          getKey: item => item.id,
+          children: item => jsx("li", { children: String(item().id) }),
+        }),
+      }) as Node,
+    )
+    const before = Array.from(container.querySelectorAll("li"))
+    expect(before.map(n => n.textContent)).toEqual(["1", "2", "3"])
+    // capture a surviving node
+    const survivor = before[0]!
+    const survivorParent = survivor.parentNode
+    // Append a new item at the end.
+    list.set([{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }])
+    await flush()
+    await flush()
+    const after = Array.from(container.querySelectorAll("li"))
+    expect(after.map(n => n.textContent)).toEqual(["1", "2", "3", "4"])
+    // The surviving node is the SAME reference and was NOT detached/reattached
+    // (its parent element is unchanged — no removeChild/insertBefore happened).
+    expect(after[0]).toBe(survivor)
+    expect(survivor.parentNode).toBe(survivorParent)
+    expect(survivor.isConnected).toBe(true)
+    // The appended node is present in the right position (last).
+    expect(after[3]!.textContent).toBe("4")
+  })
 })
 
 describe("static branch retention", () => {

@@ -9,9 +9,25 @@ export type WatchableSignal<T> = Signal.State<T> | Signal.Computed<T>
 
 export type Watcher = Signal.subtle.Watcher
 
-/** Type guard: true for any standard watchable signal. */
+/**
+ * Type guard: true for any standard watchable signal.
+ *
+ * Uses duck-typing (constructor-name + accessor shape) instead of `instanceof`
+ * so a signal created by a *different* copy of `signal-polyfill` (the
+ * dual-package hazard when `@kikojs/dom` bundles its own copy) is still
+ * recognised. `State` exposes `get`+`set`, `Computed` exposes `get` only; both
+ * are named identically across copies. kiko store proxy nodes are callable
+ * proxies (typeof "function") and are excluded by the typeof guard.
+ */
 export function isSignal(value: unknown): value is WatchableSignal<unknown> {
-  return value instanceof Signal.State || value instanceof Signal.Computed
+  if (value === null || typeof value !== "object") return false
+  const v = value as Record<PropertyKey, unknown>
+  if (typeof v.get !== "function") return false
+  const ctor = (value as { constructor?: { name?: string } }).constructor
+  const name = ctor?.name
+  if (name === "State" || name === "Computed") return true
+  // Generic fallback: any get+set accessor object is treated as a State-like signal.
+  return typeof v.set === "function"
 }
 
 /** Convenience: create a `Signal.State<T>` (standard TC39 Signals interface). */
