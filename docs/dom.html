@@ -294,6 +294,12 @@
           <div class="code-block">
             <pre><code class="language-tsx" data-src="./assets/snippets/dom-show.tsx"></code></pre>
           </div>
+          <p class="note">
+            <code>when</code> 为信号时才订阅更新：<code>when={count.get() &gt; 0}</code> 求值后是纯
+            boolean，快照后不再响应；需 <code>computed(() =&gt; count.get() &gt; 0)</code> 或直接
+            <code>when={count}</code> / <code>when={visibleSignal}</code>。子节点中的
+            <code>{count}</code> 另行通过 JSX 绑定响应。
+          </p>
 
           <h3 id="for">For — 列表渲染</h3>
           <table>

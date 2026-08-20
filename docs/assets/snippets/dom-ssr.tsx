@@ -1,8 +1,11 @@
 /** @jsxImportSource @kikojs/dom */
-import { createSignal, Show, For, Suspend, lazy } from "@kikojs/dom"
+import { createSignal, For, Show, Suspend, lazy } from "@kikojs/dom"
+import { computed } from "@kikojs/signal"
 import { renderToDocument, renderToFragment } from "@kikojs/dom/server"
 
 const count = createSignal(3)
+// Show 的 when 为信号时订阅更新；SSR 取快照，hydrate 后按同一信号响应
+const visible = computed(() => count.get() > 0)
 
 // 懒加载模块（真实工程：() => import("./Card").then(m => m.default)）
 const Card = lazy(() => Promise.resolve(() => <div class="card">card</div>))
@@ -12,7 +15,7 @@ async function render(): Promise<void> {
   const fragment = await renderToFragment(() => (
     <main>
       <p>{count}</p>
-      <Show when={count.get() > 0} fallback="empty">
+      <Show when={visible} fallback="empty">
         <For each={["a", "b"]}>{item => <li>{item}</li>}</For>
       </Show>
       <Suspend fallback={<p>加载中…</p>}>
