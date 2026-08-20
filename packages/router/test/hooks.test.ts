@@ -10,9 +10,10 @@ import {
   useQuery,
   useRoute,
   useRouter,
+  useNavigate,
   type ReactiveSnapshot,
 } from "../src/hooks"
-import { useNavigate } from "../src/utils"
+import { navigateFrom } from "../src/utils"
 import { cleanupWatchers } from "@kikojs/dom/jsx-runtime"
 import type { RouteLocation, RouteParams, RouteQuery, RouteRecord } from "../src/types"
 
@@ -119,11 +120,11 @@ describe("router hooks", () => {
     router.dispose()
   })
 
-  it("useNavigate returns a navigate function bound to the router", async () => {
+  it("useNavigate (curried) returns a navigate function bound to the router", async () => {
     const router = createRouter({ mode: "path", routes })
     setActiveRouter(router)
 
-    const navigate = useNavigate(router)
+    const navigate = navigateFrom(router)
     await navigate("/about")
     expect(router.location.get().path).toBe("/about")
 
@@ -152,7 +153,7 @@ describe("router hooks", () => {
         query: useQuery(),
         location: useLocation(),
         route: useRoute(),
-        navigate: useNavigate(router),
+        navigate: navigateFrom(router),
       }
       return document.createTextNode("page")
     }

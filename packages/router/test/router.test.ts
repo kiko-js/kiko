@@ -518,6 +518,55 @@ describe("popstate guards and hooks", () => {
     expect(visited).toContain("/login")
     router.dispose()
   })
+
+  it("R3: popstate reads history state through getState()", async () => {
+    const router = createRouter({ mode: "path", routes: createRoutes() })
+    // a real history entry carries an arbitrary state object; the popstate
+    // handler must read it via history.getState() instead of ignoring it.
+    window.history.pushState({ token: "abc" }, "", "/about")
+    window.dispatchEvent(new Event("popstate"))
+    await drainMicrotasks()
+    expect(router.location.get().path).toBe("/about")
+    expect(router.location.get().state).toEqual({ token: "abc" })
+    router.dispose()
+  })
+})
+
+describe("navigation dedup (R5 first half)", () => {
+  beforeEach(() => {
+    window.history.replaceState(null, "", "/")
+  })
+
+  it("does not push a duplicate history entry for the same fullPath", async () => {
+    const router = createRouter({ mode: "path", routes: createRoutes() })
+    router.push("/about")
+    await flushMicrotasks()
+    const lenAfterFirst = window.history.length
+    // same fullPath, not replace → commit early-returns (no second pushState)
+    router.push("/about")
+    await flushMicrotasks()
+    expect(window.history.length).toBe(lenAfterFirst)
+    // a single back therefore returns to the root, not to a duplicated entry
+    router.back()
+    expect(window.location.pathname).toBe("/")
+    window.dispatchEvent(new Event("popstate"))
+    await drainMicrotasks()
+    expect(router.location.get().path).toBe("/")
+    router.dispose()
+  })
+
+  it("query-only change still navigates (fullPath differs)", async () => {
+    const router = createRouter({ mode: "path", routes: createRoutes() })
+    router.push("/search?q=one")
+    await flushMicrotasks()
+    const lenAfterFirst = window.history.length
+    router.push("/search?q=two")
+    await flushMicrotasks()
+    // distinct fullPath → a new history entry is created
+    expect(window.history.length).toBe(lenAfterFirst + 1)
+    expect(router.query.get().q).toBe("two")
+    router.dispose()
+  })
 })
 
 describe("createRouter hash mode", () => {

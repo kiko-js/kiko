@@ -4,8 +4,8 @@ import { describe, it, expect, beforeEach } from "bun:test"
 import { jsx } from "@kikojs/dom"
 import { cleanupWatchers } from "@kikojs/dom/jsx-runtime"
 import { createRouter } from "../src/router"
-import { Router, Link, Outlet, Navigate } from "../src/components"
-import { setActiveRouter } from "../src/context"
+import { Router, Link, Outlet, Navigate, Route } from "../src/components"
+import { setActiveRouter, getActiveRouter } from "../src/context"
 import type { RouteRecord } from "../src/types"
 
 function flushMicrotasks(): Promise<void> {
@@ -45,23 +45,48 @@ describe("Router components", () => {
     router.dispose()
   })
 
+  it("R1: disposing one of two coexisting Routers restores the other", () => {
+    const routerA = createRouter({ mode: "path", routes: createRoutes() })
+    const routerB = createRouter({ mode: "path", routes: createRoutes() })
+
+    // A 先活动
+    setActiveRouter(routerA)
+    expect(getActiveRouter()).toBe(routerA)
+
+    // 挂载 B（会压栈并设为活动）
+    const nodeB = Router({ router: routerB })
+    expect(getActiveRouter()).toBe(routerB)
+
+    // 卸载 B（等价于 Router 的 trackCleanup）：应恢复 A，而不是把全局置 null
+    cleanupWatchers(nodeB)
+    expect(getActiveRouter()).toBe(routerA)
+
+    setActiveRouter(null)
+    routerA.dispose()
+    routerB.dispose()
+  })
+
   it("Outlet renders current route component", async () => {
     const router = createRouter({ mode: "path", routes: createRoutes() })
-    Router({ router })
+    const node = Router({ router })
     const outlet = Outlet({})
     router.push("/about")
     await flushMicrotasks()
     expect(outlet.textContent).toBe("about")
+    cleanupWatchers(outlet)
+    cleanupWatchers(node)
     router.dispose()
   })
 
   it("Outlet renders the initial route and passes params to the component", async () => {
     window.history.replaceState(null, "", "/users/42")
     const router = createRouter({ mode: "path", routes: createRoutes() })
-    Router({ router })
+    const node = Router({ router })
     const outlet = Outlet({})
     expect(outlet.textContent).toBe("user")
     expect(router.params.get()).toEqual({ id: "42" })
+    cleanupWatchers(outlet)
+    cleanupWatchers(node)
     router.dispose()
   })
 
@@ -209,13 +234,42 @@ describe("Router components", () => {
     expect(router.location.get().path).toBe(before)
     router.dispose()
   })
-})
 
-describe("JSX composition (children evaluate before Router)", () => {
-  beforeEach(() => {
-    window.history.replaceState(null, "", "/")
-    // Router() 挂载时设置模块级 activeRouter，跨测试残留会影响抛错断言
+  it("R14: declarative <Route> renders its component only when the path matches", async () => {
+    const calls: string[] = []
+    const About = () => {
+      calls.push("about")
+      return jsx("div", { children: "about" })
+    }
+
+    const router = createRouter({
+      mode: "path",
+      routes: [
+        { path: "/", component: () => jsx("div", { children: "root" }) },
+        { path: "/about", component: () => jsx("div", { children: "about-route" }) },
+      ],
+    })
+    setActiveRouter(router)
+
+    const routeNode = Route({ path: "/about", component: About }) as DocumentFragment
+    await flushMicrotasks()
+    // 当前在 "/"，<Route path="/about"> 不应渲染 About
+    expect(routeNode.textContent).toBe("")
+    expect(calls).toEqual([])
+
+    router.push("/about")
+    await flushMicrotasks()
+    // 命中 /about，渲染 About 组件
+    expect(routeNode.textContent).toBe("about")
+
+    router.push("/")
+    await flushMicrotasks()
+    // 离开 /about，恢复空
+    expect(routeNode.textContent).toBe("")
+
+    cleanupWatchers(routeNode)
     setActiveRouter(null)
+    router.dispose()
   })
 
   it("Outlet composed as JSX child of Router renders the current route", async () => {
