@@ -352,6 +352,11 @@
                 <td><code>Router | null</code></td>
                 <td>安全获取 router，Router 外返回 null。</td>
               </tr>
+              <tr>
+                <td><code>useNavigate()</code></td>
+                <td><code>(to, options?) =&gt; Promise&lt;void&gt;</code></td>
+                <td>获取绑定当前 router 的导航函数（Router 内调用）。</td>
+              </tr>
             </tbody>
           </table>
           <p class="note">
@@ -479,9 +484,9 @@
                 <td>比较路径是否匹配（忽略查询串、hash 与尾部斜杠）。</td>
               </tr>
               <tr>
-                <td><code>useNavigate</code></td>
-                <td><code>useNavigate(router): (to, options?) =&gt; void</code></td>
-                <td>创建绑定 router 的导航函数。</td>
+                <td><code>navigateFrom</code></td>
+                <td><code>navigateFrom(router): (to, options?) =&gt; void</code></td>
+                <td>把 router 绑定为导航函数（组件内请用 <code>useNavigate()</code> hook）。</td>
               </tr>
               <tr>
                 <td><code>openExternal</code></td>

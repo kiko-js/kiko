@@ -4,7 +4,7 @@ import {
   pathsEqual,
   redirect,
   redirectReplace,
-  useNavigate,
+  navigateFrom,
 } from "@kikojs/router"
 import type { RouterInstance } from "@kikojs/router"
 
@@ -19,6 +19,6 @@ pathsEqual("/a?x=1", "/a/") // true —— 忽略查询串与尾部斜杠
 redirect("/login") // { path: "/login" } —— push 语义
 redirectReplace("/login") // { path: "/login", replace: true } —— replace 语义
 
-// useNavigate 绑定 router，返回导航函数
-const navigate = useNavigate(router)
+// navigateFrom 绑定 router，返回导航函数（组件内请用 useNavigate() hook）
+const navigate = navigateFrom(router)
 navigate("/about", { replace: true })
