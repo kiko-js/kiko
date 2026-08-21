@@ -198,48 +198,43 @@ function rawSetSignal<T>(signal: Signal.State<T>, value: T): void {
   Object.getPrototypeOf(StoreSignal.prototype).set.call(signal, value)
 }
 
-/** Stable string key for a path (handles symbol keys, collision-free). */
-function pathKey(path: PathKey[]): string {
-  return JSON.stringify(path.map(k => (typeof k === "symbol" ? `sym:${k.toString()}` : k)))
-}
-
-/** Enumerate every reachable data path from `value` (plain objects/arrays only). */
-function enumeratePaths(
-  value: unknown,
-  prefix: PathKey[],
-  out: Set<string>,
-  seen: WeakSet<object> = new WeakSet(),
-): void {
-  out.add(pathKey(prefix))
-  if (value === null || typeof value !== "object") return
-  if (isRef(value) || !isPlainObject(value)) return // opaque terminal: do not descend
-  if (seen.has(value)) return // cycle guard (self-referencing stores)
-  seen.add(value)
-  for (const key of Reflect.ownKeys(value)) {
-    enumeratePaths((value as Record<PropertyKey, unknown>)[key], [...prefix, key], out, seen)
-  }
-}
-
-/** Drop trie entries (and empty subtrees) for paths no longer reachable from root (S5). */
-function pruneTrie(node: SignalTrieNode, prefix: PathKey[], reachable: Set<string>): void {
-  const key = pathKey(prefix)
-  if (node.entry && !reachable.has(key)) {
-    node.entry = undefined
-  }
-  if (node.proxy && !reachable.has(key)) {
-    node.proxy = undefined
-  }
-  for (const [childKey, child] of Array.from(node.children.entries())) {
-    const childPath = [...prefix, childKey]
-    pruneTrie(child, childPath, reachable)
-    if (
-      !reachable.has(pathKey(childPath)) &&
-      !child.entry &&
-      child.children.size === 0 &&
-      !child.proxy
-    ) {
-      node.children.delete(childKey)
+/**
+ * Drop trie entries under the just-written path whose data no longer exists
+ * (e.g. a dropped dynamic key like `store.byId[id]`), so their signals can be
+ * reclaimed instead of leaking for the store's lifetime.
+ *
+ * Walks ONLY the changed subtree, guided by the new value — the rest of the
+ * trie and the rest of the store are untouched, so a write costs
+ * O(affected trie) instead of O(whole store).
+ */
+function pruneSubtree(node: SignalTrieNode, value: unknown, seen: WeakSet<object>): void {
+  const descend =
+    value !== null &&
+    typeof value === "object" &&
+    !isRef(value) &&
+    isPlainObject(value) &&
+    !seen.has(value)
+  if (!descend) {
+    // Primitive / opaque terminal / cycle: nothing below this path is
+    // reachable — detach the whole subtree in one step.
+    for (const [key, child] of node.children) {
+      child.entry = undefined
+      child.proxy = undefined
+      node.children.delete(key)
     }
+    return
+  }
+  seen.add(value)
+  const container = value as Record<PathKey, unknown>
+  for (const [childKey, child] of Array.from(node.children.entries())) {
+    if (!Object.hasOwn(container, childKey)) {
+      // Key vanished from data: entry, proxy and everything below are dead.
+      child.entry = undefined
+      child.proxy = undefined
+      node.children.delete(childKey)
+      continue
+    }
+    pruneSubtree(child, container[childKey], seen)
   }
 }
 
@@ -377,12 +372,11 @@ function setNodeValue(context: StoreContext, path: PathKey[], value: unknown): v
     // raw set (not StoreSignal.set) so this does not re-enter setNodeValue
     rawSetSignal(entry.signal as Signal.State<unknown>, readPath(context.root, entry.path).value)
   }
-  // S5: drop trie entries whose path is no longer reachable from the new root
-  // (e.g. a dropped dynamic key like `store.byId[id]`) so their signals can be
-  // reclaimed instead of leaking for the store's lifetime.
-  const reachable = new Set<string>()
-  enumeratePaths(context.root, [], reachable)
-  pruneTrie(context.signals, [], reachable)
+  // S5: drop trie entries whose path is no longer reachable from the new
+  // value (e.g. a dropped dynamic key like `store.byId[id]`) so their signals
+  // can be reclaimed instead of leaking for the store's lifetime.
+  const node = getTrieNode(context.signals, path, false)
+  if (node) pruneSubtree(node, value, new WeakSet())
 }
 
 export function createStore<T>(initialState: T): Store<T> {
