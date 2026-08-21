@@ -34,9 +34,6 @@ export function effect(fn: EffectFn): EffectCleanup {
   let disposed = false
 
   const computed = new Signal.Computed(() => {
-    // 清理上一轮（含返回式清理）——untrack 执行，避免清理中的信号读取
-    // 污染 effect 依赖；flushScope 逐条吞错，不会让 effect 楔死。
-    untrack(() => flushScope(scope))
     const result = runInScope(scope, fn)
     // 返回式清理并入 scope：与 onCleanup 同一机制、同一错误策略、同一
     // 顺序（逆序注册），重跑与 dispose 两条路径行为一致。
@@ -50,6 +47,12 @@ export function effect(fn: EffectFn): EffectCleanup {
 
   function runEffect(): void {
     if (disposed) return
+    // 清理上一轮：必须在 activeConsumer 之外、且 untrack，避免在
+    // producerRecomputeValue / consumerAfterComputation 持有 activeConsumer
+    // 期间调用 watcher.unwatch（嵌套 effect 的 dispose）导致 liveConsumer
+    // 链表在迭代中被并发修改，偶发触发 signal-polyfill 的
+    // producerRemoveLiveConsumerAtIndex 空洞断言（线上 R9 偶发）。
+    untrack(() => flushScope(scope))
     // Re-reading the computed re-tracks dependencies under the watcher.
     try {
       computed.get()
