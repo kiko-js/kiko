@@ -1,5 +1,5 @@
 {
-  "name": "examples/tailwind",
+  "name": "tailwind",
   "private": true,
   "type": "module",
   "scripts": {

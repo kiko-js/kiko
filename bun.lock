@@ -59,7 +59,7 @@
       },
     },
     "examples/tailwind": {
-      "name": "examples/tailwind",
+      "name": "tailwind",
       "dependencies": {
         "@kikojs/dom": "workspace:*",
         "@kikojs/signal": "workspace:*",
@@ -82,7 +82,7 @@
     },
     "packages/dom": {
       "name": "@kikojs/dom",
-      "version": "0.0.2",
+      "version": "0.0.4",
       "dependencies": {
         "signal-polyfill": "^0.2.0",
       },
@@ -102,7 +102,7 @@
     },
     "packages/router": {
       "name": "@kikojs/router",
-      "version": "0.0.2",
+      "version": "0.0.4",
       "dependencies": {
         "@kikojs/dom": "workspace:*",
         "@kikojs/signal": "workspace:*",
@@ -115,7 +115,7 @@
     },
     "packages/signal": {
       "name": "@kikojs/signal",
-      "version": "0.0.2",
+      "version": "0.0.4",
       "dependencies": {
         "signal-polyfill": "^0.2.0",
       },
@@ -299,8 +299,6 @@
 
     "csstype": ["csstype@3.2.3", "", {}, "sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ=="],
 
-    "examples/tailwind": ["examples/tailwind@workspace:examples/tailwind"],
-
     "happy-dom": ["happy-dom@17.6.3", "", { "dependencies": { "webidl-conversions": "^7.0.0", "whatwg-mimetype": "^3.0.0" } }, "sha512-UVIHeVhxmxedbWPCfgS55Jg2rDfwf2BCKeylcPSqazLz5w3Kri7Q4xdBJubsr/+VUzFLh0VjIvh13RaDA2/Xug=="],
 
     "htm": ["htm@workspace:examples/htm"],
@@ -332,6 +330,8 @@
     "ssr": ["ssr@workspace:examples/ssr"],
 
     "string-argv": ["string-argv@0.3.2", "", {}, "sha512-aqD2Q0144Z+/RqG52NeHEkZauTAUWJO8c6yTftGJKO3Tja5tUgIfmIl6kExvhtxSDP7fXB6DvzkfMpCd/F3G+Q=="],
+
+    "tailwind": ["tailwind@workspace:examples/tailwind"],
 
     "tailwindcss": ["tailwindcss@4.3.3", "", {}, "sha512-gOhV3P7ufE62QDGg1zVaTgCR+EtPv92k2nIhVcVKcLmxT1sUBsQGhnZj175j+MqRt4zLF7ic+sCYjfhxMxj7YQ=="],
 
