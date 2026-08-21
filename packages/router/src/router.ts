@@ -1,9 +1,11 @@
 import { Signal } from "signal-polyfill"
 import { createSignal, effect } from "@kikojs/signal"
 import { createHashHistory, createPathHistory } from "./history"
-import type { HistoryAdapter, HistoryLocation } from "./types"
 import { createMatcher } from "./matcher"
 import type {
+  EntryScroll,
+  HistoryAdapter,
+  HistoryLocation,
   NavigateOptions,
   RedirectDescriptor,
   RouteComponentProps,
@@ -14,7 +16,9 @@ import type {
   RouteQuery,
   Router,
   RouterOptions,
+  ScrollPosition,
 } from "./types"
+import { claimManualScrollRestoration, releaseManualScrollRestoration } from "./history"
 
 let keyCounter = 0
 function nextKey(): string {
@@ -71,6 +75,13 @@ function resolveLocation(path: string, state: unknown, key: string): RouteLocati
     key,
   }
 }
+/** 下一帧：浏览器走 rAF；无 rAF 的环境（测试/非 DOM）退化为微任务 */
+function nextFrame(): Promise<void> {
+  const { promise, resolve } = Promise.withResolvers<void>()
+  if (typeof requestAnimationFrame === "function") requestAnimationFrame(() => resolve())
+  else queueMicrotask(resolve)
+  return promise
+}
 
 export function createRouter(options: RouterOptions): Router {
   const base = options.base ?? ""
@@ -78,6 +89,78 @@ export function createRouter(options: RouterOptions): Router {
   const history: HistoryAdapter =
     options.history ?? (options.mode === "hash" ? createHashHistory() : createPathHistory(base))
   const mode: RouteMode = history.kind === "hash" ? "hash" : "path"
+
+  // --- scrollBehavior 接管 -------------------------------------------------
+  const scrollHandler = options.scrollBehavior
+  let scrollOwned = false
+  let detachScrollListener: (() => void) | undefined
+  if (scrollHandler) {
+    scrollOwned = claimManualScrollRestoration()
+    // 持续把用户滚动写回当前条目，前进/后退时才有准确的 savedPosition
+    if (typeof window !== "undefined") {
+      let raf = 0
+      const scheduleSave = (): void => {
+        if (typeof requestAnimationFrame === "function") {
+          requestAnimationFrame(() => {
+            raf = 0
+            history.setEntryScroll(currentScroll())
+          })
+        } else {
+          queueMicrotask(() => {
+            raf = 0
+            history.setEntryScroll(currentScroll())
+          })
+        }
+      }
+      const onScroll = (): void => {
+        if (raf) return
+        raf = 1
+        scheduleSave()
+      }
+      window.addEventListener("scroll", onScroll, { passive: true })
+      detachScrollListener = () => {
+        window.removeEventListener("scroll", onScroll)
+        raf = 0
+      }
+    }
+  }
+
+  const currentScroll = (): EntryScroll => ({ top: window.scrollY ?? 0, left: window.scrollX ?? 0 })
+
+  /** 离开当前条目前存下滚动位置（仅配置了 scrollBehavior 时） */
+  function saveCurrentScroll(): void {
+    if (!scrollHandler || typeof window === "undefined") return
+    history.setEntryScroll(currentScroll())
+  }
+
+  /** 导航完成、DOM 渲染落定后应用滚动目标 */
+  async function applyScroll(
+    to: RouteLocation,
+    from: RouteLocation | null,
+    savedPosition: ScrollPosition | null,
+    seq: number,
+  ): Promise<void> {
+    if (!scrollHandler || typeof window === "undefined") return
+    let result: ScrollPosition | false | void
+    try {
+      result = await scrollHandler(to, from, savedPosition)
+    } catch (err) {
+      reportError(err)
+      return
+    }
+    await nextFrame()
+    if (disposed || seq !== navigationSeq || result === false || result === undefined) return
+    if (result.el !== undefined) {
+      const el = typeof result.el === "string" ? document.querySelector(result.el) : result.el
+      el?.scrollIntoView({ behavior: result.behavior, block: "start", inline: "start" })
+      return
+    }
+    window.scrollTo({
+      top: result.top ?? 0,
+      left: result.left ?? 0,
+      behavior: result.behavior,
+    })
+  }
 
   /** 拼回完整路径（路径 + query + # 片段），三种 history 语义一致 */
   function joinRaw(raw: HistoryLocation): string {
@@ -205,6 +288,7 @@ export function createRouter(options: RouterOptions): Router {
     // Internal write: the history-location effect must not treat our own
     // push/replace as an external navigation.
     suppressExternal++
+    saveCurrentScroll()
     if (opts.replace) {
       history.replace(path, state)
     } else {
@@ -214,6 +298,7 @@ export function createRouter(options: RouterOptions): Router {
     for (const hook of globalAfter) {
       hook(to, from)
     }
+    void applyScroll(to, from, null, seq)
   }
 
   function navigate(to: string | number, opts: NavigateOptions = {}): Promise<void> {
@@ -271,6 +356,8 @@ export function createRouter(options: RouterOptions): Router {
     if (disposed) return
     disposed = true
     stopObserving()
+    detachScrollListener?.()
+    if (scrollOwned) releaseManualScrollRestoration()
     // 注入的 history 归调用方所有，router 只释放自己创建的
     if (ownsHistory) history.dispose()
   }
@@ -293,6 +380,9 @@ export function createRouter(options: RouterOptions): Router {
     const seq = ++navigationSeq
     const from = location.get()
     const to = resolveLocation(joinRaw(raw), raw.state, nextKey())
+    // 目标条目离开时存储的滚动位置（manual 模式下浏览器不会自动恢复，
+    // 此刻页面仍停在原位置，读取安全）
+    const savedPosition = scrollHandler ? history.getEntryScroll() : undefined
     runGuards(to, from)
       .then(async outcome => {
         if (seq !== navigationSeq) return
@@ -314,6 +404,7 @@ export function createRouter(options: RouterOptions): Router {
         for (const hook of globalAfter) {
           hook(to, from)
         }
+        void applyScroll(to, from, savedPosition ?? null, seq)
       })
       .catch(err => {
         reportError(err)
@@ -351,6 +442,8 @@ export function createRouter(options: RouterOptions): Router {
         history.replace(outcome.path, outcome.state)
         updateLocation(outcome.path, outcome.state, nextKey())
       }
+      // 刷新/重开：恢复该条目上次离开时的滚动位置（scrollRestoration 已是 manual）
+      void applyScroll(location.get(), null, history.getEntryScroll() ?? null, navigationSeq)
     })
     .catch(err => {
       reportError(err)

@@ -162,6 +162,41 @@ export interface HistoryLocation {
   hash: string
   state: unknown
 }
+
+/**
+ * 滚动目标：坐标、元素（CSS 选择器或引用）或两者；`behavior` 透传给
+ * 原生 `scrollTo` / `scrollIntoView`。
+ */
+export interface ScrollPosition {
+  top?: number
+  left?: number
+  el?: string | Element
+  behavior?: ScrollBehavior
+}
+
+/**
+ * 滚动行为钩子：导航完成后调用。`savedPosition` 是目标历史条目离开时
+ * 存储的滚动位置（仅前进/后退有值）。返回 `false` 或 `undefined` 跳过滚动；
+ * 返回 Promise 可等待布局稳定后再滚。
+ */
+export type ScrollBehaviorHandler = (
+  to: RouteLocation,
+  from: RouteLocation | null,
+  savedPosition: ScrollPosition | null,
+) => ScrollPosition | false | void | Promise<ScrollPosition | false | void>
+
+/** 条目级滚动位置（存入包装后的 history.state） */
+export interface EntryScroll {
+  top: number
+  left: number
+}
+
+/**
+ * 响应式 history 适配器：path / hash / memory 三种实现同构。
+ * `location` 是唯一事实源——push/replace/go 与浏览器事件都会同步它；
+ * router 用 effect 订阅以处理外部变化。同一实例可被多个 router 共享
+ * （每个 router 独立观察并用自己的路由表处理变化）。
+ */
 export interface HistoryAdapter {
   readonly kind: "path" | "hash" | "memory"
   readonly location: Signal.State<HistoryLocation>
@@ -170,6 +205,9 @@ export interface HistoryAdapter {
   go(delta: number): void
   back(): void
   forward(): void
+  /** 读/写当前历史条目存储的滚动位置（供 scrollBehavior 使用） */
+  getEntryScroll(): EntryScroll | undefined
+  setEntryScroll(scroll: EntryScroll | undefined): void
   dispose(): void
 }
 
@@ -209,6 +247,8 @@ export interface RouterOptions {
    * 测试 / SSR / 无 DOM 环境用 `createMemoryHistory()`。
    */
   history?: HistoryAdapter
+  /** 滚动行为钩子（配置后 router 接管 scrollRestoration） */
+  scrollBehavior?: ScrollBehaviorHandler
   /** 路由表 */
   routes?: RouteRecord[]
   /** 全局前置守卫 */

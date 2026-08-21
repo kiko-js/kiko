@@ -101,6 +101,26 @@ const router = createRouter({ history, routes }) // mode 取自 history.kind
 
 同一 history 实例可被多个 router 共享：每个 router 独立观察位置变化并用自己的路由表与守卫处理。注入时 router 不拥有 history——`dispose()` 只解绑自身。
 
+### 滚动管理（scrollBehavior）
+
+配置 `scrollBehavior` 后，router 接管 `history.scrollRestoration`（dispose 时恢复），每次导航完成后调用钩子决定滚动目标：
+
+```ts
+const router = createRouter({
+  routes,
+  scrollBehavior(to, from, savedPosition) {
+    if (savedPosition) return savedPosition // 浏览器前进/后退：回到离开时的位置
+    if (to.hash) return { el: to.hash, behavior: "smooth" }
+    return { top: 0 } // 常规导航回顶
+    // 返回 false / undefined 跳过；返回 Promise 可等布局稳定后再滚
+  },
+})
+```
+
+- 滚动位置按历史条目存储（包装在 history.state 内，对 `location.state` 透明）；
+- 支持坐标（`top` / `left`）、元素（`el`：选择器或引用）与平滑滚动（`behavior`）；
+- 过期的异步结果会被丢弃（快速连续导航不会互相覆盖滚动）。
+
 ## API
 
 - **创建**：`createRouter(options)`（`mode: "path" | "hash"`）、`getRouteProps`
