@@ -316,10 +316,14 @@ cd packages/benchmark && bun run bench
 | `tsconfig.json`                         | Shared TypeScript base config                                       |
 | `packages/dom/test/setup.ts`            | Test environment (happy-dom globals)                                |
 
+## Constraints
+
+- **NEVER hand-edit `bun.lock`** — 永远避免直接修改 lock 文件。所有依赖变更必须通过 `bun install` / `bun add` / `bun remove` / `bun update` 等包管理器命令生成，手工编辑易导致解析不一致、workspace 版本漂移或意外的 integrity 错误。此约束永久有效。
+
 ## Runtime/Tooling Preferences
 
 - **Runtime**: Bun (required — uses `bun:test`, `Bun.file`, Bun workspace features)
-- **Package manager**: Bun (`bun.lock`)
+- **Package manager**: Bun (`bun.lock` — see Constraints above; never edit by hand)
 - **Git hooks**: `husky` pre-commit runs `lint-staged` then `oxlint .` (staged TS/JS get oxfmt --write + oxlint; JSON/MD/CSS/HTML get oxfmt)
 - **Linting/formatting**: `oxlint` + `oxfmt` (configured via `.oxlintrc.json`, `.oxfmtrc.json`, run via root `lint`/`fmt` scripts)
 - **CI/CD**: `.github/workflows/ci.yml` (lint/typecheck/test), `deploy-pages.yml` (docs site → GitHub Pages), `publish.yml` (npm publish). Packages publish as 0.0.1 via `bun run build` + `bun test` in prepublishOnly.
