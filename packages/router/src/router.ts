@@ -284,7 +284,7 @@ export function createRouter(options: RouterOptions): Router {
     const state = history.getState()
     const to = resolveLocation(currentPath(), state, nextKey())
     runGuards(to, from)
-      .then(outcome => {
+      .then(async outcome => {
         if (seq !== navigationSeq) return
         if (outcome === false) {
           // 被阻止时回退到上一个历史记录
@@ -293,12 +293,10 @@ export function createRouter(options: RouterOptions): Router {
           return
         }
         if (outcome) {
-          const redirected = resolveLocation(outcome.path, outcome.state, nextKey())
-          history.replace(outcome.path, outcome.state)
-          updateLocation(outcome.path, outcome.state, redirected.key)
-          for (const hook of globalAfter) {
-            hook(redirected, from)
-          }
+          // Redirects on popstate go through the full commit path so the
+          // target re-runs guards and redirect chains stay depth-limited —
+          // same semantics as programmatic navigation.
+          await commit(outcome.path, { state: outcome.state, replace: true }, 0, seq)
           return
         }
         updateLocation(to.fullPath, state, to.key)

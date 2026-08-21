@@ -590,3 +590,71 @@ describe("createRouter hash mode", () => {
     router.dispose()
   })
 })
+
+describe("partial nested match falls back to catch-all", () => {
+  beforeEach(() => {
+    window.history.replaceState(null, "", "/")
+  })
+
+  it("appends the catch-all when a nested level leaves an unmatched remainder", async () => {
+    // /users matches (prefix) but no child consumes /unknown — before the fix
+    // matches.length > 0 suppressed the catch-all and the deep Outlet
+    // silently rendered nothing.
+    const router = createRouter({
+      mode: "path",
+      routes: [
+        {
+          path: "/users",
+          component: () => document.createTextNode("users"),
+          children: [{ path: "list", component: () => document.createTextNode("list") }],
+        },
+        { path: "*", component: () => document.createTextNode("not-found") },
+      ],
+    })
+    router.push("/users/unknown")
+    await flushMicrotasks()
+    const list = router.matched.get()
+    expect(list[list.length - 1]!.route.path).toBe("*")
+    router.push("/users/list")
+    await flushMicrotasks()
+    expect(router.matched.get().some(m => m.route.path === "*")).toBe(false)
+    router.dispose()
+  })
+})
+
+describe("popstate redirect re-runs guards on the target", () => {
+  beforeEach(() => {
+    window.history.replaceState(null, "", "/")
+  })
+
+  it("target beforeEnter guard runs when popstate lands on a redirecting route", async () => {
+    const guardTargets: string[] = []
+    const router = createRouter({
+      mode: "path",
+      routes: [
+        { path: "/", component: () => document.createTextNode("home") },
+        { path: "/about", component: () => document.createTextNode("about") },
+        { path: "/old", redirect: "/secret" },
+        {
+          path: "/secret",
+          component: () => document.createTextNode("secret"),
+          beforeEnter: to => {
+            guardTargets.push(to.path)
+            return "/about"
+          },
+        },
+      ],
+    })
+    // / → /secret (redirected to /about) → back lands on /old via popstate.
+    router.push("/secret")
+    await drainMicrotasks()
+    expect(router.location.get().path).toBe("/about")
+    router.back()
+    await drainMicrotasks()
+    // Popstate hit /old → redirect → commit → /secret's beforeEnter must run
+    // and bounce to /about again (guard saw the redirect target).
+    expect(guardTargets).toContain("/secret")
+    expect(router.location.get().path).toBe("/about")
+    router.dispose()
+  })
+})

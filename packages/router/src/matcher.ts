@@ -104,12 +104,18 @@ export function createMatcher(routes: RouteRecord[]): Matcher {
     let candidates: CompiledRoute[] = compiled
 
     while (candidates.length > 0) {
-      const item = candidates.find(c =>
-        c.prefixRegex ? c.prefixRegex.test("/" + remaining) : c.exactRegex.test("/" + remaining),
-      )
-      if (!item) break
-      const regex = item.prefixRegex ?? item.exactRegex
-      const m = regex.exec("/" + remaining)!
+      // Single exec per candidate: the previous test-then-exec ran every
+      // regex twice on the winning route.
+      let item: CompiledRoute | undefined
+      let m: RegExpExecArray | null = null
+      for (const c of candidates) {
+        m = (c.prefixRegex ?? c.exactRegex).exec("/" + remaining)
+        if (m) {
+          item = c
+          break
+        }
+      }
+      if (!item || !m) break
       const params = extractParams(item, m)
       const consumed = m[0]!.replace(/\/$/, "")
       matches.push({ route: item.route, params, remaining })
@@ -119,8 +125,9 @@ export function createMatcher(routes: RouteRecord[]): Matcher {
       candidates = item.children
     }
 
-    // 没有任何匹配（或最深的匹配未消费完整路径）→ 追加 catch-all 兜底。
-    if (catchAll && matches.length === 0) {
+    // 零匹配，或最深的匹配未消费完整路径（如 /users/abc 落在 users 的
+    // children 上但无一命中）→ 追加 catch-all 兜底，避免静默渲染空 Outlet。
+    if (catchAll && (matches.length === 0 || remaining !== "")) {
       matches.push({ route: catchAll, params: {}, remaining: "" })
     }
 

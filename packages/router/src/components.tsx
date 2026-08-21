@@ -154,13 +154,13 @@ export function Link(props: LinkProps): Node {
     if (!activeClass || !router) return
     const loc = router.location.get()
     const match = isActivePath(loc.path, to, exact ?? false)
+    // classList tokens must not contain whitespace — split once, use for both
+    // add and remove ("nav active" would throw in classList.add as-is).
+    const classes = activeClass.split(" ").filter(c => c !== "")
     if (match) {
-      el.classList.add(activeClass)
+      for (const c of classes) el.classList.add(c)
     } else {
-      const classes = activeClass.split(" ")
-      for (const c of classes) {
-        if (c) el.classList.remove(c)
-      }
+      for (const c of classes) el.classList.remove(c)
     }
   })
   // effect 的 watcher 不挂在 anchor 上，不 track 会在 Router 卸载后泄漏
