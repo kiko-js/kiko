@@ -52,14 +52,16 @@ jobs:
       - name: Format check
         run: bun run fmt:check
 
+      # Packages resolve each other (and jsxImportSource) through dist/
+      # entry points, so dist must exist before typecheck (see ci.yml).
+      - name: Build
+        run: bun run build
+
       - name: Typecheck
         run: bun run typecheck
 
       - name: Test
         run: bun test
-
-      - name: Build
-        run: bun run build
 
       # npm does NOT rewrite the `workspace:` protocol at publish time (it
       # lands in the tarball verbatim and breaks consumers), so set the package
