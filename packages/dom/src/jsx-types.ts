@@ -70,6 +70,12 @@ export interface DOMEventHandlers {
   onPaste?: MaybeSignal<(event: ClipboardEvent) => void>
 }
 
+/** Capture-phase variants (`onClickCapture` …), derived from `DOMEventHandlers`.
+ * Capture handlers attach as direct native listeners (exact capture semantics). */
+export type DOMCaptureHandlers = {
+  [K in keyof DOMEventHandlers as `${K}Capture`]?: DOMEventHandlers[K]
+}
+
 /** Attributes shared by every HTML element. The index signature keeps kiko's
  *  dynamic prop handling type-checkable for arbitrary keys. */
 export interface HTMLAttributes<T extends HTMLElement> {
@@ -95,7 +101,8 @@ export interface HTMLAttributes<T extends HTMLElement> {
 }
 
 /** HTML attributes + DOM event handlers. */
-export interface HTMLProps<T extends HTMLElement> extends HTMLAttributes<T>, DOMEventHandlers {}
+export interface HTMLProps<T extends HTMLElement>
+  extends HTMLAttributes<T>, DOMEventHandlers, DOMCaptureHandlers {}
 
 /** Form-specific attributes. */
 export interface FormProps extends HTMLProps<HTMLInputElement> {

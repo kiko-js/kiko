@@ -1,6 +1,7 @@
 /** @jsxImportSource @kikojs/dom */
 import { describe, it, expect, beforeAll } from "bun:test"
 import { jsx, Fragment, cleanupWatchers } from "../src/jsx-runtime"
+import { render } from "../src/render"
 import type { Component } from "../src/jsx-runtime"
 import { createSignal } from "../src/signal"
 
@@ -48,13 +49,18 @@ describe("jsx", () => {
 
   it("attaches event listeners", () => {
     let clicked = false
-    const el = jsx("button", {
-      onClick: () => {
-        clicked = true
-      },
-    }) as HTMLElement
-    el.click()
+    const container = document.createElement("div")
+    const dispose = render(
+      jsx("button", {
+        onClick: () => {
+          clicked = true
+        },
+      }) as HTMLElement,
+      container,
+    )
+    container.querySelector("button")!.click()
     expect(clicked).toBe(true)
+    dispose()
   })
 
   it("calls function components", () => {
@@ -207,8 +213,11 @@ describe("jsx", () => {
 
   it("signal event handler replaces instead of accumulating", async () => {
     const handlerSig = createSignal<() => void>(() => {})
-    const el = jsx("div", { onClick: handlerSig }) as HTMLElement
-    const fire = () => el.dispatchEvent(new Event("click"))
+    const container = document.createElement("div")
+    const dispose = render(jsx("div", { onClick: handlerSig }) as HTMLElement, container)
+    const el = container.querySelector("div")!
+    // Delegated dispatch requires a bubbling event.
+    const fire = () => el.dispatchEvent(new window.Event("click", { bubbles: true }))
     let count = 0
     const a = (): void => {
       count++
@@ -217,18 +226,15 @@ describe("jsx", () => {
       count += 10
     }
     handlerSig.set(a)
-    const { promise: p1, resolve: r1 } = Promise.withResolvers<void>()
-    queueMicrotask(r1)
-    await p1
+    await flush()
     fire()
     expect(count).toBe(1)
     handlerSig.set(b)
-    const { promise: p2, resolve: r2 } = Promise.withResolvers<void>()
-    queueMicrotask(r2)
-    await p2
+    await flush()
     fire()
     // b only — old listener removed, not double-fired
     expect(count).toBe(11)
+    dispose()
   })
 
   it("signal style object removes stale properties on update", async () => {

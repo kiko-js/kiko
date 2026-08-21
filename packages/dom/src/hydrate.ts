@@ -3,7 +3,9 @@ import { createWatcher, isSignal, reportError, watchSignal } from "./signal"
 import type { WatchableSignal } from "./signal"
 import {
   applyScopeRoots,
+  attachDelegationRoot,
   cleanupWatchers,
+  detachDelegationRoot,
   jsx,
   setProp,
   Style,
@@ -647,5 +649,9 @@ export function hydrate(root: () => unknown, container: Element): () => void {
   } finally {
     endHydrate()
   }
-  return () => cleanupWatchers(container)
+  attachDelegationRoot(container)
+  return () => {
+    detachDelegationRoot(container)
+    cleanupWatchers(container)
+  }
 }

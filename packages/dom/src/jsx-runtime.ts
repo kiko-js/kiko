@@ -30,6 +30,110 @@ const scopeSheets = new WeakMap<Node, CSSStyleSheet>()
 // `document.adoptedStyleSheets` (which would make many `<Style>` sheets O(n²)).
 const adoptedSheets = new WeakSet<CSSStyleSheet>()
 
+// ---------------------------------------------------------------------------
+// Event delegation
+//
+// Bubbling events are dispatched through ONE listener per mount root
+// (render/hydrate container, portal target) instead of one per element.
+// Handlers live in `delegatedHandlers`; the shared dispatcher walks upward
+// from `event.target`, so only kiko-managed elements under a registered root
+// ever see events — foreign DOM captures nothing, and `detachDelegationRoot`
+// (called on dispose) stops observation entirely. Nested roots dedupe through
+// `invokedHandlers` so an element's handler fires once per event regardless
+// of how many roots its propagation path crosses. Non-bubbling types (focus,
+// blur, scroll, load, …) keep direct per-element listeners.
+
+const DELEGATED_EVENTS: Record<string, true> = {
+  beforeinput: true,
+  change: true,
+  click: true,
+  contextmenu: true,
+  dblclick: true,
+  focusin: true,
+  focusout: true,
+  input: true,
+  keydown: true,
+  keypress: true,
+  keyup: true,
+  mousedown: true,
+  mousemove: true,
+  mouseout: true,
+  mouseover: true,
+  mouseup: true,
+  pointercancel: true,
+  pointerdown: true,
+  pointermove: true,
+  pointerout: true,
+  pointerover: true,
+  pointerup: true,
+  submit: true,
+  touchcancel: true,
+  touchend: true,
+  touchmove: true,
+  touchstart: true,
+  wheel: true,
+}
+
+const delegatedHandlers = new WeakMap<Element, Map<string, EventListener>>()
+// Refcount, not a set: the same node can be registered by several owners
+// (e.g. a render container that is also a portal target, or one target
+// shared by two portals). Each owner detaches independently; listeners must
+// survive until the LAST owner lets go.
+const delegationRoots = new WeakMap<Node, number>()
+const invokedHandlers = new WeakMap<Event, Set<Element>>()
+
+function dispatchDelegated(event: Event): void {
+  const type = event.type
+  let invoked = invokedHandlers.get(event)
+  if (!invoked) {
+    invoked = new Set()
+    invokedHandlers.set(event, invoked)
+  }
+  let node = event.target as Node | null
+  while (node) {
+    const fn = delegatedHandlers.get(node as Element)?.get(type)
+    if (fn && !invoked.has(node as Element)) {
+      invoked.add(node as Element)
+      fn.call(node, event)
+      // stopPropagation / stopImmediatePropagation end the walk, matching
+      // native bubble semantics.
+      if (event.cancelBubble) return
+    }
+    node = node.parentNode
+  }
+}
+
+/** Register `container` as a delegation root (refcounted, idempotent per owner). */
+export function attachDelegationRoot(container: Node): void {
+  const count = delegationRoots.get(container) ?? 0
+  if (count === 0) {
+    for (const type of Object.keys(DELEGATED_EVENTS))
+      container.addEventListener(type, dispatchDelegated)
+  }
+  delegationRoots.set(container, count + 1)
+}
+
+/** Release one owner's claim on `container`; listeners go when the last owner detaches. */
+export function detachDelegationRoot(container: Node): void {
+  const count = delegationRoots.get(container) ?? 0
+  if (count <= 1) {
+    if (count === 1) delegationRoots.delete(container)
+    for (const type of Object.keys(DELEGATED_EVENTS))
+      container.removeEventListener(type, dispatchDelegated)
+    return
+  }
+  delegationRoots.set(container, count - 1)
+}
+
+function setDelegatedHandler(el: Element, type: string, fn: EventListener): void {
+  let map = delegatedHandlers.get(el)
+  if (!map) {
+    map = new Map()
+    delegatedHandlers.set(el, map)
+  }
+  map.set(type, fn)
+}
+
 export function trackWatcher(node: Node, watcher: Watcher): void {
   let set = nodeWatchers.get(node)
   if (!set) {
@@ -358,7 +462,14 @@ function applyProp(el: StyledElement, key: string, value: unknown): void {
   }
 
   if (key.startsWith("on") && typeof value === "function") {
-    el.addEventListener(key.slice(2).toLowerCase(), value as EventListener)
+    // `onClickCapture` → type "click", capture phase. Capture handlers stay
+    // direct native listeners: they are rare, and delegation cannot reproduce
+    // exact capture semantics (top-down order + stopPropagation cutting the
+    // walk before target) without a second listener set per root.
+    const capture = key.endsWith("Capture")
+    const type = key.slice(2, capture ? -7 : undefined).toLowerCase()
+    if (!capture && DELEGATED_EVENTS[type]) setDelegatedHandler(el, type, value as EventListener)
+    else el.addEventListener(type, value as EventListener, capture)
     return
   }
 
@@ -424,7 +535,7 @@ export function setProp(el: StyledElement, key: string, value: unknown): void {
     // properties replace rather than accumulate. Without this, each signal
     // change would addEventListener again (leak + double-fire) and leave
     // stale CSS properties on the element.
-    let prevHandler: { type: string; fn: EventListener } | null = null
+    let prevHandler: { type: string; fn: EventListener; capture: boolean } | null = null
     let prevStyleKeys: string[] | null = null
 
     const apply = (): void => {
@@ -448,11 +559,18 @@ export function setProp(el: StyledElement, key: string, value: unknown): void {
         return
       }
       if (key.startsWith("on") && typeof v === "function") {
-        const type = key.slice(2).toLowerCase()
-        if (prevHandler) el.removeEventListener(prevHandler.type, prevHandler.fn)
+        const capture = key.endsWith("Capture")
+        const type = key.slice(2, capture ? -7 : undefined).toLowerCase()
+        if (!capture && DELEGATED_EVENTS[type]) {
+          // Delegated handlers replace by WeakMap entry — no listener churn.
+          setDelegatedHandler(el, type, v as EventListener)
+          return
+        }
+        if (prevHandler)
+          el.removeEventListener(prevHandler.type, prevHandler.fn, prevHandler.capture)
         const fn = v as EventListener
-        prevHandler = { type, fn }
-        el.addEventListener(type, fn)
+        prevHandler = { type, fn, capture }
+        el.addEventListener(type, fn, capture)
         return
       }
       applyProp(el, key, v)

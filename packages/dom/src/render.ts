@@ -1,4 +1,9 @@
-import { applyScopeRoots, cleanupWatchers } from "./jsx-runtime"
+import {
+  applyScopeRoots,
+  attachDelegationRoot,
+  cleanupWatchers,
+  detachDelegationRoot,
+} from "./jsx-runtime"
 
 export function render(root: Node, container: Element): () => void {
   // If the container already hosts a kiko tree, tear down its watchers and
@@ -8,8 +13,10 @@ export function render(root: Node, container: Element): () => void {
   container.innerHTML = ""
   applyScopeRoots(root, container)
   container.appendChild(root)
+  attachDelegationRoot(container)
 
   return () => {
+    detachDelegationRoot(container)
     cleanupWatchers(container)
     container.innerHTML = ""
   }

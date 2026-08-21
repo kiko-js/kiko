@@ -1,4 +1,9 @@
-import { cleanupWatchers, trackCleanup } from "./jsx-runtime"
+import {
+  attachDelegationRoot,
+  cleanupWatchers,
+  detachDelegationRoot,
+  trackCleanup,
+} from "./jsx-runtime"
 import { getSSRRuntime } from "./ssr-mode"
 
 /**
@@ -18,7 +23,11 @@ export function createPortal(node: Node, container: Element): Comment {
   const anchor = document.createComment("portal")
   const nodes = node instanceof DocumentFragment ? Array.from(node.childNodes) : [node]
   for (const n of nodes) container.appendChild(n)
+  // Portal 节点挂在宿主挂载容器之外：事件沿 container 的祖先链冒泡，
+  // 不会经过任何 render/hydrate 委托根——portal 目标自身注册为委托根。
+  attachDelegationRoot(container)
   trackCleanup(anchor, () => {
+    detachDelegationRoot(container)
     for (const n of nodes) {
       cleanupWatchers(n)
       if (n.parentNode === container) container.removeChild(n)
