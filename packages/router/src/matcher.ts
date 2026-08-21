@@ -70,7 +70,7 @@ function compileRoute(route: RouteRecord): CompiledRoute {
 }
 
 /** 递归编译整个路由树（顶层与每层 children），创建时一次完成 */
-function compileRoutes(routes: RouteRecord[]): CompiledRoute[] {
+function compileRoutes(routes: readonly RouteRecord[]): CompiledRoute[] {
   return routes.map(compileRoute)
 }
 

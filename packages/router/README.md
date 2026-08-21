@@ -60,6 +60,28 @@ const router = createRouter({
 })
 ```
 
+### 类型化导航目标（可选）
+
+默认所有跳转目标是 `string`。用 `defineRoutes` 声明路由表并做一次模块增强后，`navigate` / `push` / `replace` / `<Link to>` / `<Navigate to>` / 守卫返回值都会被约束为已配置路径的联合——拼写错误编译期报错，IDE 自动补全：
+
+```ts
+// routes.ts
+import { defineRoutes, type RoutePaths } from "@kikojs/router"
+
+export const routes = defineRoutes([
+  { path: "/", component: Home },
+  { path: "/users/:id", component: User, children: [{ path: "profile", component: Profile }] },
+])
+
+declare module "@kikojs/router" {
+  interface RouterPaths {
+    paths: RoutePaths<typeof routes> // "/" | "/users/:id" | "/users/:id/profile"
+  }
+}
+```
+
+路由记录的 `path` 传显式字面量泛型时，组件 props 的 `params` 按模式精确类型化：`RouteRecord<"/users/:id">` 的组件里 `params.id` 为 `string` 且拼错报错。`meta` 同样可通过扩展 `RouteMeta` 接口获得项目级类型。
+
 ## API
 
 - **创建**：`createRouter(options)`（`mode: "path" | "hash"`）、`getRouteProps`

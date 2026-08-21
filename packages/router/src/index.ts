@@ -18,6 +18,7 @@ export {
   getQueryValue,
   pathsEqual,
   navigateFrom,
+  defineRoutes,
 } from "./utils"
 export { createAuthGuard, combineGuards, createAsyncGuard } from "./guards"
 export { createPathHistory, createHashHistory } from "./history"
@@ -35,6 +36,12 @@ export type {
   RouteMatch,
   Router as RouterInstance,
   RouterOptions,
+  PathParams,
+  ParamsOf,
+  RoutePaths,
+  NavPath,
+  RouterPaths,
+  RouteMeta,
 } from "./types"
 export type { Matcher } from "./matcher"
 export type { HistoryAdapter } from "./history"

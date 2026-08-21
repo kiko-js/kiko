@@ -4,7 +4,7 @@ import { jsx } from "@kikojs/dom"
 import { cleanupWatchers, swapNodes, toNodes, trackCleanup } from "@kikojs/dom/jsx-runtime"
 import { clearActiveRouter, getActiveRouter, setActiveRouter } from "./context"
 import { getRouteProps } from "./router"
-import type { Router } from "./types"
+import type { NavPath, Router } from "./types"
 
 interface RouterProps {
   router: Router
@@ -35,7 +35,7 @@ export function Router(props: RouterProps): Node {
 }
 
 interface LinkProps {
-  to: string
+  to: NavPath
   replace?: boolean
   state?: unknown
   children?: unknown
@@ -216,7 +216,7 @@ export function Outlet(props: OutletProps): Node {
 }
 
 interface NavigateProps {
-  to: string
+  to: NavPath
   replace?: boolean
   state?: unknown
 }

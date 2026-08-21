@@ -1,17 +1,25 @@
-import type { RedirectDescriptor, RouteQuery, Router } from "./types"
+import type { NavPath, RedirectDescriptor, RouteQuery, RouteRecord, Router } from "./types"
 
 /** 重定向工具：返回一个 RedirectDescriptor */
-export function redirect(path: string, state?: unknown): RedirectDescriptor {
+export function redirect(path: NavPath, state?: unknown): RedirectDescriptor {
   return { path, state }
 }
 
 /** 重定向工具（替换当前历史记录） */
-export function redirectReplace(path: string, state?: unknown): RedirectDescriptor {
+export function redirectReplace(path: NavPath, state?: unknown): RedirectDescriptor {
   return { path, replace: true, state }
 }
 
+/**
+ * 声明路由表：原样返回，但保留 path 的字面量类型，供
+ * `RoutePaths<typeof routes>` 展开导航目标联合。
+ */
+export function defineRoutes<const R extends readonly RouteRecord[]>(routes: R): R {
+  return routes
+}
+
 /** 构建带查询字符串的路径 */
-export function buildPath(path: string, query?: RouteQuery): string {
+export function buildPath(path: NavPath, query?: RouteQuery): string {
   if (!query || Object.keys(query).length === 0) return path
   const params = new URLSearchParams()
   for (const [key, value] of Object.entries(query)) {
@@ -40,7 +48,7 @@ export function pathsEqual(a: string, b: string): boolean {
 /** 在当前 router 上执行导航（注意：这是柯里化函数，不是 hook）。 */
 export function navigateFrom(
   router: Router,
-): (to: string | number, options?: { replace?: boolean; state?: unknown }) => Promise<void> {
+): (to: NavPath | number, options?: { replace?: boolean; state?: unknown }) => Promise<void> {
   return (to, options) => router.navigate(to, options)
 }
 

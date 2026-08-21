@@ -3,7 +3,7 @@ import { isActivePath } from "./components"
 import { createMatcher } from "./matcher"
 import { navigateFrom } from "./utils"
 import { Signal } from "signal-polyfill"
-import type { RouteLocation, RouteParams, RouteQuery, Router } from "./types"
+import type { NavPath, RouteLocation, RouteParams, RouteQuery, Router } from "./types"
 
 /** A live snapshot: call it like an accessor, read `.get()`, or access fields directly. */
 export type ReactiveSnapshot<T> = T & {
@@ -97,7 +97,7 @@ export function useMatch(pattern: string): ReactiveSnapshot<RouteParams | null> 
 
 /** 真实 hook：读取活动 router 并返回其 navigate 绑定函数 */
 export function useNavigate(): (
-  to: string | number,
+  to: NavPath | number,
   options?: { replace?: boolean; state?: unknown },
 ) => Promise<void> {
   const router = useRouter()
