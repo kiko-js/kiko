@@ -1,7 +1,7 @@
 /** @jsxImportSource @kikojs/dom */
 import "./setup"
 import { describe, it, expect, beforeEach } from "bun:test"
-import { jsx } from "@kikojs/dom"
+import { jsx, render } from "@kikojs/dom"
 import { cleanupWatchers } from "@kikojs/dom/jsx-runtime"
 import { createRouter } from "../src/router"
 import { Router, Link, Outlet, Navigate, Route } from "../src/components"
@@ -107,14 +107,20 @@ describe("Router components", () => {
 
   it("Link navigates on click", async () => {
     const router = createRouter({ mode: "path", routes: createRoutes() })
-    Router({ router })
-    const link = Link({ to: "/about", children: "go" }) as HTMLAnchorElement
+    const container = document.createElement("div")
+    document.body.appendChild(container)
+    const dispose = render(
+      Router({ router, children: Link({ to: "/about", children: "go" }) }),
+      container,
+    )
+    const link = container.querySelector("a")!
     expect(link.getAttribute("href")).toBe("/about")
-    const event = new MouseEvent("click", { bubbles: true, cancelable: true })
-    link.dispatchEvent(event)
+    link.dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true }))
     await flushMicrotasks()
     expect(router.location.get().path).toBe("/about")
+    dispose()
     router.dispose()
+    container.remove()
   })
 
   it("Link opens external when no router", async () => {
@@ -126,13 +132,20 @@ describe("Router components", () => {
     const router = createRouter({ mode: "path", routes: createRoutes() })
     // JSX 求值顺序：children（Link）先于 Router 执行，Link 创建时拿不到 router，
     // 必须在点击时惰性解析。
-    const tree = Router({ router, children: Link({ to: "/about", children: "go" }) })
-    const link = (tree as DocumentFragment).firstChild as HTMLAnchorElement
-    link.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }))
+    const container = document.createElement("div")
+    document.body.appendChild(container)
+    const dispose = render(
+      Router({ router, children: Link({ to: "/about", children: "go" }) }),
+      container,
+    )
+    const link = container.querySelector("a")!
+    link.dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true }))
     await flushMicrotasks()
     // 修复前 Link 捕获到 null router，点击走整页导航（router.location 停留在 /）
     expect(router.location.get().path).toBe("/about")
+    dispose()
     router.dispose()
+    container.remove()
   })
 
   it("Navigate triggers navigation", async () => {
@@ -211,13 +224,21 @@ describe("Router components", () => {
 
   it("Link with replace navigates without pushing history", async () => {
     const router = createRouter({ mode: "path", routes: createRoutes() })
-    Router({ router })
-    const link = Link({ to: "/about", replace: true, children: "go" }) as HTMLAnchorElement
-    link.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }))
+    const container = document.createElement("div")
+    document.body.appendChild(container)
+    const dispose = render(
+      Router({ router, children: Link({ to: "/about", replace: true, children: "go" }) }),
+      container,
+    )
+    container
+      .querySelector("a")!
+      .dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true }))
     await flushMicrotasks()
     expect(router.location.get().path).toBe("/about")
     // replace 后 back 不应回到 /about 之前的历史……此处验证 location 已更新即可
+    dispose()
     router.dispose()
+    container.remove()
   })
 
   it("Link target=_blank click is not intercepted", async () => {

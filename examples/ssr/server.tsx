@@ -8,7 +8,7 @@ const PORT = Number(process.env.PORT || "3000")
 // Show/For/Suspend 全部产出字符串。客户端 bundle 不引用该入口，保持纯净。
 //
 // 页面骨架（html/head/body）由 server 组装，组件树用 renderToFragment 渲染进
-// #root——便于注入水合脚本。若组件树自带 <html> 骨架，可直接用 renderToDocument。
+// #root——便于注入水合脚本。
 // 服务常驻运行；句柄不变量化，避免 unused 警告
 Bun.serve({
   port: PORT,

@@ -1,7 +1,7 @@
 /** @jsxImportSource @kikojs/dom */
 import { createSignal, For, Show, Suspend, lazy } from "@kikojs/dom"
 import { computed } from "@kikojs/signal"
-import { renderToDocument, renderToFragment } from "@kikojs/dom/server"
+import { renderToFragment } from "@kikojs/dom/server"
 
 const count = createSignal(3)
 // Show 的 when 为信号时订阅更新；SSR 取快照，hydrate 后按同一信号响应
@@ -24,13 +24,7 @@ async function render(): Promise<void> {
     </main>
   ))
 
-  // 完整文档：根为 <html>，自动前置 <!DOCTYPE html>
-  const page = await renderToDocument(() => (
-    <html lang="zh-CN">
-      <head>
-        <title>kiko</title>
-      </head>
-      <body>hello</body>
-    </html>
-  ))
+  // 完整页面由服务端组装骨架（html/head/body + 水合脚本注入），
+  // 组件树统一用 renderToFragment 渲染进骨架。
+  console.log(fragment)
 }

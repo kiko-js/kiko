@@ -46,7 +46,7 @@ The monorepo contains three packages plus a benchmark, all built on `signal-poly
 | `flow.ts`              | `Show` / `For` / `Suspend` / `ErrorBoundary` control-flow components (optional; built on signals + markers)                                                      |
 | `render.ts`            | `render(root, container)` — mounts a JSX tree, returns `dispose()` for cleanup                                                                                   |
 | `hydrate.ts`           | `hydrate(root, container)` — client-side hydration of SSR output via `PendingNode` lazy alignment                                                                |
-| `ssr.ts` / `server.ts` | `renderToFragment` / `renderToDocument` — server-side string rendering; `server.ts` is the `@kikojs/dom/server` entry that registers the runtime bridge          |
+| `ssr.ts` / `server.ts` | `renderToFragment` — server-side string rendering; `server.ts` is the `@kikojs/dom/server` entry that registers the runtime bridge                               |
 | `ssr-mode.ts`          | ~30-byte runtime bridge (`SSRRuntime` interface, `set/getSSRRuntime`) so client jsx/flow never import SSR code                                                   |
 | `lazy.ts`              | `lazy(loader)` — code-splitting: async component with placeholder/suspense handling                                                                              |
 | `style.ts`             | Scoped-css engine backing `<Style>`: scope-attribute generation, selector rewriting (`&`, `:deep`, `:global`), constructable stylesheets with `<style>` fallback |
@@ -122,7 +122,6 @@ lazy<T>(loader: () => Promise<{ default: Component<T> }>): Component<T>
 
 // @kikojs/dom/server (separate export)
 renderToFragment(root: Node): string                     // SSR fragment with markers
-renderToDocument(root: Node): string                     // full document (adds <!DOCTYPE html>)
 
 // React bridge (separate export; only needed when embedding React components)
 ReactPortal(props: { component: React.ComponentType, ...rest }): HTMLElement

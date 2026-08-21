@@ -332,21 +332,6 @@ export const ssrRuntime: SSRRuntime = {
   suspend: ssrSuspend,
 }
 
-// ---------------------------------------------------------------------------
-// 入口：两种形式
-
-/**
- * 服务端渲染完整文档：以 `<html>` 为根，自动前置 `<!DOCTYPE html>`。
- * 必须传函数（惰性求值）——JSX 会在 SSR 模式开启前被急切求值：
- * `renderToDocument(() => <App />)`。
- */
-export async function renderToDocument(component: () => unknown): Promise<string> {
-  const result = await toSSRString(component())
-  // 顶层无元素可挂载 scope 标记（如 Fragment 根 + <Style>）：丢弃
-  const { cleaned } = extractScopeMarkers(raw(result))
-  return `<!DOCTYPE html>${cleaned}`
-}
-
 /**
  * 服务端渲染片段：任意子树，不带 doctype。
  * `renderToFragment(() => <CardList />)`。

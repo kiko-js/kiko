@@ -3,7 +3,7 @@ import { describe, it, expect, beforeAll, afterAll } from "bun:test"
 import { jsx, Fragment, Style } from "../src/jsx-runtime"
 import { Show, For, ErrorBoundary, Suspend } from "../src/flow"
 import { lazy } from "../src/lazy"
-import { renderToDocument, renderToFragment, ssrRuntime } from "../src/ssr"
+import { renderToFragment, ssrRuntime } from "../src/ssr"
 import { setSSRRuntime } from "../src/ssr-mode"
 import { createSignal } from "../src/signal"
 import type { AsyncComponent } from "../src/jsx-runtime"
@@ -223,15 +223,6 @@ describe("renderToFragment — 异步", () => {
     )
     resolve("y")
     expect(await htmlPromise).toBe(`<div><b>x</b>y</div>`)
-  })
-})
-
-describe("renderToDocument — 完整文档", () => {
-  it("prepends the doctype", async () => {
-    const html = await renderToDocument(() =>
-      jsx("html", { children: jsx("body", { children: "hello" }) }),
-    )
-    expect(html).toBe(`<!DOCTYPE html><html><body>hello</body></html>`)
   })
 })
 

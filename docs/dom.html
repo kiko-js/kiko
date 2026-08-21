@@ -511,17 +511,10 @@
                 <td><code>renderToFragment(() =&gt; …): Promise&lt;string&gt;</code></td>
                 <td>片段 HTML：任意子树，不带 doctype。</td>
               </tr>
-              <tr>
-                <td><code>renderToDocument(() =&gt; …): Promise&lt;string&gt;</code></td>
-                <td>
-                  完整文档：根为 <code>&lt;html&gt;</code>，自动前置
-                  <code>&lt;!DOCTYPE html&gt;</code>。
-                </td>
-              </tr>
             </tbody>
           </table>
           <p class="note">
-            两个入口从 <code>@kikojs/dom/server</code> 导入（SSR 侧）；默认入口
+            SSR 入口从 <code>@kikojs/dom/server</code> 导入；默认入口
             <code>@kikojs/dom</code> 不含任何 SSR 代码——客户端 bundle 只带一个约 30 字节的
             运行时桥，字符串渲染器可被 tree-shake 完全剔除；服务端 bundle 同理不含客户端
             渲染路径。组件代码两端都从 <code>@kikojs/dom</code> 导入 <code>jsx</code> /

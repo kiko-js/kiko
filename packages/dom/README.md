@@ -46,7 +46,7 @@ render(<Counter />, document.getElementById("app")!)
 - `ErrorBoundary`：渲染错误隔离
 - `Suspend` / `lazy`：异步组件与代码分割
 - `Style`：作用域 CSS
-- `hydrate`：服务端 HTML 水合（配合 `@kikojs/dom/server` 的 `renderToFragment` / `renderToDocument`）
+- `hydrate`：服务端 HTML 水合（配合 `@kikojs/dom/server` 的 `renderToFragment`）
 - `createPortal`：渲染到其他容器
 
 ## 事件委托与挂载点
@@ -61,7 +61,7 @@ render(<Counter />, document.getElementById("app")!)
 ## 子路径导出
 
 - `@kikojs/dom`：客户端运行时（JSX 工厂、render、控制流）
-- `@kikojs/dom/server`：SSR 字符串运行时（`renderToFragment`、`renderToDocument`）
+- `@kikojs/dom/server`：SSR 字符串运行时（`renderToFragment`）
 - `@kikojs/dom/jsx-runtime`：JSX 运行时入口（`jsx`、`jsxs`、`jsxDEV`、`Fragment`）
 - `@kikojs/dom/react-portal`：React ↔ kiko 桥接
 
