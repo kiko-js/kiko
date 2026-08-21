@@ -1,7 +1,6 @@
 import {
   createRouter,
   Router,
-  Route,
   Link,
   Outlet,
   Navigate,

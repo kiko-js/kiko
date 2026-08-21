@@ -4,7 +4,7 @@ import { describe, it, expect, beforeEach } from "bun:test"
 import { jsx, render } from "@kikojs/dom"
 import { cleanupWatchers } from "@kikojs/dom/jsx-runtime"
 import { createRouter } from "../src/router"
-import { Router, Link, Outlet, Navigate, Route } from "../src/components"
+import { Router, Link, Outlet, Navigate } from "../src/components"
 import { setActiveRouter, getActiveRouter } from "../src/context"
 import type { RouteRecord } from "../src/types"
 
@@ -253,43 +253,6 @@ describe("Router components", () => {
     link.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }))
     await flushMicrotasks()
     expect(router.location.get().path).toBe(before)
-    router.dispose()
-  })
-
-  it("R14: declarative <Route> renders its component only when the path matches", async () => {
-    const calls: string[] = []
-    const About = () => {
-      calls.push("about")
-      return jsx("div", { children: "about" })
-    }
-
-    const router = createRouter({
-      mode: "path",
-      routes: [
-        { path: "/", component: () => jsx("div", { children: "root" }) },
-        { path: "/about", component: () => jsx("div", { children: "about-route" }) },
-      ],
-    })
-    setActiveRouter(router)
-
-    const routeNode = Route({ path: "/about", component: About }) as DocumentFragment
-    await flushMicrotasks()
-    // 当前在 "/"，<Route path="/about"> 不应渲染 About
-    expect(routeNode.textContent).toBe("")
-    expect(calls).toEqual([])
-
-    router.push("/about")
-    await flushMicrotasks()
-    // 命中 /about，渲染 About 组件
-    expect(routeNode.textContent).toBe("about")
-
-    router.push("/")
-    await flushMicrotasks()
-    // 离开 /about，恢复空
-    expect(routeNode.textContent).toBe("")
-
-    cleanupWatchers(routeNode)
-    setActiveRouter(null)
     router.dispose()
   })
 

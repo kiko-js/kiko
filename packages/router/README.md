@@ -46,8 +46,6 @@ render(
 )
 ```
 
-> 另外也提供了一个互补的声明式子组件 `<Route path="/about" component={About} />`，它读取当前活动 router，当路径命中 `path` 时直接渲染 `component`（否则渲染空）。它适用于与 JSX 树就地组合的小路由，但主路由表仍推荐用上面的 `routes` 数组。
-
 ### catch-all / 404
 
 顶层 `path: "*"` 的路由会作为 404 兜底，仅当没有任何其他路由匹配完整路径时生效：
@@ -65,7 +63,7 @@ const router = createRouter({
 ## API
 
 - **创建**：`createRouter(options)`（`mode: "path" | "hash"`）、`getRouteProps`
-- **组件**：`Router`、`Route`、`Link`、`Outlet`、`Navigate`
+- **组件**：`Router`、`Link`、`Outlet`、`Navigate`
 - **Hooks**：`useRouter`、`useRoute`、`useParams`、`useQuery`、`useLocation`、`useIsActive`、`useMatch`、`useNavigate`
 - **导航**：`useNavigate`、`redirect`、`redirectReplace`、`buildPath`
 - **守卫**：`createAuthGuard`、`combineGuards`、`createAsyncGuard`

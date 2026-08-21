@@ -60,7 +60,7 @@ The monorepo contains three packages plus a benchmark, all built on `signal-poly
 | Module                    | Purpose                                                                                                                        |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | `router.ts`               | `createRouter(options)` (path/hash modes), `getRouteProps` — core routing state machine + matcher integration                  |
-| `components.tsx`          | `Router`, `Route`, `Link`, `Outlet`, `Navigate` declarative components                                                         |
+| `components.tsx`          | `Router`, `Link`, `Outlet`, `Navigate` declarative components                                                                  |
 | `hooks.ts`                | `useRouter`, `useRoute`, `useParams`, `useQuery`, `useLocation`, `useNavigate`, `tryUseRouter`, `setActiveRouter`              |
 | `guards.ts`               | `createAuthGuard`, `combineGuards`, `createAsyncGuard` — route guards                                                          |
 | `history.ts`              | `createPathHistory` / `createHashHistory` → unified `HistoryAdapter` (`getPath`, `push`, `replace`, `go`, `listen`, `dispose`) |
@@ -129,7 +129,7 @@ ReactPortal(props: { component: React.ComponentType, ...rest }): HTMLElement
 // @kikojs/router
 createRouter(options: { mode: "path" | "hash", ... }): RouterInstance
 getRouteProps(options): { path, ... }
-Router / Route / Link / Outlet / Navigate                 // components (Route: path + component)
+Router / Link / Outlet / Navigate                         // components (routing is config-driven via `routes`)
 useRouter / useRoute / useParams / useQuery / useLocation / useNavigate
 redirect(to, options?) / redirectReplace(to, options?) / buildPath(path, params?, query?)
 createAuthGuard / combineGuards / createAsyncGuard
@@ -265,7 +265,7 @@ cd packages/benchmark && bun run bench
 - `Show({ when, fallback?, children })` — renders `children` (or `fallback`) based on a signal/value; `children` may be a function receiving the truthy value
 - `For({ each, children, getKey? })` — renders a list, re-rendering on `each` change; `children` receives `(item, index)` where `index` is an accessor. Without `getKey` it reconciles non-keyed; with `getKey` surviving keys keep their DOM nodes and `children` receives an item accessor `() => T`.
 - `Suspend` / `ErrorBoundary` — async/error isolation with fallback rendering; `lazy(loader)` code-splits a component
-- Router: `Route path` + `component`, nested via `Outlet`, navigation via `Link`/`Navigate`/`useNavigate`; guards intercept before render
+- Router: config-driven `routes` array, nested via `Outlet`, navigation via `Link`/`Navigate`/`useNavigate`; guards intercept before render
 
 ### Context
 

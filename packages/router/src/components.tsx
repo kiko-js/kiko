@@ -4,7 +4,7 @@ import { jsx } from "@kikojs/dom"
 import { cleanupWatchers, swapNodes, toNodes, trackCleanup } from "@kikojs/dom/jsx-runtime"
 import { clearActiveRouter, getActiveRouter, setActiveRouter } from "./context"
 import { getRouteProps } from "./router"
-import type { RouteComponentProps, RouteGuard, RouteLocation, Router } from "./types"
+import type { Router } from "./types"
 
 interface RouterProps {
   router: Router
@@ -32,59 +32,6 @@ export function Router(props: RouterProps): Node {
   })
 
   return container
-}
-
-export interface RouteProps {
-  path: string
-  component?: (props: RouteComponentProps) => Node
-  children?: unknown
-  meta?: Record<string, unknown>
-  beforeEnter?: RouteGuard
-  beforeLeave?: RouteGuard
-  redirect?: (to: RouteLocation, from: RouteLocation | null) => string | Promise<string>
-  redirectTo?: string
-  /** 是否精确匹配（默认 false：/users 也会匹配 /users/:id 前缀） */
-  exact?: boolean
-}
-
-export function Route(props: RouteProps): Node {
-  // 声明式子路由：读取当前活动的 router；当当前路径命中 props.path 时渲染
-  // component（传入 route props），否则渲染空片段。这是对 routes 数组的
-  // 互补声明式 API——适合与 JSX 树就地组合的小型路由。
-  const marker = document.createComment("route")
-  const frag = document.createDocumentFragment()
-  frag.appendChild(marker)
-
-  // 缓存上一次渲染的节点，便于 swapNodes 复用/清理。
-  let lastNodes: Node[] = []
-
-  const dispose = effect(() => {
-    const active = getActiveRouter()
-    if (!active) {
-      // 作为 Router 的 JSX children 时创建阶段拿不到 router；等 Router 挂载
-      // 后 activeRouter 信号变化触发本 effect 补跑。
-      swapNodes(marker, lastNodes, [])
-      lastNodes = []
-      return
-    }
-    const loc = active.location.get()
-    const matched = isActivePath(loc.path, props.path, props.exact ?? false)
-    if (matched && props.component) {
-      const next = props.component(getRouteProps(active))
-      swapNodes(marker, lastNodes, [next])
-      lastNodes = [next]
-    } else {
-      swapNodes(marker, lastNodes, [])
-      lastNodes = []
-    }
-  })
-
-  trackCleanup(frag, () => {
-    cleanupWatchers(frag)
-    dispose()
-  })
-
-  return frag
 }
 
 interface LinkProps {

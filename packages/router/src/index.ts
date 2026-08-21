@@ -1,5 +1,5 @@
 export { createRouter, getRouteProps } from "./router"
-export { Router, Route, Link, Outlet, Navigate } from "./components"
+export { Router, Link, Outlet, Navigate } from "./components"
 export {
   useRouter,
   useParams,

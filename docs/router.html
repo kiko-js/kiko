@@ -43,7 +43,6 @@
             <a href="#components">组件</a>
             <ul>
               <li><a href="#router">Router</a></li>
-              <li><a href="#route">Route</a></li>
               <li><a href="#link">Link</a></li>
               <li><a href="#outlet">Outlet</a></li>
               <li><a href="#navigate">Navigate</a></li>
@@ -210,11 +209,11 @@
             建立当前路由上下文（供 hooks 与 Link 使用），卸载时调用 <code>router.dispose()</code>。
           </p>
 
-          <h3 id="route">Route</h3>
+          <h3 id="route">路由表</h3>
           <p>
-            路由表使用<strong>普通对象</strong>声明（<code>RouteRecord</code>），见
-            <a href="#createrouter">RouterOptions.routes</a>。JSX 中暴露的
-            <code>&lt;Route&gt;</code> 组件不渲染任何 DOM（占位符）。
+            路由使用<strong>普通对象数组</strong>声明（<code>RouteRecord</code>），见
+            <a href="#createrouter">RouterOptions.routes</a>。kiko 只提供配置式路由——
+            路由表是纯数据，便于测试、代码分割与未来的自动化路由（如文件路由）生成。
           </p>
 
           <h3 id="link">Link</h3>
