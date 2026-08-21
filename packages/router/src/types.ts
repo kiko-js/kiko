@@ -142,6 +142,13 @@ export type RouteGuardResult =
   | undefined
   | Promise<boolean | NavPath | RedirectDescriptor | undefined>
 
+/** 路由守卫签名 */
+export type RouteGuard = (
+  to: RouteLocation,
+  from: RouteLocation | null,
+  router: Router,
+) => RouteGuardResult
+
 /** 重定向描述 */
 export interface RedirectDescriptor {
   path: NavPath
@@ -149,12 +156,22 @@ export interface RedirectDescriptor {
   state?: unknown
 }
 
-/** 路由守卫签名 */
-export type RouteGuard = (
-  to: RouteLocation,
-  from: RouteLocation | null,
-  router: Router,
-) => RouteGuardResult
+/** history 层的原始位置快照（path 含 query，hash 不含 #） */
+export interface HistoryLocation {
+  path: string
+  hash: string
+  state: unknown
+}
+export interface HistoryAdapter {
+  readonly kind: "path" | "hash" | "memory"
+  readonly location: Signal.State<HistoryLocation>
+  push(path: string, state?: unknown): void
+  replace(path: string, state?: unknown): void
+  go(delta: number): void
+  back(): void
+  forward(): void
+  dispose(): void
+}
 
 /** 匹配到的路由项 */
 export interface RouteMatch {
@@ -185,8 +202,13 @@ export interface Router {
 
 /** 路由配置 */
 export interface RouterOptions {
-  /** 路由模式，默认 path */
+  /** 路由模式，默认 path。传入 `history` 时忽略，模式取自 `history.kind` */
   mode?: RouteMode
+  /**
+   * 注入 history 实例（可跨 router 共享）。缺省时按 `mode` 自建并拥有其生命周期。
+   * 测试 / SSR / 无 DOM 环境用 `createMemoryHistory()`。
+   */
+  history?: HistoryAdapter
   /** 路由表 */
   routes?: RouteRecord[]
   /** 全局前置守卫 */

@@ -1,23 +1,15 @@
-export interface HistoryAdapter {
-  /** 获取当前路由路径：不含 base、不含 # 片段，包含 query（两种模式语义一致） */
-  getPath(): string
-  /** 获取当前 hash 片段：不含 #，无片段则为空字符串（两种模式语义一致） */
-  getHash(): string
-  /** 导航到指定路径 */
-  push(path: string, state?: unknown): void
-  /** 替换当前历史记录 */
-  replace(path: string, state?: unknown): void
-  /** 前进/后退 */
-  go(delta: number): void
-  /** 获取当前 history.state */
-  getState(): unknown
-  /** 监听变化 */
-  listen(callback: () => void): () => void
-  /** 清理 */
-  dispose(): void
-}
+import { createSignal } from "@kikojs/signal"
+import type { HistoryAdapter, HistoryLocation } from "./types"
 
-interface BrowserHistoryEnv {
+/**
+ * 响应式 history 适配器（效仿 TanStack Router）：
+ * - `location` 是唯一事实源的信号，push/replace/go 与浏览器事件都会同步它；
+ * - 消费方（router）用 effect 订阅，外部变化（popstate / hashchange / go /
+ *   共享同一 history 的其他 router）统一从信号变化进入守卫管线；
+ * - 三种实现（path / hash / memory）接口完全一致。
+ */
+
+export interface BrowserHistoryEnv {
   location: Pick<Location, "pathname" | "search" | "hash">
   history: Pick<History, "pushState" | "replaceState" | "go" | "state">
   addEventListener: Window["addEventListener"]
@@ -33,106 +25,144 @@ function getBrowserEnv(): BrowserHistoryEnv {
   }
 }
 
+/** 拆出第一个 `#` 后的片段（query 属于 path 部分） */
+function splitHash(raw: string): { path: string; hash: string } {
+  const i = raw.indexOf("#")
+  return i >= 0 ? { path: raw.slice(0, i), hash: raw.slice(i + 1) } : { path: raw, hash: "" }
+}
+
 /**
- * path 模式 history 适配器。
- *
- * ⚠️ 客户端专用：构造时会立即读取 `window.location` / `window.history`，
- * 因此只能在浏览器/DOM 环境中实例化。SSR 场景不应在服务器上创建本适配器——
- * 应在服务端根据请求路径解析出对应 route 并直接预渲染该路由内容，客户端
- * 水合时再创建本适配器接管后续的导航。
+ * path 模式。⚠️ 客户端专用：构造时读取 `window.location` / `window.history`。
+ * SSR 请使用 `createMemoryHistory`，或服务端直接解析请求路径预渲染。
  */
 export function createPathHistory(
-  base: string = "",
+  base = "",
   env: BrowserHistoryEnv = getBrowserEnv(),
 ): HistoryAdapter {
   const normalizedBase = base.replace(/\/$/, "")
 
-  function getPath(): string {
+  const read = (): HistoryLocation => {
     const full = env.location.pathname + env.location.search
-    if (normalizedBase && (full === normalizedBase || full.startsWith(normalizedBase + "/"))) {
-      return full.slice(normalizedBase.length) || "/"
-    }
-    return full || "/"
+    const path =
+      normalizedBase && (full === normalizedBase || full.startsWith(normalizedBase + "/"))
+        ? full.slice(normalizedBase.length) || "/"
+        : full || "/"
+    return { path, hash: env.location.hash.slice(1), state: env.history.state }
   }
 
-  function getHash(): string {
-    return env.location.hash.slice(1)
+  const location = createSignal<HistoryLocation>(read())
+  const sync = (): void => {
+    location.set(read())
   }
 
-  function buildFullPath(path: string): string {
+  env.addEventListener("popstate", sync)
+
+  const buildFullPath = (path: string): string => {
     if (path.startsWith("http://") || path.startsWith("https://")) return path
     const normalized = path.startsWith("/") ? path : "/" + path
     return normalizedBase + normalized
   }
 
-  function push(path: string, state?: unknown): void {
-    env.history.pushState(state ?? null, "", buildFullPath(path))
-  }
-
-  function replace(path: string, state?: unknown): void {
-    env.history.replaceState(state ?? null, "", buildFullPath(path))
-  }
-
-  function listen(callback: () => void): () => void {
-    const handler = () => callback()
-    env.addEventListener("popstate", handler)
-    return () => env.removeEventListener("popstate", handler)
-  }
-
   return {
-    getPath,
-    getHash,
-    push,
-    replace,
-    go: (delta: number) => env.history.go(delta),
-    getState: () => env.history.state,
-    listen,
-    dispose: () => {},
+    kind: "path",
+    location,
+    push(path, state) {
+      env.history.pushState(state ?? null, "", buildFullPath(path))
+      sync()
+    },
+    replace(path, state) {
+      env.history.replaceState(state ?? null, "", buildFullPath(path))
+      sync()
+    },
+    go: delta => env.history.go(delta),
+    back: () => env.history.go(-1),
+    forward: () => env.history.go(1),
+    dispose: () => env.removeEventListener("popstate", sync),
   }
 }
 
 /**
- * hash 模式 history 适配器。
- *
- * ⚠️ 客户端专用：同样在构造时读取 `window.location` / `window.history`，仅
- * 适用于浏览器/DOM 环境。SSR 请服务端预渲染解析出的 route，客户端水合时
- * 再创建本适配器。
+ * hash 模式。⚠️ 客户端专用：同样在构造时读取 `window.location` / `window.history`。
  */
 export function createHashHistory(env: BrowserHistoryEnv = getBrowserEnv()): HistoryAdapter {
-  function getPath(): string {
+  const read = (): HistoryLocation => {
     const raw = env.location.hash.slice(1) || "/"
-    const hashIndex = raw.indexOf("#")
-    return hashIndex >= 0 ? raw.slice(0, hashIndex) : raw
+    const { path, hash } = splitHash(raw)
+    return { path, hash, state: env.history.state }
   }
 
-  function getHash(): string {
-    const raw = env.location.hash.slice(1)
-    const hashIndex = raw.indexOf("#")
-    return hashIndex >= 0 ? raw.slice(hashIndex + 1) : ""
+  const location = createSignal<HistoryLocation>(read())
+  const sync = (): void => {
+    location.set(read())
   }
 
-  function push(path: string, state?: unknown): void {
-    env.history.pushState(state ?? null, "", "#" + path)
+  env.addEventListener("hashchange", sync)
+
+  return {
+    kind: "hash",
+    location,
+    push(path, state) {
+      env.history.pushState(state ?? null, "", "#" + path)
+      sync()
+    },
+    replace(path, state) {
+      env.history.replaceState(state ?? null, "", "#" + path)
+      sync()
+    },
+    go: delta => env.history.go(delta),
+    back: () => env.history.go(-1),
+    forward: () => env.history.go(1),
+    dispose: () => env.removeEventListener("hashchange", sync),
+  }
+}
+
+/**
+ * 内存模式：条目数组 + 游标，无任何 DOM 依赖。适用于测试、SSR、
+ * 原生壳（WebView 以外的渲染环境）以及需要完全隔离导航的场景。
+ */
+export function createMemoryHistory(initialPath = "/"): HistoryAdapter {
+  const initial = splitHash(initialPath)
+  const entries: { path: string; hash: string; state: unknown }[] = [
+    { path: initial.path, hash: initial.hash, state: null },
+  ]
+  let index = 0
+
+  const location = createSignal<HistoryLocation>({
+    path: entries[0]!.path,
+    hash: entries[0]!.hash,
+    state: null,
+  })
+
+  const settle = (): void => {
+    const entry = entries[index]!
+    location.set({ path: entry.path, hash: entry.hash, state: entry.state })
   }
 
-  function replace(path: string, state?: unknown): void {
-    env.history.replaceState(state ?? null, "", "#" + path)
-  }
-
-  function listen(callback: () => void): () => void {
-    const handler = () => callback()
-    env.addEventListener("hashchange", handler)
-    return () => env.removeEventListener("hashchange", handler)
+  const move = (delta: number): void => {
+    const next = Math.min(Math.max(index + delta, 0), entries.length - 1)
+    if (next === index) return
+    index = next
+    settle()
   }
 
   return {
-    getPath,
-    getHash,
-    push,
-    replace,
-    go: (delta: number) => env.history.go(delta),
-    getState: () => env.history.state,
-    listen,
+    kind: "memory",
+    location,
+    push(path, state) {
+      const { path: p, hash } = splitHash(path)
+      entries.splice(index + 1)
+      entries.push({ path: p, hash, state: state ?? null })
+      index++
+      settle()
+    },
+    replace(path, state) {
+      const { path: p, hash } = splitHash(path)
+      entries[index] = { path: p, hash, state: state ?? null }
+      settle()
+    },
+    go: move,
+    back: () => move(-1),
+    forward: () => move(1),
     dispose: () => {},
   }
 }

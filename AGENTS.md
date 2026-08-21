@@ -57,17 +57,17 @@ The monorepo contains three packages plus a benchmark, all built on `signal-poly
 
 **`packages/router/src/`**
 
-| Module                    | Purpose                                                                                                                        |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `router.ts`               | `createRouter(options)` (path/hash modes), `getRouteProps` — core routing state machine + matcher integration                  |
-| `components.tsx`          | `Router`, `Link`, `Outlet`, `Navigate` declarative components                                                                  |
-| `hooks.ts`                | `useRouter`, `useRoute`, `useParams`, `useQuery`, `useLocation`, `useNavigate`, `tryUseRouter`, `setActiveRouter`              |
-| `guards.ts`               | `createAuthGuard`, `combineGuards`, `createAsyncGuard` — route guards                                                          |
-| `history.ts`              | `createPathHistory` / `createHashHistory` → unified `HistoryAdapter` (`getPath`, `push`, `replace`, `go`, `listen`, `dispose`) |
-| `matcher.ts`              | Path matcher tree (precompiled) + `Matcher` type                                                                               |
-| `utils.ts`                | `redirect`, `redirectReplace`, `buildPath`, `getQueryValue`, `pathsEqual`                                                      |
-| `context.ts` / `types.ts` | Router context object + shared types (`RouteParams`, `RouteLocation`, `RouteGuard`, `RouterOptions`, …)                        |
-| `index.ts`                | Barrel re-exports                                                                                                              |
+| Module                    | Purpose                                                                                                                                                                                                         |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `router.ts`               | `createRouter(options)` (path/hash modes), `getRouteProps` — core routing state machine + matcher integration                                                                                                   |
+| `components.tsx`          | `Router`, `Link`, `Outlet`, `Navigate` declarative components                                                                                                                                                   |
+| `hooks.ts`                | `useRouter`, `useRoute`, `useParams`, `useQuery`, `useLocation`, `useNavigate`, `tryUseRouter`, `setActiveRouter`                                                                                               |
+| `guards.ts`               | `createAuthGuard`, `combineGuards`, `createAsyncGuard` — route guards                                                                                                                                           |
+| `history.ts`              | `createPathHistory` / `createHashHistory` / `createMemoryHistory` → reactive `HistoryAdapter` (`location` signal, `push`, `replace`, `go`, `back`, `forward`, `dispose`); injectable & shareable across routers |
+| `matcher.ts`              | Path matcher tree (precompiled) + `Matcher` type                                                                                                                                                                |
+| `utils.ts`                | `redirect`, `redirectReplace`, `buildPath`, `getQueryValue`, `pathsEqual`                                                                                                                                       |
+| `context.ts` / `types.ts` | Router context object + shared types (`RouteParams`, `RouteLocation`, `RouteGuard`, `RouterOptions`, …)                                                                                                         |
+| `index.ts`                | Barrel re-exports                                                                                                                                                                                               |
 
 ### Data Flow
 

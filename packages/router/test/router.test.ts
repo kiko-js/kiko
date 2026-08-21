@@ -17,6 +17,14 @@ function drainMicrotasks(max = 20): Promise<void> {
   return Promise.all(queue).then(() => undefined)
 }
 
+/** Poll microtask ticks until `check` holds — navigation pipelines have
+ * variable depth (guard → commit → guard), a fixed drain under-counts. */
+async function waitFor(check: () => boolean, maxTicks = 200): Promise<void> {
+  for (let i = 0; i < maxTicks && !check(); i++) {
+    await flushMicrotasks()
+  }
+}
+
 function createRoutes(): RouteRecord[] {
   return [
     { path: "/", component: () => document.createTextNode("home") },
@@ -512,7 +520,7 @@ describe("popstate guards and hooks", () => {
     })
     window.history.pushState(null, "", "/admin")
     window.dispatchEvent(new Event("popstate"))
-    await drainMicrotasks()
+    await waitFor(() => router.location.get().path === "/login")
     expect(router.location.get().path).toBe("/login")
     expect(window.location.pathname).toBe("/login")
     expect(visited).toContain("/login")

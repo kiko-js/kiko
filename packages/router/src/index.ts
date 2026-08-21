@@ -20,8 +20,7 @@ export {
   navigateFrom,
   defineRoutes,
 } from "./utils"
-export { createAuthGuard, combineGuards, createAsyncGuard } from "./guards"
-export { createPathHistory, createHashHistory } from "./history"
+export { createPathHistory, createHashHistory, createMemoryHistory } from "./history"
 export type {
   RouteParams,
   RouteQuery,
@@ -44,4 +43,4 @@ export type {
   RouteMeta,
 } from "./types"
 export type { Matcher } from "./matcher"
-export type { HistoryAdapter } from "./history"
+export type { HistoryAdapter, HistoryLocation } from "./types"

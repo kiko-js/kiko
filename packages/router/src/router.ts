@@ -1,6 +1,7 @@
 import { Signal } from "signal-polyfill"
-import { createSignal } from "@kikojs/signal"
-import { createHashHistory, createPathHistory, type HistoryAdapter } from "./history"
+import { createSignal, effect } from "@kikojs/signal"
+import { createHashHistory, createPathHistory } from "./history"
+import type { HistoryAdapter, HistoryLocation } from "./types"
 import { createMatcher } from "./matcher"
 import type {
   NavigateOptions,
@@ -72,15 +73,15 @@ function resolveLocation(path: string, state: unknown, key: string): RouteLocati
 }
 
 export function createRouter(options: RouterOptions): Router {
-  const mode: RouteMode = options.mode ?? "path"
   const base = options.base ?? ""
-  const history: HistoryAdapter = mode === "hash" ? createHashHistory() : createPathHistory(base)
+  const ownsHistory = options.history === undefined
+  const history: HistoryAdapter =
+    options.history ?? (options.mode === "hash" ? createHashHistory() : createPathHistory(base))
+  const mode: RouteMode = history.kind === "hash" ? "hash" : "path"
 
-  /** 从 adapter 读取当前完整路径（路径 + query + # 片段），两种模式语义一致 */
-  function currentPath(): string {
-    const path = history.getPath()
-    const hash = history.getHash()
-    return path + (hash ? "#" + hash : "")
+  /** 拼回完整路径（路径 + query + # 片段），三种 history 语义一致 */
+  function joinRaw(raw: HistoryLocation): string {
+    return raw.path + (raw.hash ? "#" + raw.hash : "")
   }
 
   const routes = options.routes ?? []
@@ -95,7 +96,10 @@ export function createRouter(options: RouterOptions): Router {
   const globalAfter: ((to: RouteLocation, from: RouteLocation | null) => void)[] =
     options.afterEach ?? []
 
-  const location = createSignal<RouteLocation>(resolveLocation(currentPath(), undefined, nextKey()))
+  const initialRaw = history.location.get()
+  const location = createSignal<RouteLocation>(
+    resolveLocation(joinRaw(initialRaw), initialRaw.state, nextKey()),
+  )
 
   const matched = new Signal.Computed(() => {
     const loc = location.get()
@@ -160,9 +164,6 @@ export function createRouter(options: RouterOptions): Router {
   // Monotonic navigation id: async guard results from older navigations are
   // discarded once a newer navigation starts.
   let navigationSeq = 0
-  // Set while we are issuing a compensating go(-1) after a blocked popstate;
-  // the resulting popstate must not re-enter guard handling.
-  let handlingPopstate = false
 
   async function commit(
     path: string,
@@ -201,6 +202,9 @@ export function createRouter(options: RouterOptions): Router {
     }
 
     if (seq !== navigationSeq) return
+    // Internal write: the history-location effect must not treat our own
+    // push/replace as an external navigation.
+    suppressExternal++
     if (opts.replace) {
       history.replace(path, state)
     } else {
@@ -266,29 +270,36 @@ export function createRouter(options: RouterOptions): Router {
   function dispose(): void {
     if (disposed) return
     disposed = true
-    unlisten()
-    history.dispose()
+    stopObserving()
+    // 注入的 history 归调用方所有，router 只释放自己创建的
+    if (ownsHistory) history.dispose()
   }
 
-  // 监听浏览器前进/后退
-  const unlisten = history.listen(() => {
-    // Ignore the popstate caused by our own compensating go(-1) after a
-    // blocked navigation, preventing infinite bounce on fully protected
-    // history stacks.
-    if (handlingPopstate) {
-      handlingPopstate = false
+  /**
+   * 外部变化统一入口：popstate / hashchange / go(delta) / 共享同一 history
+   * 的其他 router 的写入，都通过 history.location 信号进入守卫管线。
+   * 自身 push/replace 用 suppressExternal 跳过（守卫已在 commit 前跑过）。
+   */
+  let lastRaw = history.location.get()
+  let suppressExternal = 0
+  const stopObserving = effect(() => {
+    const raw = history.location.get()
+    if (raw === lastRaw || disposed) return
+    lastRaw = raw
+    if (suppressExternal > 0) {
+      suppressExternal--
       return
     }
     const seq = ++navigationSeq
     const from = location.get()
-    const state = history.getState()
-    const to = resolveLocation(currentPath(), state, nextKey())
+    const to = resolveLocation(joinRaw(raw), raw.state, nextKey())
     runGuards(to, from)
       .then(async outcome => {
         if (seq !== navigationSeq) return
         if (outcome === false) {
-          // 被阻止时回退到上一个历史记录
-          handlingPopstate = true
+          // 被阻止时回退到上一个历史记录；补偿产生的变化同样跳过
+          // （location 从未更新到被阻止的目标，无需再同步）。
+          suppressExternal++
           history.go(-1)
           return
         }
@@ -299,7 +310,7 @@ export function createRouter(options: RouterOptions): Router {
           await commit(outcome.path, { state: outcome.state, replace: true }, 0, seq)
           return
         }
-        updateLocation(to.fullPath, state, to.key)
+        updateLocation(to.fullPath, to.state, to.key)
         for (const hook of globalAfter) {
           hook(to, from)
         }

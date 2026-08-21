@@ -82,6 +82,25 @@ declare module "@kikojs/router" {
 
 路由记录的 `path` 传显式字面量泛型时，组件 props 的 `params` 按模式精确类型化：`RouteRecord<"/users/:id">` 的组件里 `params.id` 为 `string` 且拼错报错。`meta` 同样可通过扩展 `RouteMeta` 接口获得项目级类型。
 
+### 可注入的响应式 history
+
+history 是独立的响应式事实源（`location` 为信号），三种实现接口完全一致：
+
+- `createPathHistory(base?)`——浏览器 History API；
+- `createHashHistory()`——URL hash；
+- `createMemoryHistory(initial?)`——纯内存条目栈，无 DOM 依赖，适用于测试、SSR 与非浏览器环境。
+
+默认按 `mode` 自建并拥有其生命周期；也可以注入共享：
+
+```ts
+import { createRouter, createMemoryHistory } from "@kikojs/router"
+
+const history = createMemoryHistory("/")
+const router = createRouter({ history, routes }) // mode 取自 history.kind
+```
+
+同一 history 实例可被多个 router 共享：每个 router 独立观察位置变化并用自己的路由表与守卫处理。注入时 router 不拥有 history——`dispose()` 只解绑自身。
+
 ## API
 
 - **创建**：`createRouter(options)`（`mode: "path" | "hash"`）、`getRouteProps`
