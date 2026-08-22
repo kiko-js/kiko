@@ -1,63 +1,103 @@
 /**
  * Cross-platform package build helper.
  *
- * Uses only Node/Bun APIs — no shell commands (`rm -rf`, `cp`, …) — so the
- * same script runs on Linux, macOS and Windows. Run via a per-package
- * `build.ts` (cwd = package directory).
+ * Bundling uses **esbuild** (not bun's bundler) and declarations use the
+ * TypeScript compiler (tsc). We deliberately avoid bun's bundler for the
+ * split build: bun 1.4 emits a broken re-export facade for barrel entries
+ * under "splitting: true" (references undeclared identifiers), which already
+ * shipped broken dists (e.g. @kikojs/router). esbuild's code splitting
+ * emits proper re-export chunk facades, so entries like @kikojs/dom and
+ * @kikojs/dom/jsx-runtime share ONE runtime chunk - no duplicated module
+ * state, so delegated events fire and render()'s dispose cleans up watchers.
  *
- *   bun run build   # == bun build.ts → buildPackage(...)
+ * Uses only Node APIs - no shell commands (rm -rf, cp, ...) - so the same
+ * script runs on Linux, macOS and Windows. Run via a per-package build.ts
+ * (cwd = package directory). bun stays the runner/package-manager; only the
+ * compile step is esbuild + tsc, so bun's own bundler bug never applies.
  *
- * Steps: clean `dist/`, bundle all entry points to ESM, then emit `.d.ts`
- * declarations with `tsc` (spawned through `bun x`, which resolves the
- * local `node_modules/.bin` entry on every platform).
+ *   bun run build   # == bun build.ts -> buildPackage(...)
+ *
+ * Steps: clean dist/, bundle all entry points to ESM with esbuild, then emit
+ * .d.ts declarations with tsc.
  */
 
 import { rm } from "node:fs/promises"
-import { build } from "bun"
+import { execFileSync } from "node:child_process"
+import { createRequire } from "node:module"
+import { dirname, resolve } from "node:path"
+import { build } from "esbuild"
+
+const require = createRequire(import.meta.url)
 
 export interface BuildOptions {
-  /** Entry points, relative to the package dir (e.g. `src/index.ts`). */
+  /** Entry points, relative to the package dir (e.g. src/index.ts). */
   entrypoints: string[]
   /** Packages left unbundled (peer/runtime deps). */
   external?: string[]
-  /** Build target; defaults to `browser`. */
+  /** Build platform; defaults to "browser". */
   target?: "browser" | "node"
-  /** Minify output; defaults to `true`. */
+  /** Minify output; defaults to "true". */
   minify?: boolean
-  /** Code-splitting into chunks; defaults to `true` (shared deps extracted). */
+  /** Code-splitting into chunks; defaults to "true" (shared deps extracted). */
   splitting?: boolean
+}
+
+/** A Node host to run tsc under: prefer node, fall back to the current binary. */
+function tscHost(): string {
+  try {
+    execFileSync("node", ["--version"], { stdio: "ignore" })
+    return "node"
+  } catch {
+    return process.execPath
+  }
 }
 
 export async function buildPackage(opts: BuildOptions): Promise<void> {
   await rm("dist", { recursive: true, force: true })
-  const result = await build({
-    entrypoints: opts.entrypoints,
-    outdir: "dist",
-    target: opts.target ?? "browser",
-    format: "esm",
-    // Extract modules shared between entry points into chunks instead of
-    // duplicating them per entry (e.g. dom's jsx core is used by 3 entries).
-    splitting: opts.splitting ?? true,
-    // Published artifacts are minified; consumers re-bundle from dist anyway.
-    minify: opts.minify ?? true,
-    external: opts.external,
-  })
 
-  if (!result.success) {
-    for (const log of result.logs) console.error(log)
+  let result
+  try {
+    result = await build({
+      entryPoints: opts.entrypoints,
+      outdir: "dist",
+      bundle: true,
+      format: "esm",
+      platform: opts.target === "node" ? "node" : "browser",
+      target: ["es2020"],
+      // Extract modules shared between entry points into chunks instead of
+      // duplicating them per entry (e.g. dom's jsx core is used by 3 entries).
+      // esbuild emits proper re-export facades, so this is single-instance.
+      splitting: opts.splitting ?? true,
+      // Published artifacts are minified; consumers re-bundle from dist anyway.
+      minify: opts.minify ?? true,
+      external: opts.external,
+      // Automatic JSX runtime for @kikojs/router's components.tsx; inert for
+      // the other packages (no .tsx). The runtime import stays external.
+      jsx: "automatic",
+      jsxImportSource: "@kikojs/dom",
+      metafile: true,
+    })
+  } catch (err) {
+    const errors = (err as { errors?: { text: string }[] }).errors
+    if (errors && errors.length) for (const e of errors) console.error(e.text)
+    else console.error(err)
     process.exit(1)
   }
 
-  for (const output of result.outputs) {
-    const kb = (output.size / 1024).toFixed(2)
-    console.log(`  ${output.path}  ${kb} KB`)
+  const outputs = result.metafile ? result.metafile.outputs : {}
+  for (const path of Object.keys(outputs).sort()) {
+    const bytes = outputs[path].bytes
+    console.log("  " + path + "  " + (bytes / 1024).toFixed(2) + " KB")
   }
 
-  // Emit .d.ts per source file. `bun x` finds the local tsc (root devDep)
-  // without relying on platform-specific .bin shims.
-  const tsc = Bun.spawn(["bun", "x", "tsc", "-p", "tsconfig.build.json"], {
-    stdio: ["ignore", "inherit", "inherit"],
-  })
-  const status = await tsc.exited
-  if (status !== 0) process.exit(status ?? 1)
+  // Emit .d.ts per source file. TypeScript 7 has an `exports` map that blocks
+  // `require.resolve("typescript/bin/tsc")`, so resolve the physical path from
+  // the package root (`require.resolve("typescript")` -> lib/, then ../bin/tsc).
+  const tscBin = resolve(dirname(require.resolve("typescript")), "..", "bin", "tsc")
+  const host = tscHost()
+  try {
+    execFileSync(host, [tscBin, "-p", "tsconfig.build.json"], { stdio: "inherit" })
+  } catch (err) {
+    process.exit((err as { status?: number }).status || 1)
+  }
 }
