@@ -92,15 +92,15 @@ function readPath(
   return { value: current, isRef: false, underRef }
 }
 
-function setValueAtPath(root: unknown, path: PathKey[], value: unknown): unknown {
-  if (path.length === 0) {
+function setValueAtPath(root: unknown, path: PathKey[], value: unknown, i = 0): unknown {
+  if (i === path.length) {
     return value
   }
-  const key = path[0] as PathKey
-  const rest = path.slice(1)
+  const key = path[i] as PathKey
   const currentValue =
     root !== null && typeof root === "object" ? (root as Record<PathKey, unknown>)[key] : undefined
-  const nextChild = setValueAtPath(currentValue, rest, value)
+  // Index cursor (no per-level path.slice allocation → avoids O(depth²) memory).
+  const nextChild = setValueAtPath(currentValue, path, value, i + 1)
   if (Object.is(currentValue, nextChild)) {
     return root
   }
@@ -238,20 +238,23 @@ function pruneSubtree(node: SignalTrieNode, value: unknown, seen: WeakSet<object
   }
 }
 
-function getSignal<T>(context: StoreContext, path: PathKey[]): Signal.State<T> {
-  const node = getTrieNode(context.signals, path, true)
-  if (!node.entry) {
-    const { value } = readPath(context.root, path)
-    node.entry = {
-      path: path.slice(),
-      signal: new StoreSignal(value, context, path.slice()) as Signal.State<unknown>,
-    }
-  }
-  return node.entry.signal as Signal.State<T>
-}
 function createProxyNode<T>(context: StoreContext, path: PathKey[]): Store<T> {
   const trieNode = getTrieNode(context.signals, path, true)
   if (trieNode.proxy) return trieNode.proxy as Store<T>
+  // Get-or-create the StoreSignal for THIS path directly off the (already
+  // walked) trie node, instead of re-walking the trie via getSignal on every
+  // access — get()/set()/signal/call previously did a second trie walk per
+  // call; this keeps hot reads/writes to a single walk in the proxy get trap.
+  function entrySignal<S>(): Signal.State<S> {
+    if (!trieNode.entry) {
+      const { value } = readPath(context.root, path)
+      trieNode.entry = {
+        path: path.slice(),
+        signal: new StoreSignal(value, context, path.slice()) as Signal.State<unknown>,
+      }
+    }
+    return trieNode.entry.signal as Signal.State<S>
+  }
   // 箭头函数作为 callable target：没有非可配置的 `prototype`，因此 `ownKeys`
   // 可以安全地只返回数据键，`Object.keys(store)` 不会触发 Proxy invariant 错误。
   const node = new Proxy((() => {}) as unknown as StoreNode<T>, {
@@ -263,7 +266,7 @@ function createProxyNode<T>(context: StoreContext, path: PathKey[]): Store<T> {
         return (): T => {
           const { value, underRef, isRef } = readPath(context.root, path)
           if (underRef) return value as T
-          const current = getSignal<T>(context, path).get()
+          const current = entrySignal<T>().get()
           if (!isRef && current !== null && typeof current === "object") {
             deepFreeze(current, context.frozen)
           }
@@ -280,7 +283,7 @@ function createProxyNode<T>(context: StoreContext, path: PathKey[]): Store<T> {
       if (prop === "signal") {
         const { underRef } = readPath(context.root, path)
         if (underRef) return undefined
-        return getSignal<T>(context, path)
+        return entrySignal<T>()
       }
       if (prop === Symbol.toPrimitive) {
         // Honor the coercion hint: "number"/"default" yield a Number for
@@ -310,7 +313,7 @@ function createProxyNode<T>(context: StoreContext, path: PathKey[]): Store<T> {
             (childVal as unknown as Record<symbol, unknown>)[STORE_RAW] === undefined
           ) {
             return (...args: unknown[]): unknown => {
-              const live = getSignal(context, path).get() as Record<string, unknown>
+              const live = entrySignal().get() as Record<string, unknown>
               return (live[prop] as (...a: unknown[]) => unknown)(...args)
             }
           }
@@ -338,7 +341,7 @@ function createProxyNode<T>(context: StoreContext, path: PathKey[]): Store<T> {
     apply() {
       const { value, underRef } = readPath(context.root, path)
       if (underRef) return value
-      return getSignal<T>(context, path).get()
+      return entrySignal<T>().get()
     },
     ownKeys() {
       const { value } = readPath(context.root, path)
