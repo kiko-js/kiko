@@ -5,18 +5,39 @@ import { runWithoutScope } from "./scope"
 
 /**
  * User-facing `computed()` values are read-only: writing inside them is almost
- * always a bug. signal-polyfill enables writes for every Computed, so we guard
- * only the computeds created through this module (internal `new
- * Signal.Computed` users, such as `effect()` and control flow, are unaffected).
+ * always a bug. signal-polyfill enables writes for every Computed, so we opt
+ * each kiko `computed()` into signal-polyfill's native "no writes" context by
+ * flipping that computed's internal consumer node flag.
+ *
+ * This is scoped to exactly the computeds created through this module (internal
+ * `new Signal.Computed` users, such as `effect()` and control flow, are
+ * unaffected) — and, unlike a global `Signal.State.prototype.set` monkey-patch,
+ * it never mutates a shared prototype. Other TC39 Signal implementations and
+ * the dual-package copies bundled by `@kikojs/dom` are left completely alone.
  */
-let computedWriteDepth = 0
+const WRITE_GUARD_MESSAGE = "Signal writes are not allowed inside a computed"
 
-const originalStateSet = Signal.State.prototype.set
-Signal.State.prototype.set = function (this: Signal.State<unknown>, newValue: unknown): void {
-  if (computedWriteDepth > 0) {
-    throw new Error("Signal writes are not allowed inside a computed")
+/**
+ * Forbid signal writes while this `computed()`'s body runs.
+ *
+ * signal-polyfill stores each wrapper's reactive node behind a module-private
+ * symbol; it consults `consumerAllowSignalWrites` on that node to decide whether
+ * a write is permitted ([graph.ts]`producerUpdatesAllowed()`). We locate the node
+ * by scanning the wrapper's own symbols — it is the only one that exposes a
+ * `consumerAllowSignalWrites` field — and disable writes on it. If the node
+ * cannot be located (e.g. a future polyfill layout), we bail out gracefully and
+ * keep the default write-allowed behaviour rather than altering global state.
+ */
+function disallowSignalWrites(computed: Signal.Computed<unknown>): void {
+  for (const sym of Object.getOwnPropertySymbols(computed)) {
+    const node = (computed as unknown as Record<PropertyKey, unknown>)[sym] as
+      | { consumerAllowSignalWrites?: boolean }
+      | undefined
+    if (node !== null && typeof node === "object" && "consumerAllowSignalWrites" in node) {
+      node.consumerAllowSignalWrites = false
+      return
+    }
   }
-  return originalStateSet.call(this, newValue)
 }
 
 /**
@@ -24,14 +45,21 @@ Signal.State.prototype.set = function (this: Signal.State<unknown>, newValue: un
  * Other kiko packages consume only this standard type.
  */
 export function computed<T>(fn: () => T): Signal.Computed<T> {
-  return new Signal.Computed(() => {
-    computedWriteDepth++
+  const computedSignal = new Signal.Computed(() => {
     try {
       return runWithoutScope(fn)
-    } finally {
-      computedWriteDepth--
+    } catch (err) {
+      // The native write guard throws a bare `Error()` with no message; relay
+      // it as the actionable kiko message (keeping the original as `cause`).
+      // Any other error passes through untouched.
+      if (err instanceof Error && err.message === "") {
+        throw new Error(WRITE_GUARD_MESSAGE, { cause: err })
+      }
+      throw err
     }
   })
+  disallowSignalWrites(computedSignal)
+  return computedSignal
 }
 
 /** Alias for `computed`. */
