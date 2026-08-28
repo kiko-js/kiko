@@ -22,6 +22,8 @@ export {
 } from "./utils"
 export { createPathHistory, createHashHistory, createMemoryHistory } from "./history"
 export type {
+  KeepAlive,
+  KeepAliveOptions,
   RouteParams,
   RouteQuery,
   RouteMode,

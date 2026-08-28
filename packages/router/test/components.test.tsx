@@ -2,6 +2,7 @@
 import "./setup"
 import { describe, it, expect, beforeEach } from "bun:test"
 import { jsx, render } from "@kikojs/dom"
+import { computed, createSignal } from "@kikojs/signal"
 import { cleanupWatchers } from "@kikojs/dom/jsx-runtime"
 import { createRouter } from "../src/router"
 import { Router, Link, Outlet, Navigate } from "../src/components"
@@ -318,6 +319,219 @@ describe("Router components", () => {
     await flushMicrotasks()
     expect(renderCount).toBe(beforeQuery + 1)
     expect(outlet.textContent).toBe("404")
+
+    cleanupWatchers(outlet)
+    router.dispose()
+  })
+
+  it("Outlet keeps signal bindings alive across query-only navigation (regression)", async () => {
+    setActiveRouter(null)
+    window.history.replaceState(null, "", "/search?q=1")
+    const text = createSignal("hello")
+    const Search = () => jsx("div", { children: text })
+    const router = createRouter({
+      mode: "path",
+      routes: [
+        { path: "/search", component: Search },
+        { path: "/other", component: () => jsx("div", { children: "other" }) },
+      ],
+    })
+    Router({ router })
+    const outlet = Outlet({})
+    await flushMicrotasks()
+    expect(outlet.textContent).toBe("hello")
+
+    // query-only 导航复用旧节点：不能把节点上的 watcher 清理掉
+    router.push("/search?q=2")
+    await flushMicrotasks()
+    text.set("world")
+    await flushMicrotasks()
+    expect(outlet.textContent).toBe("world")
+
+    cleanupWatchers(outlet)
+    router.dispose()
+  })
+
+  it("Outlet keepAlive preserves route state across navigation", async () => {
+    setActiveRouter(null)
+    window.history.replaceState(null, "", "/a")
+    let aRuns = 0
+    const count = createSignal(1)
+    const PageA = () => {
+      aRuns++
+      return jsx("div", { children: ["a:", count] })
+    }
+    const PageB = () => jsx("div", { children: "b" })
+    const router = createRouter({
+      mode: "path",
+      routes: [
+        { path: "/a", component: PageA, keepAlive: true },
+        { path: "/b", component: PageB },
+      ],
+    })
+    Router({ router })
+    const outlet = Outlet({})
+    await drainMicrotasks()
+    expect(outlet.textContent).toBe("a:1")
+
+    count.set(42)
+    await flushMicrotasks()
+    expect(outlet.textContent).toBe("a:42")
+
+    // 切走：A 离屏保留（不清理、不重跑）
+    router.push("/b")
+    await drainMicrotasks()
+    expect(outlet.textContent).toBe("b")
+    expect(aRuns).toBe(1)
+
+    // 切回：原节点原状态恢复
+    router.push("/a")
+    await drainMicrotasks()
+    expect(outlet.textContent).toBe("a:42")
+    expect(aRuns).toBe(1)
+
+    cleanupWatchers(outlet)
+    router.dispose()
+  })
+
+  it("keepAlive on a descendant retains the whole ancestor branch", async () => {
+    setActiveRouter(null)
+    window.history.replaceState(null, "", "/a")
+    let layoutRuns = 0
+    let childRuns = 0
+    const state = createSignal("saved")
+    const Layout = () => {
+      layoutRuns++
+      return jsx("div", { children: ["layout:", Outlet({})] })
+    }
+    const PageA = () => {
+      childRuns++
+      return jsx("span", { children: state })
+    }
+    const PageB = () => jsx("span", { children: "B" })
+    const router = createRouter({
+      mode: "path",
+      routes: [
+        {
+          path: "/",
+          component: Layout,
+          children: [
+            { path: "/a", component: PageA, keepAlive: true },
+            { path: "/b", component: PageB },
+          ],
+        },
+      ],
+    })
+    const tree = Router({ router, children: Outlet({}) })
+    await drainMicrotasks()
+    expect(tree.textContent).toBe("layout:saved")
+    expect(layoutRuns).toBe(1)
+
+    // 子路由变化不重跑父布局（key 只看本层 route + 本层 params）
+    router.push("/b")
+    await drainMicrotasks()
+    expect(tree.textContent).toBe("layout:B")
+    expect(layoutRuns).toBe(1)
+
+    // 子路由带 keepAlive：整个祖先分支都要保留，回来时状态原样
+    router.push("/a")
+    await drainMicrotasks()
+    expect(tree.textContent).toBe("layout:saved")
+    expect(layoutRuns).toBe(1)
+    expect(childRuns).toBe(1)
+
+    cleanupWatchers(tree)
+  })
+
+  it("Outlet keepAlive evicts least-recently-used branches beyond max", async () => {
+    setActiveRouter(null)
+    window.history.replaceState(null, "", "/a")
+    const runs: Record<string, number> = {}
+    const mk = (name: string) => () => {
+      runs[name] = (runs[name] ?? 0) + 1
+      return jsx("div", { children: name })
+    }
+    const router = createRouter({
+      mode: "path",
+      routes: [
+        { path: "/a", component: mk("a") },
+        { path: "/b", component: mk("b") },
+        { path: "/c", component: mk("c") },
+      ],
+    })
+    Router({ router })
+    const outlet = Outlet({ keepAlive: { max: 1 } })
+    await drainMicrotasks()
+
+    router.push("/b")
+    await drainMicrotasks()
+    router.push("/c")
+    await drainMicrotasks()
+    router.push("/a")
+    await drainMicrotasks()
+
+    expect(runs.a).toBe(2) // /a 在 b->c 时被 LRU 淘汰，返回时重建
+    expect(runs.b).toBe(1)
+    expect(runs.c).toBe(1)
+
+    cleanupWatchers(outlet)
+    router.dispose()
+  })
+
+  it("Outlet reuses the instance when only params change — params are reactive data", async () => {
+    setActiveRouter(null)
+    window.history.replaceState(null, "", "/users/1")
+    let runs = 0
+    let router!: ReturnType<typeof createRouter>
+    const User = () => {
+      runs++
+      const id = computed(() => router.params.get().id)
+      return jsx("div", { children: id })
+    }
+    router = createRouter({
+      mode: "path",
+      routes: [{ path: "/users/:id", component: User }],
+    })
+    Router({ router })
+    const outlet = Outlet({})
+    await drainMicrotasks()
+    expect(outlet.textContent).toBe("1")
+    expect(runs).toBe(1)
+
+    // 相同路由身份、仅参数变化：不重建组件，页面靠信号拿到新参数
+    router.push("/users/2")
+    await drainMicrotasks()
+    expect(outlet.textContent).toBe("2")
+    expect(runs).toBe(1)
+
+    cleanupWatchers(outlet)
+    router.dispose()
+  })
+
+  it("Outlet keyBy can split instances per param when needed", async () => {
+    setActiveRouter(null)
+    window.history.replaceState(null, "", "/users/1")
+    let runs = 0
+    let router!: ReturnType<typeof createRouter>
+    const User = () => {
+      runs++
+      return jsx("div", { children: String(router.params.get().id) })
+    }
+    router = createRouter({
+      mode: "path",
+      routes: [{ path: "/users/:id", component: User }],
+    })
+    Router({ router })
+    const outlet = Outlet({ keyBy: entry => entry.params.id })
+    await drainMicrotasks()
+    expect(outlet.textContent).toBe("1")
+    expect(runs).toBe(1)
+
+    // keyBy 按参数区分实例：/users/2 是独立实例
+    router.push("/users/2")
+    await drainMicrotasks()
+    expect(outlet.textContent).toBe("2")
+    expect(runs).toBe(2)
 
     cleanupWatchers(outlet)
     router.dispose()

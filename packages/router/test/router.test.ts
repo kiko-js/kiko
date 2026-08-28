@@ -1,5 +1,6 @@
 import "./setup"
 import { describe, it, expect, beforeEach } from "bun:test"
+import { effect } from "@kikojs/signal"
 import { createRouter } from "../src/router"
 import type { RouteRecord } from "../src/types"
 
@@ -400,6 +401,39 @@ describe("createRouter path mode", () => {
     await flushMicrotasks()
     // dispose 后 popstate 不再更新 location
     expect(router.location.get().path).toBe("/about")
+  })
+
+  it("query-only navigation does not recompute matched/params (path signal decoupling)", async () => {
+    window.history.replaceState(null, "", "/search?q=1")
+    const router = createRouter({ mode: "path", routes: createRoutes() })
+    let matchedRuns = 0
+    let paramsRuns = 0
+    const stopMatched = effect(() => {
+      router.matched.get()
+      matchedRuns++
+    })
+    const stopParams = effect(() => {
+      router.params.get()
+      paramsRuns++
+    })
+    expect(matchedRuns).toBe(1)
+    expect(paramsRuns).toBe(1)
+
+    // query-only：location 变了但 path 没变，matched/params 不应重算
+    router.push("/search?q=2")
+    await drainMicrotasks()
+    expect(matchedRuns).toBe(1)
+    expect(paramsRuns).toBe(1)
+
+    // path 真正变化才重算
+    router.push("/about")
+    await drainMicrotasks()
+    expect(matchedRuns).toBe(2)
+    expect(paramsRuns).toBe(2)
+
+    stopMatched()
+    stopParams()
+    router.dispose()
   })
 })
 

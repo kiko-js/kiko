@@ -180,13 +180,14 @@ export function createRouter(options: RouterOptions): Router {
     options.afterEach ?? []
 
   const initialRaw = history.location.get()
-  const location = createSignal<RouteLocation>(
-    resolveLocation(joinRaw(initialRaw), initialRaw.state, nextKey()),
-  )
+  const initialLocation = resolveLocation(joinRaw(initialRaw), initialRaw.state, nextKey())
+  const location = createSignal<RouteLocation>(initialLocation)
+  // 独立 path 信号：location.set 每次导航都会变，但 path 只在真正改变时通知，
+  // 让 matched 及依赖它的订阅不被 query/hash 变化无效化。
+  const path = createSignal(initialLocation.path)
 
   const matched = new Signal.Computed(() => {
-    const loc = location.get()
-    return matcher.matchAll(loc.path)
+    return matcher.matchAll(path.get())
   })
 
   const currentRoute = new Signal.Computed(() => {
@@ -205,8 +206,11 @@ export function createRouter(options: RouterOptions): Router {
 
   const query = new Signal.Computed(() => location.get().query)
 
-  function updateLocation(path: string, state: unknown, key: string): void {
-    location.set(resolveLocation(path, state, key))
+  function updateLocation(pathname: string, state: unknown, key: string): void {
+    const loc = resolveLocation(pathname, state, key)
+    location.set(loc)
+    // State.set 对相同值不通知：query/hash 变化时 path 信号保持静默
+    if (loc.path !== path.get()) path.set(loc.path)
   }
 
   async function runGuards(to: RouteLocation, from: RouteLocation | null): Promise<GuardOutcome> {
@@ -249,18 +253,18 @@ export function createRouter(options: RouterOptions): Router {
   let navigationSeq = 0
 
   async function commit(
-    path: string,
+    target: string,
     opts: NavigateOptions,
     redirectDepth = 0,
     seq = ++navigationSeq,
   ): Promise<void> {
     if (seq !== navigationSeq) return
     if (redirectDepth > MAX_REDIRECT_DEPTH) {
-      throw new Error(`Too many redirects when navigating to ${path}`)
+      throw new Error(`Too many redirects when navigating to ${target}`)
     }
     const state = opts.state
     const from = location.get()
-    const to = resolveLocation(path, state, nextKey())
+    const to = resolveLocation(target, state, nextKey())
     // Avoid duplicate history entries for the same URL (unless explicitly
     // replacing). Query-only and hash-only changes still navigate because
     // fullPath differs.
@@ -290,11 +294,11 @@ export function createRouter(options: RouterOptions): Router {
     suppressExternal++
     saveCurrentScroll()
     if (opts.replace) {
-      history.replace(path, state)
+      history.replace(target, state)
     } else {
-      history.push(path, state)
+      history.push(target, state)
     }
-    updateLocation(path, state, to.key)
+    updateLocation(target, state, to.key)
     for (const hook of globalAfter) {
       hook(to, from)
     }
@@ -415,6 +419,7 @@ export function createRouter(options: RouterOptions): Router {
     mode,
     base,
     location,
+    path,
     params,
     query,
     matched,

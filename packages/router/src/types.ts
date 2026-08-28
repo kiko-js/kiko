@@ -56,6 +56,11 @@ export interface RouteRecord<T extends string = string> {
   path: T
   /** 匹配成功后渲染的组件 */
   component?: (props: RouteComponentProps<ParamsOf<T>>) => Node
+  /**
+   * 切走时离屏保留该路由子树（组件不重跑、状态不丢失），再次进入时原样恢复。
+   * 子树内的后代路由标记了 keepAlive 时，祖先层级也会连带保留。
+   */
+  keepAlive?: KeepAlive
   /** 嵌套路由（相对路径，如父 "/users" 下的 "profile"） */
   children?: readonly RouteRecord[]
   /** 任意元数据——通过 `declare module "@kikojs/router"` 扩展 `RouteMeta` 获得类型 */
@@ -163,6 +168,15 @@ export interface HistoryLocation {
   state: unknown
 }
 
+/** 离屏保留策略：true 使用默认上限；对象可配置最大保留条数（LRU 淘汰） */
+export interface KeepAliveOptions {
+  /** 最多同时保留多少个子树（默认 10），超出后按最近最少使用淘汰 */
+  max?: number
+}
+
+/** 离屏保留开关：boolean 或带上限的配置对象 */
+export type KeepAlive = boolean | KeepAliveOptions
+
 /**
  * 滚动目标：坐标、元素（CSS 选择器或引用）或两者；`behavior` 透传给
  * 原生 `scrollTo` / `scrollIntoView`。
@@ -223,6 +237,8 @@ export interface Router {
   readonly mode: RouteMode
   readonly base: string
   readonly location: Signal.State<RouteLocation>
+  /** 仅路径部分（不含 query/hash）的信号——query/hash 变化不会触发依赖它的订阅 */
+  readonly path: Signal.State<string>
   readonly params: Signal.Computed<RouteParams>
   readonly query: Signal.Computed<RouteQuery>
   readonly matched: Signal.Computed<RouteMatch[]>

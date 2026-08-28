@@ -77,7 +77,7 @@ export function tryUseRouter(): Router | null {
 export function useIsActive(to: string, opts?: { exact?: boolean }): ReactiveSnapshot<boolean> {
   const router = useRouter()
   const exact = opts?.exact ?? false
-  const signal = new Signal.Computed(() => isActivePath(router.location.get().path, to, exact))
+  const signal = new Signal.Computed(() => isActivePath(router.path.get(), to, exact))
   return toReactive(signal)
 }
 
@@ -89,7 +89,7 @@ export function useMatch(pattern: string): ReactiveSnapshot<RouteParams | null> 
   const router = useRouter()
   const matcher = createMatcher([{ path: pattern }])
   const signal = new Signal.Computed(() => {
-    const matches = matcher.matchAll(router.location.get().path)
+    const matches = matcher.matchAll(router.path.get())
     return matches.length > 0 ? matches[matches.length - 1]!.params : null
   })
   return toReactive(signal)

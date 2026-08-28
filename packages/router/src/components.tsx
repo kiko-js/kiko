@@ -1,10 +1,16 @@
 /** @jsxImportSource @kikojs/dom */
-import { effect } from "@kikojs/signal"
+import { computed, createWatcher, effect, untrack } from "@kikojs/signal"
 import { jsx } from "@kikojs/dom"
-import { cleanupWatchers, swapNodes, toNodes, trackCleanup } from "@kikojs/dom/jsx-runtime"
+import {
+  cleanupWatchers,
+  swapBranch,
+  swapNodes,
+  toNodes,
+  trackCleanup,
+} from "@kikojs/dom/jsx-runtime"
 import { clearActiveRouter, getActiveRouter, setActiveRouter } from "./context"
 import { getRouteProps } from "./router"
-import type { NavPath, Router } from "./types"
+import type { KeepAlive, NavPath, RouteMatch, RouteRecord, Router } from "./types"
 
 interface RouterProps {
   router: Router
@@ -99,8 +105,7 @@ export function Link(props: LinkProps): Node {
     const router = getActiveRouter()
     anchorEl.setAttribute("href", resolveHref(router, to))
     if (!activeClass || !router) return
-    const loc = router.location.get()
-    const match = isActivePath(loc.path, to, exact ?? false)
+    const match = isActivePath(router.path.get(), to, exact ?? false)
     // classList tokens must not contain whitespace — split once, use for both
     // add and remove ("nav active" would throw in classList.add as-is).
     const classes = activeClass.split(" ").filter(c => c !== "")
@@ -125,6 +130,14 @@ export function Link(props: LinkProps): Node {
 
 interface OutletProps {
   router?: Router
+  /** 离屏保留开关/配置；显式 false 可关闭路由表里的 keepAlive */
+  keepAlive?: KeepAlive
+  /**
+   * 自定义实例键。默认只按路由身份（route.path）缓存——params/query 都是
+   * 组件内部通过 hook 响应式消费的数据，变化不重建组件。若想按参数/URL
+   * 区分实例（如不同 id 各自独立表单状态），返回一个稳定值即可。
+   */
+  keyBy?: (entry: RouteMatch, router: Router) => unknown
 }
 
 /**
@@ -139,6 +152,47 @@ interface OutletFrame {
 
 const frameStack: OutletFrame[] = []
 
+const DEFAULT_KEEP_ALIVE_MAX = 10
+
+interface ResolvedKeepAlive {
+  max: number
+}
+
+/**
+ * 该层级是否启用离屏保留：
+ * - Outlet 的 keepAlive prop 优先（显式 false 关闭）
+ * - 否则看当前层级及后代路由的 route.keepAlive——后代要保留，祖先必须
+ *   连带保留，否则整个分支被父级清理后子级缓存毫无意义。
+ */
+function resolveKeepAlive(
+  matched: RouteMatch[],
+  depth: number,
+  prop: KeepAlive | undefined,
+): ResolvedKeepAlive | null {
+  if (prop === false) return null
+  if (prop === true) return { max: DEFAULT_KEEP_ALIVE_MAX }
+  if (prop !== undefined && prop !== null && typeof prop === "object") {
+    const max = prop.max
+    return max !== undefined && max > 0 ? { max } : null
+  }
+  for (let i = depth; i < matched.length; i++) {
+    const ka = matched[i]?.route.keepAlive
+    if (ka === true) return { max: DEFAULT_KEEP_ALIVE_MAX }
+    if (ka !== undefined && ka !== null && typeof ka === "object") {
+      const max = ka.max
+      return max !== undefined && max > 0 ? { max } : null
+    }
+  }
+  return null
+}
+
+interface OutletSnapshot {
+  router: Router | null
+  component: NonNullable<RouteRecord["component"]> | null
+  key: string | null
+  keep: ResolvedKeepAlive | null
+}
+
 export function Outlet(props: OutletProps): Node {
   // 创建时捕获层级：JSX 求值发生在父组件同步渲染期间（帧已压栈），
   // 响应式重渲染时不再有帧，depth 必须在创建时定格。
@@ -151,49 +205,88 @@ export function Outlet(props: OutletProps): Node {
   parent.appendChild(marker)
 
   let currentNodes: Node[] = []
+  let currentKey: string | null = null
+  let currentKeep: ResolvedKeepAlive | null = null
+  let disposed = false
 
-  // 子树记忆化缓存：按 (route 标识, 匹配到的 pathname) 缓存已渲染的节点。
-  // query/hash 变化只改 query 信号，pathname 不变 → 复用旧节点（其内部的
-  // useParams/useQuery/useLocation 信号仍然响应），无需重跑 component。
-  // 仅在 route 身份或 pathname 改变时才重建子树并清理旧节点的 watchers。
-  let cachedKey: string | null = null
-  let cachedNodes: Node[] = []
+  // 离屏子树缓存：key -> 已渲染节点。条目都保留 watcher/cleanup，
+  // 换入换出只是 detach/reinsert，不重跑 component、不丢状态。
+  const cache = new Map<string, Node[]>()
 
-  const dispose = effect(() => {
-    // 根 Outlet 创建时 Router 尚未挂载（children 先求值）：静态 router 为空时
-    // 响应式读取 activeRouter，Router 挂载后本 effect 自动补跑渲染。
+  // 快照只依赖 activeRouter + matched（path 信号驱动）：
+  // query/hash 变化不会让它重算，自然也不会触发渲染函数。
+  const snapshot = computed<OutletSnapshot>(() => {
     const router = staticRouter ?? getActiveRouter()
-    if (!router) {
-      currentNodes = swapNodes(marker, currentNodes, [])
-      return
-    }
+    if (!router) return { router: null, component: null, key: null, keep: null }
     const matched = router.matched.get()
     const entry = matched[depth]
     const route = entry?.route
-    const component = route?.component
-    if (!component) {
-      currentNodes = swapNodes(marker, currentNodes, [])
+    const component = route?.component ?? null
+    const keep = resolveKeepAlive(matched, depth, props.keepAlive)
+    if (!entry || !component) return { router, component: null, key: null, keep }
+    // 稳定键：默认只有路由身份（route.path）。params/query 都是“数据”，
+    // query/hash/参数变化都不重建组件——页面通过 useParams/useQuery 等
+    // hook 响应式消费；需要按参数区分实例时用 Outlet 的 keyBy。
+    const key = props.keyBy ? String(props.keyBy(entry, router)) : entry.route.path
+    return { router, component, key, keep }
+  })
+
+  const evict = (max: number): void => {
+    while (cache.size > max) {
+      const oldestKey = cache.keys().next().value
+      if (oldestKey === undefined) break
+      const nodes = cache.get(oldestKey)
+      cache.delete(oldestKey)
+      if (nodes && nodes !== currentNodes) {
+        for (const n of nodes) if (n.parentNode === null) cleanupWatchers(n)
+      }
+    }
+  }
+
+  // 渲染在 watcher 回调（微任务）里执行，而不是包在 effect 的 cleanup scope
+  // 中——route component 内部创建的 effect 才能活过导航，由离屏缓存接管，
+  // 与 kiko「组件函数只跑一次、状态挂在节点上」的核心模型一致。
+  const render = (): void => {
+    const snap = snapshot.get()
+
+    // 路由身份变化：把当前分支换出去。保留模式只 detach、不清理；
+    // 非保留模式完整清理（旧行为，状态随导航丢弃）。
+    if (currentNodes.length > 0 && currentKey !== snap.key) {
+      if (currentKeep && currentKey !== null) {
+        cache.set(currentKey, currentNodes)
+        evict(currentKeep.max)
+        currentNodes = swapBranch(marker, currentNodes, [], true)
+      } else {
+        currentNodes = swapNodes(marker, currentNodes, [])
+      }
+      currentKey = null
+      currentKeep = null
+    }
+
+    const router = snap.router
+    if (!router || !snap.component || snap.key === null) return
+
+    // 同 key 已在屏幕上：什么都不用做（query/hash 导航也走不到这里，
+    // 但保留这一道防线避免无谓的 detach/reattach 丢焦点）。
+    if (currentNodes.length > 0 && currentKey === snap.key) return
+
+    const cached = cache.get(snap.key)
+    if (cached && cached.length > 0) {
+      cache.delete(snap.key)
+      cache.set(snap.key, cached) // 移到 MRU
+      currentNodes = swapBranch(marker, currentNodes, cached, false)
+      currentKey = snap.key
+      currentKeep = snap.keep
       return
     }
-    // pathname = location.path，忽略 query/hash。route 身份用 path 作为
-    // 稳定键（同一 path 模式编译后 route 对象引用恒定）。
-    const pathname = router.location.get().path
-    const key = `${route.path}${pathname}`
-    // key 未变：复用缓存节点（不重跑 component），保持其内部信号响应式。
-    if (cachedKey === key && cachedNodes.length > 0) {
-      currentNodes = swapNodes(marker, currentNodes, cachedNodes)
-      return
-    }
-    // key 变化（或首次）：移除当前 DOM 中的旧节点（swapNodes 会清理其
-    // watchers），重建新子树。
+
     const next: Node[] = []
     try {
-      // 读取 getRouteProps 内的 location/params/query 建立完整依赖：
-      // query-only 导航（path 不变）也会重渲染。
-      const props = getRouteProps(router)
+      // untrack：props 快照一次性读取，不让 Outlet 订阅 params/query/location
+      const routeProps = untrack(() => getRouteProps(router))
       frameStack.push({ router, depth: depth + 1 })
       try {
-        const node = component(props)
+        const node = snap.component(routeProps)
         next.push(node)
       } finally {
         frameStack.pop()
@@ -202,14 +295,48 @@ export function Outlet(props: OutletProps): Node {
       reportError(err)
       next.push(document.createTextNode(""))
     }
-    cachedKey = key
-    cachedNodes = next
     currentNodes = swapNodes(marker, currentNodes, next)
-  })
+    currentKey = snap.key
+    currentKeep = snap.keep
+    if (snap.keep) {
+      cache.set(snap.key, next)
+      evict(snap.keep.max)
+    }
+  }
 
-  trackCleanup(parent, () => {
-    cleanupWatchers(parent)
-    dispose()
+  const watcher = createWatcher(() => {
+    queueMicrotask(() => {
+      // cleanup 后到期的微任务不能复活 watcher（见 trackCleanup 处 disposed）
+      if (disposed) return
+      try {
+        render()
+      } catch (err) {
+        reportError(err)
+      } finally {
+        if (!disposed) watcher.watch(snapshot)
+      }
+    })
+  })
+  render()
+  watcher.watch(snapshot)
+
+  // 注意挂到 marker 而不是 parent：parent 是 DocumentFragment，被 Router /
+  // render 追加后会变空并从 DOM 树消失，挂在它上面的 cleanup 会随树丢失
+  // （旧实现泄漏）。marker 会随子树一起移动，cleanupWatchers 总能到达它。
+  trackCleanup(marker, () => {
+    disposed = true
+    // 清理当前可见分支 + 离屏缓存分支；seen 防同一批节点重复清理
+    const seen = new Set<Node>()
+    const clean = (nodes: Node[]): void => {
+      for (const n of nodes) {
+        if (seen.has(n)) continue
+        seen.add(n)
+        cleanupWatchers(n)
+      }
+    }
+    clean(currentNodes)
+    for (const nodes of cache.values()) clean(nodes)
+    watcher.unwatch(snapshot)
   })
 
   return parent
