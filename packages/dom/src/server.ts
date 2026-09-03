@@ -11,6 +11,7 @@ import { ssrRuntime } from "./ssr"
 // 显式注册 SSR 运行时（区别于 ssr.ts 自注册：注册是可见副作用，不随模块导入隐式发生）
 setSSRRuntime(ssrRuntime)
 
+export { renderToFragment } from "./ssr"
 export { renderToStream } from "./ssr-stream"
 export {
   startSignalCapture,
