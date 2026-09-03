@@ -152,9 +152,14 @@
             </thead>
             <tbody>
               <tr>
-                <td><code>location / params / query / matched / currentRoute</code></td>
+                <td><code>location / path / params / query / matched / currentRoute</code></td>
                 <td>signal</td>
-                <td>路由状态（标准信号，可直接用于 JSX / computed）。</td>
+                <td>
+                  路由状态（标准信号，可直接用于 JSX / computed）。其中
+                  <code>path</code> 只含路径部分：query/hash 变化不会触发依赖 <code>matched</code> /
+                  <code>params</code> / <code>currentRoute</code>
+                  的订阅。
+                </td>
               </tr>
               <tr>
                 <td><code>navigate / push / replace</code></td>
@@ -278,12 +283,41 @@
                 <td><code>Router</code></td>
                 <td>指定路由器（可选，默认使用最近的 Router）。</td>
               </tr>
+              <tr>
+                <td><code>keepAlive</code></td>
+                <td><code>boolean | { max? }</code></td>
+                <td>
+                  离屏保留：切走时只 detach、不清理子树，组件不重跑、状态不丢失，再次进入原样恢复。
+                  <code>max</code> 为 LRU 上限（默认 10）。路由表里
+                  <code>RouteRecord.keepAlive</code> 或后代路由标记了 keepAlive 时自动生效，
+                  这里可覆盖/关闭。
+                </td>
+              </tr>
+              <tr>
+                <td><code>keyBy</code></td>
+                <td><code>(entry, router) =&gt; unknown</code></td>
+                <td>
+                  自定义实例键。默认只按路由身份（<code>route.path</code>）缓存——query/hash/params
+                  都是组件内部通过 hook 响应式消费的数据，变化不重建组件；需要按参数/URL 区分实例时
+                  返回稳定值即可。
+                </td>
+              </tr>
             </tbody>
           </table>
           <p>
-            渲染当前匹配路由的组件；导航时自动切换。用于嵌套布局。每次导航都会重新执行路由组件函数，
-            因此组件内调用 hooks 拿到的是最新快照。
+            渲染当前匹配路由的组件，用于嵌套布局。组件函数在同一个路由身份下<strong>只执行一次</strong>：
+            query / hash / 本层 params 变化不会重跑组件，而是由
+            <code>useParams()</code> / <code>useQuery()</code> / <code>router.path</code>
+            等信号驱动页面数据更新（分页、筛选等）。切到其他路由时，默认清理旧子树；开启
+            <code>keepAlive</code> 后离屏保留，回来时原状态恢复。
           </p>
+          <div class="note">
+            路由组件里请用 hooks 的响应式访问器（放进 <code>computed</code> / effect / signal
+            绑定），不要依赖一次性 props 快照——props.params / props.query 只在首次渲染时定格。
+          </div>
+          <div class="code-block">
+            <pre><code class="language-tsx" data-src="./assets/snippets/router-keepalive.tsx"></code></pre>
+          </div>
 
           <h3 id="navigate">Navigate</h3>
           <table>
@@ -359,9 +393,11 @@
             </tbody>
           </table>
           <p class="note">
-            hooks 返回的是调用时的<strong>快照</strong>（非 signal）。在 Outlet
-            渲染的路由组件中使用：每次导航 Outlet 都会重新执行组件函数，因此始终是最新值。若需要在
-            JSX 中响应式订阅，直接用 <code>router.location</code> 等信号。
+            hooks 返回<strong>响应式访问器</strong>（可直接调用 <code>()</code>、读
+            <code>.get()</code> 或访问字段，如 <code>useParams().id</code>）。同一路由身份下组件函数
+            只执行一次，query/hash/参数变化不重跑组件——需要响应式消费时把 hook 放进
+            <code>computed</code> / effect / signal 绑定；也可以直接用
+            <code>router.location</code> / <code>router.params</code> 等信号。
           </p>
           <div class="code-block">
             <pre><code class="language-tsx" data-src="./assets/snippets/router-hooks.tsx"></code></pre>
@@ -533,10 +569,14 @@
                 <td><code>RouteRecord</code></td>
                 <td>
                   路由配置记录：<code
-                    >{ path, component?, children?, meta?, beforeEnter?, beforeLeave?, redirect?
-                    }</code
+                    >{ path, component?, keepAlive?, children?, meta?, beforeEnter?, beforeLeave?,
+                    redirect? }</code
                   >
                 </td>
+              </tr>
+              <tr>
+                <td><code>KeepAlive / KeepAliveOptions</code></td>
+                <td><code>boolean | { max? }</code>——离屏保留开关与 LRU 上限（默认 10）。</td>
               </tr>
               <tr>
                 <td><code>RouteComponentProps</code></td>

@@ -1,4 +1,5 @@
 /** @jsxImportSource @kikojs/dom */
+import { computed } from "@kikojs/signal"
 import { createRouter, Router, Link, Outlet, useParams } from "@kikojs/router"
 import type { RouteRecord } from "@kikojs/router"
 
@@ -20,13 +21,14 @@ function App() {
           About
         </Link>
       </nav>
-      {/* Outlet 渲染当前匹配的路由组件，导航时自动切换 */}
+      {/* Outlet 渲染当前匹配的路由组件；同一路由身份只渲染一次，
+           params/query 变化由组件内部信号响应式处理 */}
       <Outlet />
     </Router>
   )
 }
 
 function UserPage() {
-  const params = useParams() // 当前路由参数快照：{ id: "42" }
-  return <h1>用户 {params.id}</h1>
+  const id = computed(() => useParams().id) // 响应式参数：{ id: "42" }
+  return <h1>用户 {id}</h1>
 }
