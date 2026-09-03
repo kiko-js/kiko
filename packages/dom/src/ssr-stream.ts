@@ -23,6 +23,7 @@ import { getSSRRuntime, setSSRRuntime } from "./ssr-mode"
 import type { SSRRuntime } from "./ssr-mode"
 import {
   escapeText,
+  escapeAttr,
   serializeAttrs,
   extractCssText,
   escapeStyleText,
@@ -163,7 +164,8 @@ function streamJsx(
 
 function streamStyle(props: StyleProps): StreamChunk {
   const css = escapeStyleText(extractCssText(props.children))
-  return sync(`<style>${css}</style>`)
+  const nonceAttr = props.nonce ? ` nonce="${escapeAttr(props.nonce)}"` : ""
+  return sync(`<style${nonceAttr}>${css}</style>`)
 }
 
 // ---------------------------------------------------------------------------

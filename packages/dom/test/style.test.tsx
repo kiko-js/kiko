@@ -225,6 +225,24 @@ describe("Style — fallback", () => {
       view.CSSStyleSheet = saved
     }
   })
+
+  it("passes nonce to fallback <style> element", () => {
+    const view = document.defaultView as unknown as { CSSStyleSheet?: unknown }
+    const saved = view.CSSStyleSheet
+    try {
+      view.CSSStyleSheet = undefined
+      const el = (
+        <div>
+          <Style nonce="client-nonce">{`.a { color: red }`}</Style>
+        </div>
+      ) as HTMLElement
+      const styleEl = el.querySelector("style")!
+      expect(styleEl.getAttribute("nonce")).toBe("client-nonce")
+      expect(styleEl.textContent).toMatch(/\[data-kiko-v\d+\] \.a/)
+    } finally {
+      view.CSSStyleSheet = saved
+    }
+  })
 })
 
 describe("regression — intrinsic <style global>", () => {

@@ -274,6 +274,40 @@ describe("Style 的 SSR", () => {
     )
     expect(html).toMatch(/<main><div data-kiko-v\d+><style>/)
   })
+
+  it("passes nonce to global style", async () => {
+    const html = await renderToFragment(() =>
+      Style({ global: true, nonce: "abc123", children: ".a { color: red }" }),
+    )
+    expect(html).toBe(`<style nonce="abc123">.a { color: red }</style>`)
+  })
+
+  it("passes nonce to scoped style", async () => {
+    const html = await renderToFragment(() =>
+      jsx("div", {
+        children: [Style({ nonce: "xyz789", children: ".card { color: red }" })],
+      }),
+    )
+    expect(html).toMatch(/<div data-kiko-v\d+>/)
+    expect(html).toMatch(/<style nonce="xyz789">\[data-kiko-v\d+\] \.card/)
+  })
+
+  it("escapes nonce attribute value", async () => {
+    const html = await renderToFragment(() =>
+      Style({ global: true, nonce: 'a"b', children: ".a { color: red }" }),
+    )
+    expect(html).toBe(`<style nonce="a&quot;b">.a { color: red }</style>`)
+  })
+
+  it("scoped style at fragment root outputs scope marker (known limitation)", async () => {
+    // 已知限制：fragment 根节点的 <Style> 没有祖先元素消费 scope 标记，
+    // 输出的 CSS 是 scoped 但没有元素携带 scope 属性，样式不会生效。
+    // 建议：把 <Style> 放在元素内部，或显式使用 global。
+    const html = await renderToFragment(() => Style({ children: ".card { color: red }" }))
+    // scope 标记被 extractScopeMarkers 清理，但 CSS 仍是 scoped 选择器
+    expect(html).not.toContain("kiko-scope")
+    expect(html).toMatch(/<style>\[data-kiko-v\d+\] \.card/)
+  })
 })
 
 describe("并发安全", () => {

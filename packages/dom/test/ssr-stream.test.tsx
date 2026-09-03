@@ -1,6 +1,6 @@
 /** @jsxImportSource @kikojs/dom */
 import { describe, it, expect, beforeAll, afterAll } from "bun:test"
-import { jsx } from "../src/jsx-runtime"
+import { jsx, Style } from "../src/jsx-runtime"
 import { Show, For, Suspend } from "../src/flow"
 import { renderToStream } from "../src/ssr-stream"
 import { renderToFragment } from "../src/ssr"
@@ -82,6 +82,14 @@ describe("renderToStream — 同步内容", () => {
     expect(html).toBe(
       "<div><!--show--><p>visible</p><ul><!--for--><li>1</li><li>2</li><li>3</li></ul></div>",
     )
+  })
+
+  it("passes nonce to <style> in streaming SSR", async () => {
+    const stream = renderToStream(() =>
+      Style({ global: true, nonce: "stream-nonce", children: ".a { color: red }" }),
+    )
+    const html = (await streamToChunks(stream)).join("")
+    expect(html).toBe(`<style nonce="stream-nonce">.a { color: red }</style>`)
   })
 })
 

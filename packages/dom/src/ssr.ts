@@ -148,12 +148,15 @@ export function escapeStyleText(css: string): string {
 
 export function ssrStyle(props: StyleProps): SSRValue {
   const css = escapeStyleText(extractCssText(props.children))
+  const nonceAttr = props.nonce ? ` nonce="${escapeAttr(props.nonce)}"` : ""
   if (props.global) {
-    return new SSRElement(`<style>${css}</style>`)
+    return new SSRElement(`<style${nonceAttr}>${css}</style>`)
   }
   const attr = createScopeAttr()
-  // 标记由最近的序列化祖先元素（即包含本 style 的元素）提取并挂载
-  return new SSRElement(`<!--kiko-scope:${attr}--><style>${rewriteScopedCss(css, attr)}</style>`)
+  // 标记由最近的序列化祖先元素（即包含该 style 的元素）提取并挂载
+  return new SSRElement(
+    `<!--kiko-scope:${attr}--><style${nonceAttr}>${rewriteScopedCss(css, attr)}</style>`,
+  )
 }
 
 // ---------------------------------------------------------------------------
