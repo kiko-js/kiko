@@ -17,6 +17,7 @@
     "presite:build": "bun run build",
     "site:build": "bun run docs/build.ts",
     "release": "bun run build && changeset publish",
+    "version-packages": "changeset version",
     "auto-changeset": "bun run scripts/auto-changeset.ts"
   },
   "devDependencies": {
