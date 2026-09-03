@@ -92,6 +92,9 @@ function hydrateValue(value: unknown): Node[] {
   }
   if (typeof value === "string" || typeof value === "number") {
     const expected = String(value)
+    // SSR 对空字符串不产出文本节点（信号路径是 `<!---->` 后没有内容），
+    // 直接返回 []，不消费游标——否则会误取相邻兄弟节点并误报。
+    if (expected === "") return []
     const node = take()
     if (!node || node.nodeType !== Node.TEXT_NODE) {
       warn("expected text node")
@@ -99,12 +102,19 @@ function hydrateValue(value: unknown): Node[] {
     }
     const text = node as Text
     const content = text.textContent ?? ""
-    // HTML 解析器合并相邻文本节点：SSR 输出的信号快照（<!---->0）可能已与
-    // 紧随其后的文本（"，doubled = "）合并成一个节点。按期望值前缀拆分，
-    // 多余部分归还游标，保持"一个值 = 一个节点"的水合对齐协议。
-    if (content !== expected && content.startsWith(expected)) {
-      const rest = text.splitText(expected.length)
-      cursor.splice(cursorPos, 0, rest)
+    if (content !== expected) {
+      if (content.startsWith(expected)) {
+        // HTML 解析器合并相邻文本节点：SSR 输出的信号快照（<!---->0）可能已与
+        // 紧随其后的文本（"，doubled = "）合并成一个节点。按期望值前缀拆分，
+        // 多余部分归还游标，保持"一个值 = 一个节点"的水合对齐协议。
+        const rest = text.splitText(expected.length)
+        cursor.splice(cursorPos, 0, rest)
+      } else {
+        // 失配：服务端快照与客户端初始值不一致。以客户端值为准回填（客户端
+        // 是后续唯一的事实来源），并明确告警，避免静默保留过期内容。
+        warn(`text mismatch: expected "${expected}", found "${content}"`)
+        text.textContent = expected
+      }
     }
     return [text]
   }

@@ -285,3 +285,36 @@ describe("并发安全", () => {
     expect(hb).toBe(`<span>B</span>`)
   })
 })
+
+describe("RAW TEXT 元素的 SSR", () => {
+  it("renders script content verbatim (no HTML escaping)", async () => {
+    const html = await renderToFragment(() =>
+      jsx("script", { children: 'const x = 1 < 2; window.data = "<b>hi</b>";' }),
+    )
+    expect(html).toBe('<script>const x = 1 < 2; window.data = "<b>hi</b>";</script>')
+  })
+
+  it("guards closing-tag injection inside raw text", async () => {
+    const html = await renderToFragment(() =>
+      jsx("script", { children: "if (a) {</script><img src=x onerror=alert(1)>}" }),
+    )
+    // "</script" 被转义为 "<\/script"，注入的标签留在文本里，不会提前闭合
+    expect(html).toBe("<script>if (a) {<\\/script><img src=x onerror=alert(1)>}</script>")
+    expect(html).not.toMatch(/<\/script><img/)
+  })
+
+  it("flattens signals and arrays inside raw text", async () => {
+    const label = createSignal("L")
+    const html = await renderToFragment(() =>
+      jsx("script", { type: "application/json", children: ['{"name":', label, "}"] }),
+    )
+    expect(html).toBe('<script type="application/json">{"name":L}</script>')
+  })
+
+  it("renders noscript/iframe raw content", async () => {
+    const html = await renderToFragment(() =>
+      jsx("noscript", { children: jsx("iframe", { src: "x", children: "plain" }) }),
+    )
+    expect(html).toBe('<noscript><iframe src="x">plain</iframe></noscript>')
+  })
+})

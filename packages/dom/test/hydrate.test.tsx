@@ -474,3 +474,47 @@ describe("hydrate exception paths", () => {
     dispose()
   })
 })
+
+describe("水合边界", () => {
+  it("empty-string signal snapshot does not warn or steal following sibling", async () => {
+    const container = document.createElement("div")
+    const s = createSignal("")
+    const bold = (): Node => jsx("b", { children: "bold" })
+    setSSRRuntime(ssrRuntime)
+    container.innerHTML = await renderToFragment(() => jsx("p", { children: [s, bold()] }))
+    setSSRRuntime(null)
+    expect(container.innerHTML).toBe("<p><!----><b>bold</b></p>")
+    const errors: string[] = []
+    const orig = console.error
+    console.error = (m: unknown) => errors.push(String(m))
+    const dispose = hydrate(() => jsx("p", { children: [s, bold()] }), container)
+    console.error = orig
+    expect(errors.filter(e => e.includes("expected text node")).length).toBe(0)
+    expect(container.textContent).toBe("bold")
+    s.set("x")
+    await flush()
+    expect(container.textContent).toBe("xbold")
+    dispose()
+  })
+
+  it("backfills text on mismatch, keeps client truth, and warns", async () => {
+    const container = document.createElement("div")
+    setSSRRuntime(ssrRuntime)
+    const server = createSignal(5)
+    container.innerHTML = await renderToFragment(() => jsx("p", { children: server }))
+    setSSRRuntime(null)
+    const client = createSignal(6)
+    const errors: string[] = []
+    const orig = console.error
+    console.error = (m: unknown) => errors.push(String(m))
+    const dispose = hydrate(() => jsx("p", { children: client }), container)
+    console.error = orig
+    expect(errors.some(e => e.startsWith("[kiko hydrate] text mismatch"))).toBe(true)
+    // 客户端为准回填，避免静默保留过期的 SSR 内容
+    expect(container.textContent).toBe("6")
+    client.set(7)
+    await flush()
+    expect(container.textContent).toBe("7")
+    dispose()
+  })
+})

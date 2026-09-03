@@ -171,6 +171,36 @@ const VOID_ELEMENTS = new Set([
   "wbr",
 ])
 
+// RAW TEXT 元素：HTML 解析器把内容当纯文本，字符引用（&lt;）不会被解码，
+// 所以普通文本转义会破坏内容（如 <script> 里的 JS 会变成字面 "&lt;"）。
+// 这些元素的内容按原样序列化，只防御把自身结束标签写进内容的注入。
+const RAW_TEXT_ELEMENTS = new Set(["script", "noscript", "iframe", "xmp", "noembed", "noframes"])
+
+/**
+ * raw-text 元素的内容序列化：逐叶取 String，不做 HTML 转义。
+ * 信号取快照，数组逐项拼接，含 promise 时整体异步。
+ */
+function toRawText(value: unknown): unknown {
+  if (value == null || value === false || value === true) return ""
+  if (value instanceof SSRElement) return value.html // 已是序列化标记（如子元素）
+  if (isSignal(value)) return toRawText((value as WatchableSignal<unknown>).get())
+  if (isPromiseLike(value)) return Promise.resolve(value).then(resolved => toRawText(resolved))
+  if (Array.isArray(value)) {
+    const parts = value.map(item => toRawText(item))
+    if (parts.some(isPromiseLike)) {
+      return Promise.all(parts).then(joined => (joined as string[]).join(""))
+    }
+    return (parts as string[]).join("")
+  }
+  return String(value)
+}
+
+/** 防止 `</tag` 提前闭合元素（与 CSS 的 escapeStyleText 同一思路）。 */
+function guardRawText(text: string, tag: string): string {
+  // "<\/tag"：反斜杠是合法转义，HTML 解析器也看不到闭合标签。
+  return text.replace(new RegExp("</" + tag, "gi"), "<\\/" + tag)
+}
+
 function serializeAttr(key: string, value: unknown): string {
   if (value == null || value === false) return ""
   if (key === "className") key = "class"
@@ -216,6 +246,21 @@ export function ssrJsx(
 
   if (VOID_ELEMENTS.has(tag)) {
     return new SSRElement(`<${tag}${serializeAttrs(p)}>`)
+  }
+
+  // RAW TEXT 元素：内容不转义（见 toRawText），只防结束标签注入。
+  if (RAW_TEXT_ELEMENTS.has(tag)) {
+    const close = `</${tag}>`
+    const content = toRawText(p.children)
+    if (isPromiseLike(content)) {
+      return Promise.resolve(content).then(
+        c =>
+          new SSRElement(`<${tag}${serializeAttrs(p)}>${guardRawText(c as string, tag)}${close}`),
+      )
+    }
+    return new SSRElement(
+      `<${tag}${serializeAttrs(p)}>${guardRawText(content as string, tag)}${close}`,
+    )
   }
 
   // children 先序列化：其中 <Style> 的 scope 标记由当前元素提取并挂到自身 attrs

@@ -1,6 +1,6 @@
 /** @jsxImportSource @kikojs/dom */
 import { computed, createWatcher, effect, untrack } from "@kikojs/signal"
-import { jsx } from "@kikojs/dom"
+import { getSSRRuntime, jsx } from "@kikojs/dom"
 import {
   cleanupWatchers,
   swapBranch,
@@ -19,6 +19,13 @@ interface RouterProps {
 
 export function Router(props: RouterProps): Node {
   const router = props.router
+  if (getSSRRuntime()) {
+    // SSR 字符串模式：无 DOM、无 effect。children 在 JSX 求值期就已被序列化
+    // 成字符串，这里直接透传；不调 setActiveRouter——activeStack 是模块级栈，
+    // 服务端没有卸载时机，压栈会随请求数无限增长。服务端渲染路由时用
+    // createMemoryHistory，并在根 Outlet 显式传 router（见 README「SSR」）。
+    return props.children as Node
+  }
   // JSX children 先于本组件体求值，因此这里设置的是"信号"——children 中的
   // Outlet / Link / Navigate 创建的 effect 依赖它，挂载后自动补跑。
   setActiveRouter(router)
@@ -70,6 +77,17 @@ function resolveHref(router: Router | null, to: string): string {
 }
 
 export function Link(props: LinkProps): Node {
+  if (getSSRRuntime()) {
+    // SSR：只输出静态 <a href>。activeClass 高亮与点击导航依赖 DOM/effect，
+    // 无法序列化，由水合后的客户端分支接管。href 依据预置的 activeRouter
+    // 解析模式/base；未预置时退化为原始 to。onClick 由 ssrJsx 丢弃，无需取出。
+    const { to, replace: _r, state: _s, activeClass: _ac, exact: _ex, children, ...rest } = props
+    return jsx("a", {
+      ...rest,
+      href: resolveHref(getActiveRouter(), to),
+      children,
+    })
+  }
   const { to, replace, state, activeClass, exact, children, onClick: userOnClick, ...rest } = props
 
   const userClickHandler = userOnClick as ((e: MouseEvent) => void) | undefined
@@ -194,6 +212,26 @@ interface OutletSnapshot {
 }
 
 export function Outlet(props: OutletProps): Node {
+  if (getSSRRuntime()) {
+    // SSR 字符串模式：无 DOM/watcher/effect，静态输出当前深度匹配的路由
+    // 组件。router 取 props.router ?? 父 Outlet 帧 ?? 预置的 activeRouter；
+    // 都拿不到时输出空（与客户端"无 router 渲染空"语义一致）。
+    const creationFrame = frameStack.length > 0 ? frameStack[frameStack.length - 1] : undefined
+    const staticRouter = props.router ?? creationFrame?.router ?? getActiveRouter()
+    const depth = creationFrame ? creationFrame.depth : 0
+    // SSR 边界：无 router / 无匹配组件时输出空（客户端同语义）；类型层面
+    // Node 在 SSR 下实际为序列化字符串，空即空串。
+    if (!staticRouter) return null as unknown as Node
+    const entry = staticRouter.matched.get()[depth]
+    const component = entry?.route?.component
+    if (!component) return null as unknown as Node
+    frameStack.push({ router: staticRouter, depth: depth + 1 })
+    try {
+      return component(getRouteProps(staticRouter)) as unknown as Node
+    } finally {
+      frameStack.pop()
+    }
+  }
   // 创建时捕获层级：JSX 求值发生在父组件同步渲染期间（帧已压栈），
   // 响应式重渲染时不再有帧，depth 必须在创建时定格。
   const creationFrame = frameStack.length > 0 ? frameStack[frameStack.length - 1] : undefined
@@ -349,6 +387,10 @@ interface NavigateProps {
 }
 
 export function Navigate(props: NavigateProps): Node {
+  if (getSSRRuntime()) {
+    // SSR：导航是客户端副作用，服务端渲染时不输出、不导航（空串）。
+    return null as unknown as Node
+  }
   // 与 Outlet 同理：作为 Router 的 JSX children 时创建阶段拿不到 router，
   // 导航延迟到 effect——Router 挂载后 activeRouter 信号变化触发补跑。
   const marker = document.createComment("navigate")
