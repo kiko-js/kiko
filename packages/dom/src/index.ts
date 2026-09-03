@@ -20,7 +20,7 @@ export {
   type StyleProps,
 } from "./jsx-runtime"
 export { render } from "./render"
-export { hydrate } from "./hydrate"
+export { hydrate, hydrateWithState } from "./hydrate"
 export { createPortal } from "./portal"
 export { createContext, useContext } from "./context"
 export type { Context } from "./context"
