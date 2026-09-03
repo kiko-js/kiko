@@ -6,7 +6,7 @@ import { Show, For, ErrorBoundary, Suspend } from "../src/flow"
 import { lazy } from "../src/lazy"
 import { renderToFragment, ssrRuntime } from "../src/ssr"
 import { setSSRRuntime } from "../src/ssr-mode"
-import { hydrate } from "../src/hydrate"
+import { hydrate, hydrateWithState } from "../src/hydrate"
 import { createSignal } from "../src/signal"
 import type { Component } from "../src/jsx-runtime"
 
@@ -516,5 +516,60 @@ describe("水合边界", () => {
     await flush()
     expect(container.textContent).toBe("7")
     dispose()
+  })
+})
+
+describe("hydrateWithState — 信号状态恢复", () => {
+  it("从序列化状态恢复信号初始值后水合", async () => {
+    const container = document.createElement("div")
+    // 服务端渲染时信号值为 42
+    setSSRRuntime(ssrRuntime)
+    const server = createSignal(42)
+    container.innerHTML = await renderToFragment(() => jsx("div", { children: server }))
+    setSSRRuntime(null)
+    expect(container.innerHTML).toBe("<div><!---->42</div>")
+
+    // 客户端：信号在组件内创建，初始值 0；通过状态恢复应为 42
+    const holder: { current: Signal.State<number> | null } = { current: null }
+    const dispose = hydrateWithState(
+      () => {
+        const client = createSignal(0)
+        holder.current = client
+        return jsx("div", { children: client })
+      },
+      container,
+      [42],
+    )
+    expect(holder.current?.get()).toBe(42)
+    expect(container.textContent).toBe("42")
+    holder.current?.set(100)
+    await flush()
+    expect(container.textContent).toBe("100")
+    dispose()
+  })
+
+  it("从 script 标签自动读取状态", async () => {
+    const container = document.createElement("div")
+    setSSRRuntime(ssrRuntime)
+    const server = createSignal(7)
+    container.innerHTML = await renderToFragment(() => jsx("div", { children: server }))
+    setSSRRuntime(null)
+    // 嵌入序列化状态脚本（在容器外，模拟真实场景）
+    const script = document.createElement("script")
+    script.id = "kiko-state"
+    script.type = "application/json"
+    script.textContent = "[7]"
+    document.body.appendChild(script)
+
+    const holder: { current: Signal.State<number> | null } = { current: null }
+    const dispose = hydrateWithState(() => {
+      const client = createSignal(0)
+      holder.current = client
+      return jsx("div", { children: client })
+    }, container)
+    expect(holder.current?.get()).toBe(7)
+    expect(container.textContent).toBe("7")
+    dispose()
+    script.remove()
   })
 })

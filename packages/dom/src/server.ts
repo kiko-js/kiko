@@ -12,6 +12,13 @@ import { ssrRuntime } from "./ssr"
 setSSRRuntime(ssrRuntime)
 
 export { renderToStream } from "./ssr-stream"
+export {
+  startSignalCapture,
+  stopSignalCapture,
+  serializeSignals,
+  restoreSignals,
+  stopSignalRestore,
+} from "./signal-serialize"
 export { createSignal, isSignal, createWatcher } from "./signal"
 export { lazy } from "./lazy"
 export type { WatchableSignal, Watcher } from "./signal"

@@ -1,6 +1,7 @@
 import { Signal } from "signal-polyfill"
 import { createWatcher, isSignal, reportError, watchSignal } from "./signal"
 import type { WatchableSignal } from "./signal"
+import { restoreSignals, stopSignalRestore } from "./signal-serialize"
 import {
   applyScopeRoots,
   attachDelegationRoot,
@@ -642,6 +643,43 @@ export function hydrateSuspend(props: { fallback?: unknown; children: unknown })
  * 挂上事件监听与信号绑定。返回 `dispose()` 用于卸载与清理。
  *
  * 假设：客户端初始状态与 SSR 一致（信号快照、分支选择、列表内容）。
+ */
+/**
+ * 带状态恢复的水合：从容器内的 `<script id="kiko-state" type="application/json">`
+ * 读取服务端序列化的信号状态，恢复后水合，使客户端信号初始值与服务端快照一致。
+ *
+ * 服务端配合：`startSignalCapture()` → `renderToFragment()` → `serializeSignals()`
+ * 把 JSON 嵌入 `<script id="kiko-state" type="application/json">${json}</script>`。
+ *
+ * 也可直接传 `state` 参数（已解析的数组或 JSON 字符串），此时不依赖脚本标签。
+ */
+export function hydrateWithState(
+  root: () => unknown,
+  container: Element,
+  state?: string | unknown[],
+): () => void {
+  if (state) {
+    restoreSignals(state)
+  } else {
+    // 优先在容器内查找，否则在文档中查找（脚本可能在容器外）
+    const script =
+      container.querySelector('script[id="kiko-state"]') ??
+      (typeof document !== "undefined" ? document.querySelector('script[id="kiko-state"]') : null)
+    if (script?.textContent) restoreSignals(script.textContent)
+  }
+  try {
+    return hydrate(root, container)
+  } finally {
+    stopSignalRestore()
+  }
+}
+
+/**
+ * 水合：把 `root()` 组件树对齐到 `container` 内由 SSR 产出的现有 DOM，
+ * 挂上事件监听与信号绑定。返回 `dispose()` 用于卸载与清理。
+ *
+ * 假设：客户端初始状态与 SSR 一致（信号快照、分支选择、列表内容）。
+ * 若服务端嵌入了信号状态，请用 `hydrateWithState()` 替代。
  */
 export function hydrate(root: () => unknown, container: Element): () => void {
   beginHydrate()
