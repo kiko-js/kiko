@@ -25,18 +25,21 @@ import type { AsyncComponent, Component, Props, StyleProps } from "./jsx-runtime
  * ssrJsx / 控制流组件返回它；toSSRString 直接透出 `.html` 不再转义，
  * 而普通字符串仍按文本转义——避免嵌套组件的结果被二次转义。
  */
-class SSRElement {
+/** 已序列化的 HTML 标记（区别于需要转义的纯文本字符串） */
+export class SSRElement {
   constructor(readonly html: string) {}
 }
 
 /** SSR 渲染值：文本（转义）或已序列化标记（透出），可含 promise */
 export type SSRValue = SSRElement | string | Promise<SSRElement | string>
 
-function escapeText(value: string): string {
+/** @internal exported for ssr-stream */
+export function escapeText(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
 }
 
-function escapeAttr(value: string): string {
+/** @internal exported for ssr-stream */
+export function escapeAttr(value: string): string {
   return escapeText(value).replace(/"/g, "&quot;").replace(/'/g, "&#39;")
 }
 
@@ -44,7 +47,8 @@ function raw(value: SSRElement | string): string {
   return value instanceof SSRElement ? value.html : value
 }
 
-function camelToKebab(key: string): string {
+/** @internal exported for ssr-stream */
+export function camelToKebab(key: string): string {
   return /[A-Z]/.test(key) ? key.replace(/[A-Z]/g, m => "-" + m.toLowerCase()) : key
 }
 
@@ -116,7 +120,8 @@ function extractScopeMarkers(html: string): { cleaned: string; attrs: string[] }
   return { cleaned: parts.join(""), attrs }
 }
 
-function extractCssText(children: unknown): string {
+/** @internal exported for ssr-stream */
+export function extractCssText(children: unknown): string {
   const parts: string[] = []
   const visit = (value: unknown): void => {
     if (value == null || value === false || value === true) return
@@ -133,8 +138,8 @@ function extractCssText(children: unknown): string {
   visit(children)
   return parts.join("\n")
 }
-
-function escapeStyleText(css: string): string {
+/** @internal exported for ssr-stream */
+export function escapeStyleText(css: string): string {
   // Prevent `</style>` in CSS from closing the element early and enabling
   // markup injection. The backslash keeps the HTML parser from seeing a tag
   // while remaining valid CSS text for the common breaking sequence.
@@ -180,7 +185,8 @@ const RAW_TEXT_ELEMENTS = new Set(["script", "noscript", "iframe", "xmp", "noemb
  * raw-text 元素的内容序列化：逐叶取 String，不做 HTML 转义。
  * 信号取快照，数组逐项拼接，含 promise 时整体异步。
  */
-function toRawText(value: unknown): unknown {
+/** @internal exported for ssr-stream */
+export function toRawText(value: unknown): unknown {
   if (value == null || value === false || value === true) return ""
   if (value instanceof SSRElement) return value.html // 已是序列化标记（如子元素）
   if (isSignal(value)) return toRawText((value as WatchableSignal<unknown>).get())
@@ -195,8 +201,8 @@ function toRawText(value: unknown): unknown {
   return String(value)
 }
 
-/** 防止 `</tag` 提前闭合元素（与 CSS 的 escapeStyleText 同一思路）。 */
-function guardRawText(text: string, tag: string): string {
+/** @internal exported for ssr-stream */
+export function guardRawText(text: string, tag: string): string {
   // "<\/tag"：反斜杠是合法转义，HTML 解析器也看不到闭合标签。
   return text.replace(new RegExp("</" + tag, "gi"), "<\\/" + tag)
 }
@@ -215,7 +221,8 @@ function serializeAttr(key: string, value: unknown): string {
   return ` ${key}="${escapeAttr(String(value))}"`
 }
 
-function serializeAttrs(props: Record<string, unknown>): string {
+/** @internal exported for ssr-stream */
+export function serializeAttrs(props: Record<string, unknown>): string {
   let out = ""
   for (const key of Object.keys(props)) {
     if (key === "children" || key === "key" || key === "ref") continue
