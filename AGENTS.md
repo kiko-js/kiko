@@ -229,10 +229,10 @@ bun run fmt           # oxfmt --write .
 bun run typecheck
 
 # Release (changesets)
-bun changeset          # add a changeset for your changes
+bun changeset          # add a manual changeset (optional, auto-generated from commits)
+bun run auto-changeset  # generate changeset from conventional commits since last tag
 bun run version-packages  # bump versions from changesets (CI does this)
 bun run release        # publish to npm (CI does this)
-
 # Docs site build (static HTML; must stay valid — malformed HTML blocks oxfmt pre-commit)
 bun run site:build
 
@@ -334,7 +334,7 @@ cd packages/benchmark && bun run bench
 ## Runtime/Tooling Preferences
 
 - **Runtime**: Bun (required — uses `bun:test`, `Bun.file`, Bun workspace features)
-- **Package manager**: Bun (`bun.lock` — see Constraints above; never edit by hand)
+- **CI/CD**: `.github/workflows/ci.yml` (lint/typecheck/test), `deploy-pages.yml` (docs site → GitHub Pages), `release.yml` (auto-changeset + changesets/action: version bump + npm publish). Changesets are auto-generated from conventional commits (`feat:` → minor, `fix:` → patch, `BREAKING CHANGE` → major). Push to main → release PR created → merge to publish.
 - **Git hooks**: `husky` pre-commit runs `lint-staged` then `oxlint .` (staged TS/JS get oxfmt --write + oxlint; JSON/MD/CSS/HTML get oxfmt)
 - **Linting/formatting**: `oxlint` + `oxfmt` (configured via `.oxlintrc.json`, `.oxfmtrc.json`, run via root `lint`/`fmt` scripts)
 - **CI/CD**: `.github/workflows/ci.yml` (lint/typecheck/test), `deploy-pages.yml` (docs site → GitHub Pages), `release.yml` (changesets: version bump + npm publish). Releases use [changesets](https://github.com/changesets/changesets) — add a changeset with `bun changeset`, merge to main to trigger the release PR, merge the release PR to publish.

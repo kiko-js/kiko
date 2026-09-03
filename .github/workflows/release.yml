@@ -27,6 +27,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # need full history for auto-changeset
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -57,6 +59,9 @@ jobs:
 
       - name: Test
         run: bun test
+
+      - name: Auto-generate changeset from commits
+        run: bun run auto-changeset
 
       - name: Create Release Pull Request or Publish
         id: changesets

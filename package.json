@@ -16,9 +16,8 @@
     "test": "bun test",
     "presite:build": "bun run build",
     "site:build": "bun run docs/build.ts",
-    "changeset": "changeset",
-    "version-packages": "changeset version",
-    "release": "bun run build && changeset publish"
+    "release": "bun run build && changeset publish",
+    "auto-changeset": "bun run scripts/auto-changeset.ts"
   },
   "devDependencies": {
     "@changesets/cli": "^3.0.1",
