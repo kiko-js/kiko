@@ -4,7 +4,7 @@ This repo uses [changesets](https://github.com/changesets/changesets) to manage 
 
 ## Auto-generating changesets from commits
 
-Changesets are **automatically generated** from conventional commits when pushing to `main`. The CI workflow (`release.yml`) runs `bun run auto-changeset` which:
+Changesets are **automatically generated** from conventional commits. The `bun run auto-changeset` script:
 
 1. Scans commits since the last release tag
 2. Parses [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `refactor:`, etc.)
@@ -29,21 +29,12 @@ Types:
 - `refactor`, `perf`, `docs`, `style`, `test`, `chore`, `ci`, `build` → patch bump
 - `BREAKING CHANGE` in body or `!` after type → major bump
 
-### Manual changeset (if needed)
-
-You can still add a manual changeset:
-
-```bash
-bun changeset
-```
-
 ## Releasing
 
-The release process is automated via GitHub Actions:
-
-1. Push to `main` → CI runs quality gates + auto-generates changeset
-2. If there are changesets, a "Version Packages" PR is created/updated
-3. Merge that PR → CI publishes to npm and creates a GitHub release
+1. Push to `main` → CI runs quality gates (lint/typecheck/test) only
+2. When ready to release: manually trigger the "Release" workflow in GitHub Actions
+3. The workflow auto-generates a changeset and creates/updates a "Version Packages" PR
+4. Merge that PR → CI publishes to npm and creates a GitHub release
 
 ## Manual release (if needed)
 

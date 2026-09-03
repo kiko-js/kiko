@@ -41,8 +41,7 @@ Monorepo: `@kikojs/signal` (signal toolkit), `@kikojs/dom` (DOM + SSR), `@kikojs
 ### Release
 
 - Changesets auto-generated from conventional commits (`feat:` → minor, `fix:` → patch, `BREAKING CHANGE` → major)
-- Push to main → CI creates release PR → merge to publish
-
-## Constraints
+- Push to main → CI runs quality gates only (no release)
+- Release: manually trigger "Release" workflow in GitHub Actions → auto-changeset → create release PR → merge to publish
 
 - **NEVER hand-edit `bun.lock`** — all dependency changes via `bun install` / `bun add` / `bun remove` / `bun update`
