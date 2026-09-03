@@ -225,10 +225,13 @@ cd packages/signal && bun run build
 # Lint + format (root scripts)
 bun run lint          # oxlint .
 bun run fmt           # oxfmt --write .
-bun run fmt:check     # oxfmt --check .
-
-# Type-check — root script covers all packages + all examples (no DOM lib at root, so use per-project tsconfigs)
+// Type-check — root script covers all packages + all examples (no DOM lib at root, so use per-project tsconfigs)
 bun run typecheck
+
+# Release (changesets)
+bun changeset          # add a changeset for your changes
+bun run version-packages  # bump versions from changesets (CI does this)
+bun run release        # publish to npm (CI does this)
 
 # Docs site build (static HTML; must stay valid — malformed HTML blocks oxfmt pre-commit)
 bun run site:build
@@ -334,7 +337,7 @@ cd packages/benchmark && bun run bench
 - **Package manager**: Bun (`bun.lock` — see Constraints above; never edit by hand)
 - **Git hooks**: `husky` pre-commit runs `lint-staged` then `oxlint .` (staged TS/JS get oxfmt --write + oxlint; JSON/MD/CSS/HTML get oxfmt)
 - **Linting/formatting**: `oxlint` + `oxfmt` (configured via `.oxlintrc.json`, `.oxfmtrc.json`, run via root `lint`/`fmt` scripts)
-- **CI/CD**: `.github/workflows/ci.yml` (lint/typecheck/test), `deploy-pages.yml` (docs site → GitHub Pages), `publish.yml` (npm publish). Packages publish as 0.0.1 via `bun run build` + `bun test` in prepublishOnly.
+- **CI/CD**: `.github/workflows/ci.yml` (lint/typecheck/test), `deploy-pages.yml` (docs site → GitHub Pages), `release.yml` (changesets: version bump + npm publish). Releases use [changesets](https://github.com/changesets/changesets) — add a changeset with `bun changeset`, merge to main to trigger the release PR, merge the release PR to publish.
 
 ## Testing & QA
 
