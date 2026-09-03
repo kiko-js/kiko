@@ -393,6 +393,12 @@ export const ssrRuntime: SSRRuntime = {
  */
 export async function renderToFragment(component: () => unknown): Promise<string> {
   const result = await toSSRString(component())
-  const { cleaned } = extractScopeMarkers(raw(result))
+  const { cleaned, attrs } = extractScopeMarkers(raw(result))
+  if (attrs.length > 0) {
+    console.warn(
+      `[kiko] <Style> at fragment root has no ancestor element to scope; ` +
+        `scoped CSS won't apply. Wrap <Style> in an element or use <Style global>.`,
+    )
+  }
   return cleaned
 }

@@ -178,7 +178,15 @@ export function applyScopeRoots(child: Node, parent: Node): void {
     return
   }
   const attr = scopeAttrOf(child)
-  if (attr === null || parent.nodeType !== Node.ELEMENT_NODE) return
+  if (attr === null || parent.nodeType !== Node.ELEMENT_NODE) {
+    if (attr !== null && parent.nodeType !== Node.ELEMENT_NODE) {
+      console.warn(
+        `[kiko] <Style> at fragment root has no ancestor element to scope; ` +
+          `scoped CSS won't apply. Wrap <Style> in an element or use <Style global>.`,
+      )
+    }
+    return
+  }
   const host = parent as Element
   if (!host.hasAttribute(attr)) host.setAttribute(attr, "")
   // Re-adopt the sheet when the anchor was inserted after its subtree was

@@ -299,14 +299,20 @@ describe("Style 的 SSR", () => {
     expect(html).toBe(`<style nonce="a&quot;b">.a { color: red }</style>`)
   })
 
-  it("scoped style at fragment root outputs scope marker (known limitation)", async () => {
-    // 已知限制：fragment 根节点的 <Style> 没有祖先元素消费 scope 标记，
-    // 输出的 CSS 是 scoped 但没有元素携带 scope 属性，样式不会生效。
-    // 建议：把 <Style> 放在元素内部，或显式使用 global。
-    const html = await renderToFragment(() => Style({ children: ".card { color: red }" }))
-    // scope 标记被 extractScopeMarkers 清理，但 CSS 仍是 scoped 选择器
-    expect(html).not.toContain("kiko-scope")
-    expect(html).toMatch(/<style>\[data-kiko-v\d+\] \.card/)
+  it("scoped style at fragment root warns", async () => {
+    const warnings: string[] = []
+    const orig = console.warn
+    console.warn = (m: unknown) => warnings.push(String(m))
+    try {
+      const html = await renderToFragment(() => Style({ children: ".card { color: red }" }))
+      // scope 标记被 extractScopeMarkers 清理，但 CSS 仍是 scoped 选择器
+      expect(html).not.toContain("kiko-scope")
+      expect(html).toMatch(/<style>\[data-kiko-v\d+\] \.card/)
+      // 应输出警告
+      expect(warnings.some(w => w.includes("fragment root"))).toBe(true)
+    } finally {
+      console.warn = orig
+    }
   })
 })
 

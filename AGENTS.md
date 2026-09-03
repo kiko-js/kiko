@@ -38,22 +38,22 @@ The monorepo contains three packages plus a benchmark, all built on `signal-poly
 
 **`packages/dom/src/`**
 
-| Module                 | Purpose                                                                                                                                                          |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `signal.ts`            | Thin wrappers over `signal-polyfill` (`createSignal`, `isSignal`, `createWatcher`) — re-implemented, not imported from `@kikojs/signal`                          |
-| `jsx-runtime.ts`       | JSX factory: `jsx()`, `jsxs()`, `jsxDEV()`, `Fragment`, `Style`; signal child/prop binding; marker-based structural swap; `cleanupWatchers`                      |
-| `jsx-types.ts`         | `JSX` namespace (`IntrinsicElements` for HTML+SVG, `Element`, etc.) and generic `Component<P>` — pure types                                                      |
-| `flow.ts`              | `Show` / `For` / `Suspend` / `ErrorBoundary` control-flow components (optional; built on signals + markers)                                                      |
-| `render.ts`            | `render(root, container)` — mounts a JSX tree, returns `dispose()` for cleanup                                                                                   |
-| `hydrate.ts`           | `hydrate(root, container)` — client-side hydration of SSR output via `PendingNode` lazy alignment                                                                |
-| `ssr.ts` / `server.ts` | `renderToFragment` — server-side string rendering; `server.ts` is the `@kikojs/dom/server` entry that registers the runtime bridge                               |
-| `ssr-mode.ts`          | ~30-byte runtime bridge (`SSRRuntime` interface, `set/getSSRRuntime`) so client jsx/flow never import SSR code                                                   |
-| `lazy.ts`              | `lazy(loader)` — code-splitting: async component with placeholder/suspense handling                                                                              |
-| `style.ts`             | Scoped-css engine backing `<Style>`: scope-attribute generation, selector rewriting (`&`, `:deep`, `:global`), constructable stylesheets with `<style>` fallback |
-| `portal.ts`            | `createPortal(node, target)` — render a subtree into another DOM node                                                                                            |
-| `context.ts`           | `createContext` / `useContext` — dependency injection; the context object is the provider (React 19 style), children must be a thunk (deferred eval)             |
-| `react-portal.ts`      | `ReactPortal(component, props)` — bridges React components into kiko trees (separate export)                                                                     |
-| `index.ts`             | Barrel re-exports                                                                                                                                                |
+| Module                 | Purpose                                                                                                                                                                |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `signal.ts`            | Thin wrappers over `signal-polyfill` (`createSignal`, `isSignal`, `createWatcher`) — re-implemented, not imported from `@kikojs/signal`                                |
+| `jsx-runtime.ts`       | JSX factory: `jsx()`, `jsxs()`, `jsxDEV()`, `Fragment`, `Style`; signal child/prop binding; marker-based structural swap; `cleanupWatchers`                            |
+| `jsx-types.ts`         | `JSX` namespace (`IntrinsicElements` for HTML+SVG, `Element`, etc.) and generic `Component<P>` — pure types                                                            |
+| `flow.ts`              | `Show` / `For` / `Suspend` / `ErrorBoundary` control-flow components (optional; built on signals + markers)                                                            |
+| `render.ts`            | `render(root, container)` — mounts a JSX tree, returns `dispose()` for cleanup                                                                                         |
+| `hydrate.ts`           | `hydrate(root, container)` / `hydrateWithState(root, container, state?)` — client-side hydration; `hydrateWithState` restores serialized signal state before hydration |
+| `ssr.ts` / `server.ts` | `renderToFragment` (string) / `renderToStream` (ReadableStream) — server-side rendering; `server.ts` registers the runtime bridge and exports signal serialize APIs    |
+| `ssr-stream.ts`        | `renderToStream()` — streaming SSR: builds a chunk tree (sync/async), flushes sync skeleton immediately, defers async Suspend content until resolve                    |
+| `signal-serialize.ts`  | `startSignalCapture` / `serializeSignals` / `restoreSignals` / `hydrateWithState` — capture signal values during SSR, restore on client before hydration               |
+| `ssr-mode.ts`          | ~30-byte runtime bridge (`SSRRuntime` interface, `set/getSSRRuntime`) so client jsx/flow never import SSR code                                                         |
+| `portal.ts`            | `createPortal(node, target)` — render a subtree into another DOM node                                                                                                  |
+| `context.ts`           | `createContext` / `useContext` — dependency injection; the context object is the provider (React 19 style), children must be a thunk (deferred eval)                   |
+| `react-portal.ts`      | `ReactPortal(component, props)` — bridges React components into kiko trees (separate export)                                                                           |
+| `index.ts`             | Barrel re-exports                                                                                                                                                      |
 
 **`packages/router/src/`**
 
@@ -112,7 +112,7 @@ hydrate(root: Node, container: Element): () => void      // hydrate SSR output
 createPortal(node: Node, target: Element): Node
 createContext<T>(defaultValue?): Context<T>             // context object IS the provider
 useContext<T>(ctx: Context<T>): T | undefined           // nearest provider value or default
-Style(props): Node                                       // scoped css (default) / <style global> global
+Style(props): Node                                       // scoped css (default) / <style global> global; supports `nonce` for CSP; warns at fragment root (no ancestor to scope)
 Show<T>(props): DocumentFragment                         // conditional render
 For<T>(props): DocumentFragment                          // list render (keyed via getKey, else non-keyed)
 Suspend(props): DocumentFragment                         // async/lazy placeholder + fallback
@@ -122,6 +122,15 @@ lazy<T>(loader: () => Promise<{ default: Component<T> }>): Component<T>
 
 // @kikojs/dom/server (separate export)
 renderToFragment(root: Node): string                     // SSR fragment with markers
+renderToStream(root: Node): ReadableStream<string>       // streaming SSR: sync skeleton flushes immediately, async content deferred
+startSignalCapture(): void                               // begin capturing signal values (by createSignal order)
+stopSignalCapture(): void                                // end capturing
+serializeSignals(): string                               // serialize captured signal values to JSON array
+restoreSignals(json: string | unknown[]): void           // prepare to restore signals on client (consume by createSignal order)
+stopSignalRestore(): void                                // end restore mode
+
+// @kikojs/dom (client)
+hydrateWithState(root: () => unknown, container: Element, state?: string | unknown[]): () => void  // hydrate with signal state restoration
 
 // React bridge (separate export; only needed when embedding React components)
 ReactPortal(props: { component: React.ComponentType, ...rest }): HTMLElement
@@ -332,7 +341,7 @@ cd packages/benchmark && bun run bench
 - **Framework**: Bun built-in test runner (`bun:test`)
 - **DOM environment**: `happy-dom` (v17) — injected via `test/setup.ts` which assigns `window`, `document`, `Node`, `HTMLElement`, `DocumentFragment` to `globalThis`
 - **Test pattern**: `describe`/`it` blocks with `expect` assertions (Jest-compatible API)
-- **~331 tests across 29 files (~697 expect calls)** covering: signal primitives, computed/derived, effect + error isolation + cleanup scope, scheduler (batch/untrack), `on`, store (incl. circular-ref detection), resource, emitter, JSX factory, render lifecycle, structural-reactive children, `Show`/`For`/`Suspend`/`ErrorBoundary`, `Style`, `lazy`, portal, context, hydrate, SSR, router (components/guards/history/utils), JSX types, React portal
+- **~474 tests across 36 files (~1106 expect calls)** covering: signal primitives, computed/derived, effect + error isolation + cleanup scope, scheduler (batch/untrack), `on`, store (incl. circular-ref detection), resource, emitter, JSX factory, render lifecycle, structural-reactive children, `Show`/`For`/`Suspend`/`ErrorBoundary`, `Style` (incl. nonce), `lazy`, portal, context, hydrate (incl. signal state restore), SSR (fragment + streaming), signal serialize, router (components/guards/history/utils), JSX types, React portal
 - **No coverage tooling** (`.gitignore` lists `coverage/` and `*.lcov` but no config exists)
 - **No mocking** — hand-rolled stubs only (e.g., `const MockComp = () => null`)
 - **No fixtures** — test data created inline per test case
