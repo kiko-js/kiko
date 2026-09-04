@@ -16,6 +16,7 @@ jobs:
   quality:
     name: Lint & format
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -38,9 +39,9 @@ jobs:
   check:
     name: Build, types & tests
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
