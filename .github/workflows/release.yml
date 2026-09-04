@@ -61,12 +61,17 @@ jobs:
       - name: Auto-generate changeset from commits
         run: bun run auto-changeset
 
+      - name: Version packages
+        run: npx changeset version
+        env:
+          CI: true
+
       - name: Create Release Pull Request or Publish
         id: changesets
         uses: changesets/action@v1
         with:
           publish: bun run release
-          version: bun run version-packages
+          version: echo "already versioned"
           commit: "chore: release"
           title: "chore: release"
         env:
