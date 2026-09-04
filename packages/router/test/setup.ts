@@ -1,6 +1,13 @@
 import { Window } from "happy-dom"
 
-const window = new Window({ url: "http://localhost/" })
+const window = new Window({
+  url: "http://localhost/",
+  settings: {
+    // happy-dom v20+ disables JS evaluation by default for security.
+    // Enable it for tests (no untrusted code is executed).
+    enableJavaScriptEvaluation: true,
+  },
+})
 // @ts-ignore
 globalThis.window = window
 // @ts-ignore
@@ -15,6 +22,10 @@ globalThis.HTMLAnchorElement = window.HTMLAnchorElement
 globalThis.DocumentFragment = window.DocumentFragment
 // @ts-ignore
 globalThis.MouseEvent = window.MouseEvent
+// @ts-ignore
+globalThis.Event = window.Event
+// @ts-ignore
+globalThis.CustomEvent = window.CustomEvent
 // @ts-ignore
 globalThis.history = window.history
 // @ts-ignore
