@@ -243,6 +243,13 @@ export interface Router {
   readonly query: Signal.Computed<RouteQuery>
   readonly matched: Signal.Computed<RouteMatch[]>
   readonly currentRoute: Signal.Computed<RouteRecord | null>
+  /**
+   * 初始导航（深链进来的首次守卫管线）落定后 resolve 的最终
+   * `RouteLocation`。守卫重定向会在 resolve 前应用；守卫中止则按当前
+   * 位置 resolve。服务端在 `renderToFragment` 前必须 await 它，否则
+   * 重定向页会按重定向前的内容渲染。
+   */
+  readonly ready: Promise<RouteLocation>
   navigate(to: NavPath | number, options?: NavigateOptions): Promise<void>
   push(to: NavPath, state?: unknown): void
   replace(to: NavPath, state?: unknown): void

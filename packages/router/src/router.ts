@@ -415,6 +415,7 @@ export function createRouter(options: RouterOptions): Router {
       })
   })
 
+  let ready!: Promise<RouteLocation>
   const router: Router = {
     mode,
     base,
@@ -424,6 +425,9 @@ export function createRouter(options: RouterOptions): Router {
     query,
     matched,
     currentRoute,
+    get ready() {
+      return ready
+    },
     navigate,
     push,
     replace,
@@ -435,23 +439,25 @@ export function createRouter(options: RouterOptions): Router {
     afterEach,
   }
 
-  // 初始加载同样走守卫：深链到 /admin + 鉴权守卫时先重定向，避免首屏渲染
-  // 受保护内容。结果在微任务中落地（早于浏览器绘制，通常无闪烁）；若守卫
-  // 返回前用户已发起导航，则放弃本次结果，避免覆盖更新的导航意图。
+  // 受保护内容。`ready` 让服务端能在渲染前 await 这次管线——否则重定向页
+  // 会按重定向前的内容输出。若守卫返回前用户已发起导航，则放弃本次结果，
+  // 避免覆盖更新的导航意图。
   const initialKey = location.get().key
-  runGuards(location.get(), null)
-    .then(outcome => {
-      if (disposed || location.get().key !== initialKey) return
-      if (outcome === false) return
+  ready = runGuards(location.get(), null)
+    .then(async outcome => {
+      if (disposed || location.get().key !== initialKey) return location.get()
+      if (outcome === false) return location.get()
       if (outcome) {
         history.replace(outcome.path, outcome.state)
         updateLocation(outcome.path, outcome.state, nextKey())
       }
       // 刷新/重开：恢复该条目上次离开时的滚动位置（scrollRestoration 已是 manual）
       void applyScroll(location.get(), null, history.getEntryScroll() ?? null, navigationSeq)
+      return location.get()
     })
     .catch(err => {
       reportError(err)
+      return location.get()
     })
 
   return router

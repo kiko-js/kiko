@@ -73,8 +73,53 @@ class PendingNode {
   ) {}
 }
 
-/** 采纳一个值对应的现有节点（按 SSR 标记与结构逐一对齐） */
-function hydrateValue(value: unknown): Node[] {
+/**
+ * 水合根级清理：在 hydrate() 返回的 disposer 里统一执行（早于
+ * cleanupWatchers）。供无法预知自身 DOM 锚点的组件使用——例如 Router 的
+ * 内容会被 Outlet 的分支交换移出初始位置，挂在子树节点上的 cleanup 会
+ * 随交换丢失；水合模式下这类组件把清理挂到水合根上。
+ * 非水合期调用则立即执行（防御性：调用方在水合分支外误用时保持语义）。
+ */
+const rootCleanups: Array<() => void> = []
+
+export function onHydrateCleanup(fn: () => void): void {
+  if (hydrateDepth > 0) {
+    rootCleanups.push(fn)
+  } else {
+    fn()
+  }
+}
+
+/**
+ * 组级 PendingNode：resolve 返回的节点直接交给父级游标处理，不消耗游标。
+ * 供控制类组件（Router / Navigate）在水合期惰性解析用。
+ */
+export function hydratePendingGroup(resolve: () => Node[]): Node {
+  return new PendingNode("group", resolve) as unknown as Node
+}
+
+/**
+ * 元素级 PendingNode + 采纳后钩子：先按标准协议采纳（重放 props、游标
+ * 对齐子节点），再执行 `post`——挂 effect、trackCleanup 等需要真实节点
+ * 的工作。rebuild 走标准重建路径（水合结束后的分支切换）。
+ */
+export function hydratePendingElement(tag: string, props: Props, post?: (el: Node) => void): Node {
+  return new PendingNode(
+    "element",
+    el => {
+      hydrateElement(el!, tag, props)
+      post?.(el!)
+      return [el!]
+    },
+    () => jsx(tag, props),
+  ) as unknown as Node
+}
+/**
+ * 采纳一个值对应的现有节点（按 SSR 标记与结构逐一对齐）。除了 hydrate()
+ * 内部，`./hydrate` 子路径把它提供给需要自定义采纳流程的包（如
+ * @kikojs/router 的 Outlet：在 PendingNode resolve 里采纳路由组件输出）。
+ */
+export function hydrateValue(value: unknown): Node[] {
   if (value == null || value === false || value === true) return []
   if (isSignal(value)) return hydrateSignalChild(value as WatchableSignal<unknown>)
   if (value instanceof PendingNode) {
@@ -700,6 +745,15 @@ export function hydrate(root: () => unknown, container: Element): () => void {
   attachDelegationRoot(container)
   return () => {
     detachDelegationRoot(container)
+    // 水合根级清理先于 watcher 拆除（Router dispose 等与节点无关，但保证
+    // cleanup 先拿到完整状态）
+    for (const fn of rootCleanups.splice(0)) {
+      try {
+        fn()
+      } catch (err) {
+        reportError(err)
+      }
+    }
     cleanupWatchers(container)
   }
 }

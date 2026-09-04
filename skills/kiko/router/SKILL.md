@@ -6,7 +6,7 @@ description: >-
   useMatch hooks、嵌套路由、动态参数、query/hash、守卫（beforeEnter/beforeLeave/
   beforeEach、redirect）、scrollBehavior 滚动管理、keepAlive 离屏保留、catch-all
   404、path/hash/memory 三种 history、SSR 字符串渲染（withSSRRouter）。
-  客户端水合（Router 树）尚未支持。
+  客户端水合（Router 树）已支持（SSR 产物直接 `hydrate`）。
 type: sub-skill
 library: kiko
 requires:
@@ -96,13 +96,18 @@ const routes = [
 - `buildPath` / `getQueryValue` / `pathsEqual` / `useNavigate`。
 - `createPathHistory` / `createHashHistory` / `createMemoryHistory`：可注入的 history 适配器（SSR/测试用 memory）。
 - 模式 `mode: "path"`（history API）或 `"hash"`（`#/path`，支持片段 `#/path#frag`）。
-- 路由状态：`router.location`（State）、`router.path`/`router.params`/`router.query`/`router.matched`/`router.currentRoute`（Computed）。
+- 路由状态：`router.location`（State）、`router.path`/`router.params`/`router.query`/`router.matched`/`router.currentRoute`（Computed）、`router.ready`（初始导航 Promise，SSR 渲染前必须 await）。
 
 ## 陷阱与限制
 
 - **path/hash history 客户端专用**：读取 `window`。SSR 用 `createMemoryHistory` +
   `withSSRRouter`（`@kikojs/router/server`，AsyncLocalStorage 按请求隔离，并发渲染
-  安全）。**路由树水合尚未支持**——SSR 产物不要直接 `hydrate` Router 组件树。
+  安全），渲染前 `await router.ready`（初始守卫/重定向落定）。
+- **水合已支持**：`hydrate(() => <Router router={clientRouter}>…</Router>, container)`
+  直接采纳 SSR 产物；客户端按真实 URL 重建 router，路由表需与服务端一致。
+  `<Navigate>` 水合输出为空，导航由客户端 effect 触发。
+- **卸载清理**：Router 的 cleanup 挂在随子树移动的 marker 上——挂 container
+  fragment 会被 render()/swapNodes 抽干，cleanup 永远不执行。
 - 客户端 `setActiveRouter` 是模块级全局信号，勿在服务端按请求调用（并发互踩、压栈泄漏）。
 - 嵌套路由用 `RouteRecord.children`；叶子组件经 `Outlet` 承接。
 - Link 的 activeClass 由 effect 驱动，卸载时自动清理监听。
@@ -122,3 +127,5 @@ const html = await withSSRRouter(router, () => renderToFragment(() => <Outlet />
 ```
 
 解析顺序：`Outlet` 显式 `router` prop → 父级 Outlet 帧 → 请求作用域（`withSSRRouter`）→ `setActiveRouter` 预置。
+服务端完整流程：`await router.ready` → `withSSRRouter(...)`。
+客户端水合：`hydrate(() => <Router router={clientRouter}>…</Router>, container)`。

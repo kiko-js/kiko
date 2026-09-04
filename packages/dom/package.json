@@ -19,6 +19,10 @@
       "types": "./dist/server.d.ts",
       "default": "./dist/server.js"
     },
+    "./hydrate": {
+      "types": "./dist/hydrate.d.ts",
+      "default": "./dist/hydrate.js"
+    },
     "./jsx-runtime": {
       "types": "./dist/jsx-runtime.d.ts",
       "default": "./dist/jsx-runtime.js"

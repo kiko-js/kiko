@@ -1,6 +1,7 @@
 import "./setup"
 import { describe, it, expect, beforeEach } from "bun:test"
 import { createRouter } from "../src/router"
+import { createMemoryHistory } from "../src/history"
 import { createAuthGuard, combineGuards } from "../src/guards"
 import type { RouteRecord } from "../src/types"
 
@@ -122,6 +123,46 @@ describe("guard helpers", () => {
     await settleCalls(calls)
     expect(router.location.get().path).toBe("/login")
     expect(calls).toEqual(["first", "second", "first", "second", "third"])
+    router.dispose()
+  })
+})
+
+describe("router.ready — 初始导航可等待", () => {
+  it("resolves to the redirected location after initial guards redirect", async () => {
+    const router = createRouter({
+      history: createMemoryHistory("/admin"),
+      routes: createRoutes(),
+      beforeEach: createAuthGuard(() => false, "/login"),
+    })
+    // 服务端必须在渲染前 await ready，否则重定向页按重定向前的内容输出
+    const ready = await router.ready
+    expect(ready.path).toBe("/login")
+    expect(router.location.get().path).toBe("/login")
+    router.dispose()
+  })
+
+  it("resolves with the current location when initial guards block", async () => {
+    const router = createRouter({
+      history: createMemoryHistory("/admin"),
+      routes: createRoutes(),
+      beforeEach: () => false,
+    })
+    const ready = await router.ready
+    expect(ready.path).toBe("/admin")
+    expect(router.location.get().path).toBe("/admin")
+    router.dispose()
+  })
+
+  it("resolves with the initial location when no guard redirects", async () => {
+    const router = createRouter({
+      history: createMemoryHistory("/about"),
+      routes: [
+        ...createRoutes(),
+        { path: "/about", component: () => document.createTextNode("about") },
+      ],
+    })
+    const ready = await router.ready
+    expect(ready.path).toBe("/about")
     router.dispose()
   })
 })

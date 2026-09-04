@@ -95,8 +95,9 @@ render(app, document.getElementById("app")!)
 - `<style>` 内联元素就是 `Style` 组件（默认作用域 CSS，`<style global>` 全局），见 `kiko/dom-rendering`。
 - `@kikojs/dom/server` 的渲染函数接收 **thunk**：`renderToFragment(() => <App/>)`，不是节点本身。
 - `Router`/`Link` 的 **path/hash history 是客户端专用**（读取 `window`）。SSR 用
-  `createMemoryHistory` + `withSSRRouter`（`@kikojs/router/server`）做字符串渲染；
-  路由树**水合尚未支持**（SSR 页面目前不能直接 `hydrate` Router 组件树）。
+  `createMemoryHistory` + `withSSRRouter`（`@kikojs/router/server`）做字符串渲染，
+  渲染前 `await router.ready`（初始守卫/重定向落定）；路由树水合已支持
+  （`hydrate` 直接对 SSR 产物采纳，见 `kiko/router`）。
 
 ## 参考实现
 

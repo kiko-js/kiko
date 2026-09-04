@@ -137,8 +137,9 @@ const router = createRouter({
 父级 Outlet 帧 → 请求作用域（`withSSRRouter`）→ `setActiveRouter` 预置（仅客户端 /
 测试）。
 
-推荐用 **`withSSRRouter`**（`@kikojs/router/server`）按请求绑定 router
-（AsyncLocalStorage 实现），同一进程并发渲染多条请求互不串扰：
+服务端完整流程：**渲染前 `await router.ready`**（初始守卫/重定向落定，否则重定向页
+会按重定向前的内容输出），再用 **`withSSRRouter`**（`@kikojs/router/server`，
+AsyncLocalStorage 实现）按请求绑定 router，同一进程并发渲染互不串扰：
 
 ```tsx
 import { createRouter, Outlet } from "@kikojs/router"
@@ -152,6 +153,34 @@ const router = createRouter({
 
 const html = await withSSRRouter(router, () => renderToFragment(() => <Outlet />))
 ```
+
+### 水合（hydrate）
+
+路由树支持客户端水合——直接对 SSR 产物采纳现有 DOM，不重建：
+
+```tsx
+import { createRouter } from "@kikojs/router"
+import { hydrate } from "@kikojs/dom"
+
+// 客户端按真实 URL 重建 router；路由表需与服务端一致
+const clientRouter = createRouter({ routes, mode: "path" })
+const stop = hydrate(
+  () => (
+    <Router router={clientRouter}>
+      <Link to="/" activeClass="on">
+        Home
+      </Link>
+      <Outlet />
+    </Router>
+  ),
+  document.getElementById("app")!,
+)
+```
+
+- `Link` 采纳后补上点击拦截与 `activeClass` 高亮；`Outlet` 采纳当前路由内容并
+  插入内部锚点，后续导航原地交换。
+- `<Navigate>` 水合输出为空，导航由客户端 effect 触发（服务端重定向请用守卫 +
+  `router.ready` + HTTP 3xx）。
 
 也可以在 `<Outlet router={router} />` 显式传 prop（嵌套布局由此自动向子级传递）；
 但 `Link` 与 hooks 无法传 prop，建议统一走 `withSSRRouter`。
