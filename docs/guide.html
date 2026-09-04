@@ -71,8 +71,10 @@
               <code>Text</code> 节点，挂载后就是真实 DOM，没有 diff 过程。
             </li>
             <li>
-              <strong>组件函数只执行一次：</strong>没有 re-render 循环。组件返回的节点被创建后即
-              固定，后续更新由嵌入的 signal 细粒度驱动——哪个绑定变了，就更新哪一处。
+              <strong>组件体惰性物化：</strong>没有 re-render 循环，组件体在消费点执行一次（挂载、
+              父元素构建、控制流分支或水合采纳）。children 不先于父组件求值，未展示的分支 （如
+              <code>Show</code> 的 fallback）组件体不执行；响应式由嵌入的 signal 细粒度驱动。
+              需要节点对象时用 <code>realize()</code> 显式物化，或组件级 <code>ref</code> 拿根元素。
             </li>
             <li>
               <strong>标准信号：</strong>所有 API 返回标准 <code>Signal.State</code> /
@@ -178,8 +180,11 @@
             <pre><code class="language-tsx" data-src="./assets/snippets/dom-for.tsx"></code></pre>
           </div>
           <p>
-            <code>For</code> 的 <code>index</code> 是访问器（调用返回当前序号）。默认非 keyed
-            协调，列表变化时做最小 DOM 操作；需要按 key 复用节点时可传 <code>getKey</code>（详见
+            <code>For</code> 的 <code>index</code> 是访问器（调用返回当前序号）。默认按<strong
+              >条目身份</strong
+            >
+            复用节点——对象移动/重排不重建、children 不重跑，重复条目回退整表重建；需要自定义
+            键控（item 变为访问器 <code>() =&gt; T</code>）时传 <code>getKey</code>（详见
             <a href="./dom.html#for">dom API 参考</a>）。
           </p>
         </section>

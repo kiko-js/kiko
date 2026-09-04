@@ -34,7 +34,7 @@ const BUMP_LEVELS: Record<string, "major" | "minor" | "patch"> = {
   ci: "patch",
   build: "patch",
   revert: "patch",
-  breaking: "major",
+  breaking: "minor", // v0 阶段钳到 minor,见 bumpLevel
 }
 
 interface Commit {
@@ -116,7 +116,13 @@ function detectPackage(file: string): string | null {
 }
 
 function bumpLevel(commit: Commit): "major" | "minor" | "patch" {
-  if (commit.breaking) return "major"
+  if (commit.breaking) {
+    // v0 约定(0.x.y):破坏性变更升 minor 而不是 major(0.x 阶段次版本号
+    // 即语义边界;semver 规定 0.x 不承诺稳定性, changesets 的 major 会直接
+    // 跳 1.0.0,不符合 v0 阶段"发布不超过 minor"的发布策略)。进入 1.x 后
+    // 恢复 major。
+    return "minor"
+  }
   return BUMP_LEVELS[commit.type] ?? "patch"
 }
 

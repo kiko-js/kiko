@@ -1,9 +1,9 @@
 ---
 name: kiko/control-flow
 description: >-
-  @kikojs/dom 的控制流组件：Show（条件渲染）、For（列表，keyed 与
-  non-keyed，index 为访问器信号）、ErrorBoundary（错误边界）、Suspend
-  （异步组件，序列超车）、lazy（懒加载模块）。SSR 与水合路径自动切换。
+  @kikojs/dom 的控制流组件：Show（条件渲染）、For（列表——无 getKey 默认
+  按条目身份复用节点，显式 keyed 用访问器信号）、ErrorBoundary（错误边界）、
+  Suspend（异步组件，序列超车）、lazy（懒加载模块）。SSR 与水合路径自动切换。
 type: sub-skill
 library: kiko
 requires:
@@ -39,15 +39,16 @@ import { For } from "@kikojs/dom"
   {(item, index) => <li>{item.name}: {index()}</li>}
 </For>
 
-// non-keyed（不传 getKey）：each 变化整列重渲
+// 默认（无 getKey）：按条目身份（Map SameValueZero）复用节点——
+// 对象移动/重排不重建、children 不重跑；重复条目回退整表重建
 <For each={items}>
   {(item, index) => <li>{item}: {index()}</li>}
 </For>
 ```
 
-- 推荐 keyed：同 key 节点复用，只更新变化的项。
-- **index 是访问器（`() => number`）**，其背后是 `Signal.State`——在 `Signal.Computed` 里读取 index 也能正确响应（普通字段值不可见，见 store 语义）。同对象引用重排时 index 信号仍正确更新。
-- children 为函数 `(item, index) => node`，每次渲染按需重跑。
+- **默认即按身份复用**：同一对象在数组中换位 → DOM 节点被移动（不重建），children 不重跑；新增条目才跑 children。适合对象列表。
+- 原始值列表按值 key：值相同即复用；**重复的原始值**（如 `["a","a"]`）会坍缩 → 自动回退整表重建，行为正确但无复用。要避免回退、需要精确键控时用 `getKey`。
+- 显式 `getKey`：同 key 节点复用，children 收到 item 访问器 `() => T`（背后是 per-key `Signal.State`），原地替换 item 时节点不重建、绑定就地更新。
 
 ## ErrorBoundary：错误边界
 
@@ -94,7 +95,7 @@ const Card = lazy(() => import("./Card").then(m => m.default)) // 真实用法
 每个组件在 `isHydrating()` 时走水合路径，服务端走 SSR 字符串路径，客户端走 DOM 路径（由 `@kikojs/dom` 运行时自动路由）。跨端行为：
 
 - `Show`：SSR 输出与客户端首帧一致（falsy → fallback）。
-- `For`：keyed 水合按 key 对齐节点。
+- `For`：按 key 对齐节点（显式 getKey 或默认条目身份——水合采纳的节点同样复用）。
 - `Suspend`：SSR 端 promise 未决时输出 fallback；水合端对未决 lazy 做静态采用，直到模块 settle 后替换（见 `kiko/ssr`）。
 - `ErrorBoundary`：水合为静态采用，出错时客户端侧接管。
 

@@ -110,9 +110,9 @@ const routes = [
   fragment 会被 render()/swapNodes 抽干，cleanup 永远不执行。
 - 隐式注入 = 渲染帧（Router/Outlet 渲染子树期间压帧）→ 请求作用域（ALS）→
   activeRouter 信号，首次解析到非空后**一次性绑定**（组件只跑一次，其后挂载的
-  其他 Router 不串扰）。kiko 的 jsx 急切执行组件：`<Router>` 的 JSX children
-  先于 Router 体运行、走信号兜底；**嵌套 `<Router>` 必须用 thunk children**
-  （`<Router router={inner}>{() => <Outlet />}</Router>`）才能精确绑定内层。
+  其他 Router 不串扰）。惰性物化后 children 在 Router 体内才执行，**词法
+  children 直接精确绑定内层**（`<Router router={inner}><Outlet /></Router>`）；
+  thunk children（`{() => <Outlet />}`）形态仍兼容。
 - 嵌套路由用 `RouteRecord.children`；叶子组件经 `Outlet` 承接。
 - Link 的 activeClass 由 effect 驱动，卸载时自动清理监听。
 

@@ -1,9 +1,10 @@
 ---
 name: kiko/dom-rendering
 description: >-
-  @kikojs/dom 的渲染层：JSX 工厂（jsx/jsxs/jsxDEV/Fragment）、render 挂载与
-  dispose、hydrate 水合、createPortal 门户、ref 属性、Style（<style> 作用域
-  CSS）。讲解信号如何绑到文本/属性/事件，以及何时做结构响应式替换。
+  @kikojs/dom 的渲染层：JSX 工厂（jsx/jsxs/jsxDEV/Fragment）、惰性物化
+  （组件体推迟到消费点执行；realize 显式物化；组件级 ref）、render 挂载与
+  dispose、hydrate 水合、createPortal 门户、Style（<style> 作用域 CSS）。
+  讲解信号如何绑到文本/属性/事件，以及何时做结构响应式替换。
 type: sub-skill
 library: kiko
 requires:
@@ -13,7 +14,7 @@ requires:
 
 # DOM 渲染（@kikojs/dom）
 
-JSX 编译为真实 DOM 节点，无虚拟 DOM。组件函数只执行一次；响应式来自每个信号「读取点」的 watcher。
+JSX 编译为真实 DOM 节点，无虚拟 DOM。**组件体惰性物化**：`jsx(组件)` 返回待物化占位，组件体在消费点执行；响应式来自每个信号「读取点」的 watcher。
 
 ## JSX 工厂与入口
 
@@ -77,6 +78,40 @@ const view = createSignal(<span>a</span>)
   }}
 />
 ```
+
+## 惰性物化（lazy materialization）
+
+组件标签的 `jsx(tag, props)` 不再立即执行组件体，而是返回占位对象；组件体在**消费点**执行：
+
+- 挂载点：`render` / `createPortal`。
+- intrinsic children：父元素构造时（`<div><Comp/></div>` 的 `Comp` 在 div 构建内执行）。
+- 控制流：`Show`/`For`/`ErrorBoundary`/`Suspend` 渲染该分支时——**未展示分支的组件体不执行**。
+- 水合：游标采纳该 children 时（保持「采纳顺序 == 求值顺序 == 文档序」）。
+
+由此 children 不再先于父组件求值：`<Router><Outlet/></Router>` 等词法写法直接成立，无需 thunk children。
+
+获取真实节点的两条路：
+
+```tsx
+import { realize } from "@kikojs/dom"
+
+const el = realize(<Card />) // ① 显式物化：同步执行组件体，节点身份稳定
+
+render(
+  <Card
+    ref={node => {
+      /* ② 组件级 ref：物化出根元素后触发一次 */
+    }}
+  />,
+  container,
+)
+```
+
+规则与陷阱：
+
+- `ref` 是 **jsx 层属性**：组件收不到它（不会进入 props）。组件返回单个元素时触发；函数 ref 可返回 cleanup（随 dispose 清理）。多节点输出的组件没有「唯一根」，ref 被忽略并告警。
+- `realize` 不缓存：同一占位物化两次 = 组件体执行两次 = 两棵独立节点树。需要身份复用时先 `realize` 一次再传递。
+- SSR 字符串路径仍按文档序急切求值——水合对齐依赖此契约，不要让 SSR 端依赖「惰性」。
 
 ## Style（`<style>` 作用域 CSS）
 

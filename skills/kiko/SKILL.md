@@ -2,7 +2,7 @@
 name: kiko
 description: >-
   kiko 是一个构建于 signal-polyfill（TC39 Signals）之上的细粒度响应式 DOM 库：
-  无虚拟 DOM、无 diff，JSX 编译为真实 DOM 节点，信号变化精准更新对应节点。
+  无虚拟 DOM、无 diff，JSX 编译为真实 DOM 节点，组件体惰性物化（推迟到消费点执行），信号变化精准更新对应节点。
   提供 @kikojs/signal（信号原语 / store / resource / emitter）、@kikojs/dom
   （JSX 工厂 / 渲染 / 控制流 / SSR 与水合）、@kikojs/router（路由 / 守卫 / 组件）。
   本技能是所有 kiko 技能的入口，先读本文件，再按需进入子技能。
@@ -83,8 +83,7 @@ render(app, document.getElementById("app")!)
 
 ## 跨包关键概念
 
-- **组件只执行一次**：无 re-render 循环。`function App() { return <div>{x}</div> }` 只跑一次，响应式来自信号绑定，不是重跑函数。
-- **信号在 props/children 中的绑定**：在 JSX 里读到的每个信号都按「读取点」建一个 `Signal.subtle.Watcher`。文本/属性/事件按值更新；若信号值解析为 `Node` 或数组，则用标记锚点整棵替换子树（结构响应式）。
+- **组件体惰性物化**：无 re-render 循环。`function App() { return <div>{x}</div> }` 只跑一次；`jsx(组件)` 返回待物化占位，组件体在消费点（render / 父元素 children / 控制流分支 / 水合采纳）执行——children 不先于父组件求值，未展示分支不执行。需要节点对象时用 `realize()` 显式物化，或组件级 `ref` 拿根元素。
 - **`Signal.State` 是标准接口**：`s.get()` 读、`s.set(v)` 写（也接受 `v => v+1` 函数式写）；`computed(fn)` 返回 `Signal.Computed`。
 - **`render()` 返回 `dispose`**：整体卸载时清理所有 watcher、事件监听与 `ref` 清理回调。重复挂载到同一容器会先拆除旧树。
 
