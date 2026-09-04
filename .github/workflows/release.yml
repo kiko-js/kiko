@@ -10,6 +10,7 @@ concurrency:
 permissions:
   contents: write
   pull-requests: write
+  workflows: write
 
 jobs:
   release:
@@ -21,8 +22,6 @@ jobs:
       contents: write
       pull-requests: write
       id-token: write
-      # pushing a tag whose history includes release.yml edits needs this
-      workflows: write
 
     steps:
       - name: Checkout
