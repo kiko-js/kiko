@@ -34,12 +34,6 @@ jobs:
           bun-version: 1.4.0
           cache: true
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          registry-url: https://registry.npmjs.org/
-
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
@@ -56,7 +50,7 @@ jobs:
         run: bun run typecheck
 
       - name: Test
-        run: bun test
+        run: bun test --isolate
 
       - name: Auto-generate changeset from commits
         run: bun run auto-changeset
