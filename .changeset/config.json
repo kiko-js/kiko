@@ -9,6 +9,6 @@
   "changedFilePatterns": ["**"],
   "privatePackages": { "version": false, "tag": false },
   "updateInternalDependencies": "patch",
-  "ignore": [],
+  "ignore": ["htm", "kiko-docs", "basic", "ssr", "react-portal", "tailwind"],
   "bumpVersionsWithWorkspaceProtocolOnly": false
 }
