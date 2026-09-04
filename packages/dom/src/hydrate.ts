@@ -1,4 +1,5 @@
 import { Signal } from "signal-polyfill"
+import { KikoLazy, isLazy, realizeLazy } from "./lazy-node"
 import { createWatcher, isSignal, reportError, watchSignal } from "./signal"
 import type { WatchableSignal } from "./signal"
 import { restoreSignals, stopSignalRestore } from "./signal-serialize"
@@ -120,6 +121,7 @@ export function hydratePendingElement(tag: string, props: Props, post?: (el: Nod
  * @kikojs/router 的 Outlet：在 PendingNode resolve 里采纳路由组件输出）。
  */
 export function hydrateValue(value: unknown): Node[] {
+  if (isLazy(value)) return hydrateValue(realizeLazy(value))
   if (value == null || value === false || value === true) return []
   if (isSignal(value)) return hydrateSignalChild(value as WatchableSignal<unknown>)
   if (value instanceof PendingNode) {
@@ -211,7 +213,9 @@ export function hydrateJsx(
 
   if (typeof tag === "function") {
     // 组件：透传其返回值（PendingNode / 数组 / 文本），由父级游标对齐
-    return tag(p) as unknown as unknown
+    // 惰性原型：组件体推迟到游标采纳该 children 时执行，保持
+    // 采纳顺序 == 求值顺序 == 文档序
+    return new KikoLazy(() => tag(p)) as unknown as unknown
   }
 
   if (tag === "style") {
@@ -617,7 +621,7 @@ export function hydrateSuspend(props: { fallback?: unknown; children: unknown })
       for (const n of toNodes(value)) cleanupWatchers(n)
     }
 
-    const children = unwrap(props.children)
+    const children = realizeLazy(unwrap(props.children))
     if (isPromiseLike(children)) {
       // 初始 promise：SSR 内容即当前状态（不闪 fallback），解析后对齐换入
       Promise.resolve(children).then(
@@ -634,7 +638,7 @@ export function hydrateSuspend(props: { fallback?: unknown; children: unknown })
       const watcher = watchSignal(signal, () => {
         // 修复：水合后信号驱动的 Suspend 重渲染（此前完全没有订阅）
         const mySeq = ++seq
-        const value = unwrap(signal)
+        const value = realizeLazy(unwrap(signal))
         const settle = (v: unknown): void => {
           if (isPromiseLike(v)) {
             renderFallback()

@@ -1,3 +1,4 @@
+import { isLazy, realizeLazy } from "./lazy-node"
 import {
   applyScopeRoots,
   attachDelegationRoot,
@@ -5,7 +6,8 @@ import {
   detachDelegationRoot,
 } from "./jsx-runtime"
 
-export function render(root: Node, container: Element): () => void {
+export function render(rootNode: Node, container: Element): () => void {
+  const root = isLazy(rootNode) ? (realizeLazy(rootNode) as Node) : rootNode
   // If the container already hosts a kiko tree, tear down its watchers and
   // cleanups before overwriting the DOM — otherwise `innerHTML = ""` would
   // orphan watchers that still reference the old (now-detached) nodes.

@@ -1,4 +1,5 @@
 import { Signal } from "signal-polyfill"
+import { KikoLazy, isLazy, lazyMode, realizeLazy } from "./lazy-node"
 import { createWatcher, isSignal, reportError, watchSignal } from "./signal"
 import type { WatchableSignal, Watcher } from "./signal"
 import {
@@ -237,6 +238,7 @@ export function cleanupWatchers(root: Node): void {
 }
 
 export function toNodes(value: unknown): Node[] {
+  if (isLazy(value)) return toNodes(realizeLazy(value))
   if (value == null || value === false || value === true) return []
   if (isPromiseLike(value)) {
     throw new Error("Promise rendered outside <Suspend> — wrap async components in <Suspend>")
@@ -302,8 +304,11 @@ export function swapBranch(marker: Node, old: Node[], next: Node[], retainOld: b
   }
   return next
 }
-
 function appendChild(parent: Node, child: unknown): void {
+  if (isLazy(child)) {
+    appendChild(parent, realizeLazy(child))
+    return
+  }
   if (child == null || child === false || child === true) return
   if (isPromiseLike(child)) {
     throw new Error("Promise rendered outside <Suspend> — wrap async components in <Suspend>")
@@ -615,6 +620,8 @@ export function jsx(
   }
 
   if (typeof tag === "function") {
+    // 惰性原型：组件体推迟到消费点执行（appendChild/toNodes/render/水合采纳）
+    if (lazyMode.enabled) return new KikoLazy(() => tag(p)) as unknown as Node
     return tag(p)
   }
 

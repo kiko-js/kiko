@@ -5,6 +5,7 @@ import {
   trackCleanup,
 } from "./jsx-runtime"
 import { getSSRRuntime } from "./ssr-mode"
+import { isLazy, realizeLazy } from "./lazy-node"
 
 /**
  * 将 `node` 渲染到 `container`（如 `document.body`），返回留在原位置的锚点注释。
@@ -16,10 +17,11 @@ import { getSSRRuntime } from "./ssr-mode"
  * （如 `createPortal(jsx("div", { children: sig }), document.body)`），
  * 更新与清理机制保持不变。
  */
-export function createPortal(node: Node, container: Element): Comment {
+export function createPortal(nodeArg: Node, container: Element): Comment {
   if (getSSRRuntime()) {
     throw new Error("createPortal is client-only and cannot be used during SSR")
   }
+  const node = isLazy(nodeArg) ? (realizeLazy(nodeArg) as Node) : nodeArg
   const anchor = document.createComment("portal")
   const nodes = node instanceof DocumentFragment ? Array.from(node.childNodes) : [node]
   for (const n of nodes) container.appendChild(n)

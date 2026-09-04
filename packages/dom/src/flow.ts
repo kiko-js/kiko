@@ -1,4 +1,5 @@
 import { Signal } from "signal-polyfill"
+import { isLazy, realizeLazy } from "./lazy-node"
 import { createWatcher, isSignal, reportError, watchSignal } from "./signal"
 import type { WatchableSignal } from "./signal"
 import {
@@ -488,6 +489,8 @@ export function Suspend(props: { fallback?: unknown; children: unknown }): Docum
 
   // 收集 children 中的 promise：挂起则先渲染 fallback，settle 后换入结果
   const settle = (value: unknown, mySeq: number): void => {
+    // 数组子项可能是惰性组件（async 组件的 Lazy）：先解包再做 promise 检测
+    if (Array.isArray(value)) value = value.map(item => (isLazy(item) ? realizeLazy(item) : item))
     if (isPromiseLike(value)) {
       renderFallback()
       value.then(
@@ -525,7 +528,7 @@ export function Suspend(props: { fallback?: unknown; children: unknown }): Docum
 
   const renderValue = (value: unknown): void => {
     const mySeq = ++seq
-    settle(value, mySeq)
+    settle(realizeLazy(value), mySeq)
   }
 
   renderValue(unwrap(props.children))
