@@ -1,6 +1,7 @@
 /** @jsxImportSource @kikojs/dom */
 import { describe, it, expect, beforeAll } from "bun:test"
 import { jsx, Fragment, cleanupWatchers } from "../src/jsx-runtime"
+import { realizeLazy as realize } from "../src/lazy-node"
 import { render } from "../src/render"
 import type { Component } from "../src/jsx-runtime"
 import { createSignal } from "../src/signal"
@@ -67,7 +68,7 @@ describe("jsx", () => {
     function Greet(props: { name: string }) {
       return jsx("span", { children: `Hello ${props.name}` })
     }
-    const el = jsx(Greet as Component, { name: "World" }) as HTMLElement
+    const el = realize(jsx(Greet as Component, { name: "World" })) as HTMLElement
     expect(el.tagName).toBe("SPAN")
     expect(el.textContent).toBe("Hello World")
   })

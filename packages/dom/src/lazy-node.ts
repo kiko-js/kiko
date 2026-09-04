@@ -1,16 +1,16 @@
 /**
- * 惰性 jsx 原型（实验分支 exp/lazy-jsx）：
+ * 惰性 JSX:组件体不再在 JSX 构造点执行,而是返回 `KikoLazy` 占位,在消费点
+ * (appendChild / toNodes / hydrateValue / render / createPortal)解包执行。
  *
- * `jsx(组件, props)` 不再急切执行组件体，而是返回 `KikoLazy`——一个在
- * 消费点（appendChild / toNodes / hydrateValue / render / createPortal）
- * 才解包执行组件体的占位对象。目的是把组件体的求值时机从「JSX 构造点」
- * 推迟到「父组件作用域内」，使 children 先于父组件求值的急切语义消失。
+ * 组件体的求值时机从「JSX 构造点」推迟到「父组件作用域内」,children 不再
+ * 先于父组件求值;未展示的分支(Show fallback 等)组件体不执行。
  *
- * 用 `Symbol.for` 注册的品牌标记做识别，而不是 instanceof：库可能被同一
- * 页面加载两份（如测试里 src 导入与包名导入并存），instanceof 跨实例
- * 失效会把另一份实例的 Lazy 当普通值字符串化。
+ * 识别用 `Symbol.for` 注册的品牌标记而不是 instanceof:同一页面可能加载两份
+ * 库(如测试里 src 导入与包名导入并存),instanceof 跨实例失效会把另一份
+ * 实例的 Lazy 当普通值字符串化。
  *
- * 内部实现细节，不属于公共 API。
+ * 公开出口:`realize`(同步物化并保持节点身份)与组件级 `ref`。
+ * 内部实现细节,不属于公共 API。
  */
 export const LAZY_BRAND = Symbol.for("kiko.lazy-node")
 
@@ -31,11 +31,8 @@ export function isLazy(value: unknown): value is KikoLazy {
   )
 }
 
-/** 解包到非 Lazy 为止（组件体内部可能再产出 Lazy）。 */
+/** 解包到非 Lazy 为止(组件体内部可能再产出 Lazy)。 */
 export function realizeLazy(value: unknown): unknown {
   while (isLazy(value)) value = (value as KikoLazy).build()
   return value
 }
-
-/** 原型总开关：便于对比急切/惰性两种模式的测试行为。 */
-export const lazyMode = { enabled: true }

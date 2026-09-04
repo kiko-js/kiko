@@ -18,7 +18,7 @@ import {
   trackCleanup,
   trackWatcher,
 } from "./jsx-runtime"
-import { isPromiseLike, isTruthy, unwrap } from "./shared"
+import { isPromiseLike, isTruthy, unwrap, defaultForKey } from "./shared"
 import type { AsyncComponent, Component, Props, StyleProps } from "./jsx-runtime"
 
 /**
@@ -371,6 +371,7 @@ export function hydrateFor(props: {
     const getKey = props.getKey
     let current: Node[] = []
     let entries: Map<unknown, HydratedForEntry> = new Map()
+    let plain: Map<unknown, Node[]> = new Map()
 
     // 初次：水合采纳。keyed 模式每项建 state/accessor/idx——与 flow.ts
     // 相同的条目模型，保证水合后的首次更新就走 keyed 重排（存活 key
@@ -395,22 +396,69 @@ export function hydrateFor(props: {
           entries.set(key, entry)
           out.push(...entry.nodes)
         } else {
-          out.push(...hydrateValue(props.children(item, index)))
+          const nodes = hydrateValue(props.children(item, index))
+          // 重复 key(原始值重复)只保留首个条目;后续更新遇重复会回退全量
+          if (!plain.has(defaultForKey(item))) plain.set(defaultForKey(item), nodes)
+          out.push(...nodes)
         }
       }
       current = out
     }
 
-    // 更新：keyed 与 flow.ts 的 renderKeyed 相同；非 keyed 全量重建
+    // 更新：keyed 与 flow.ts 的 renderKeyed 相同；无 getKey 时默认按引用
+    // 复用水合采纳的节点（与 flow.ts 的 renderDefaultKeyed 同语义）
     const render = (): void => {
       const list = unwrap(props.each) as readonly unknown[]
       if (!getKey) {
+        const parent = marker.parentNode
         const next: Node[] = []
+        const nextPlain = new Map<unknown, Node[]>()
+        let fallback = false
+        const seen = new Set<unknown>()
         for (let i = 0; i < list.length; i++) {
-          const index = (): number => i
-          next.push(...toNodes(props.children(list[i], index)))
+          const item = list[i]
+          const key = defaultForKey(item)
+          if (seen.has(key)) {
+            fallback = true
+            break
+          }
+          seen.add(key)
+          const existing = plain.get(key)
+          if (existing) {
+            nextPlain.set(key, existing)
+            next.push(...existing)
+          } else {
+            const nodes = toNodes(props.children(item, () => i))
+            nextPlain.set(key, nodes)
+            next.push(...nodes)
+          }
         }
-        current = swapNodes(marker, current, next)
+        if (fallback) {
+          const regenerated: Node[] = []
+          for (let i = 0; i < list.length; i++) {
+            regenerated.push(...toNodes(props.children(list[i], () => i)))
+          }
+          current = swapNodes(marker, current, regenerated)
+          plain = new Map()
+          return
+        }
+        const dropped: Node[][] = []
+        for (const [key, nodes] of plain) {
+          if (!nextPlain.has(key)) dropped.push(nodes)
+        }
+        for (const nodes of dropped) {
+          for (const n of nodes) cleanupWatchers(n)
+        }
+        if (parent) for (const n of current) parent.removeChild(n)
+        if (parent) {
+          const ref = marker.nextSibling
+          for (const n of next) {
+            applyScopeRoots(n, parent)
+            parent.insertBefore(n, ref)
+          }
+        }
+        current = next
+        plain = nextPlain
         return
       }
       const parent = marker.parentNode
@@ -454,6 +502,7 @@ export function hydrateFor(props: {
       }
       current = next
       entries = nextEntries
+      plain = new Map()
     }
 
     adopt()
@@ -466,6 +515,7 @@ export function hydrateFor(props: {
       for (const n of current) cleanupWatchers(n)
       current = []
       entries = new Map()
+      plain = new Map()
     })
     return [marker, ...current]
   })

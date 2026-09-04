@@ -1,5 +1,5 @@
 import { Signal } from "signal-polyfill"
-import { KikoLazy, isLazy, lazyMode, realizeLazy } from "./lazy-node"
+import { KikoLazy, isLazy, realizeLazy } from "./lazy-node"
 import { createWatcher, isSignal, reportError, watchSignal } from "./signal"
 import type { WatchableSignal, Watcher } from "./signal"
 import {
@@ -626,8 +626,7 @@ export function jsx(
   }
 
   if (typeof tag === "function") {
-    // 惰性原型：组件体推迟到消费点执行（appendChild/toNodes/render/水合采纳）
-    if (!lazyMode.enabled) return tag(p)
+    // 惰性物化：组件体推迟到消费点执行（appendChild/toNodes/render/水合采纳）
     // `ref` 是 jsx 层的属性，不进入组件 props：realize 出根元素后触发
     // （与 intrinsic setRef 同一语义；转发型组件的根就是目标元素，行为等价）
     const ref = p.ref

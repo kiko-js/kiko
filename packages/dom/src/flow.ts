@@ -11,7 +11,7 @@ import {
   trackCleanup,
   trackWatcher,
 } from "./jsx-runtime"
-import { isPromiseLike, isTruthy, unwrap } from "./shared"
+import { isPromiseLike, isTruthy, unwrap, defaultForKey } from "./shared"
 import { getSSRRuntime } from "./ssr-mode"
 import {
   hydrateErrorBoundary,
@@ -164,6 +164,7 @@ export function For<T>(props: {
   frag.appendChild(marker)
   let current: Node[] = []
   let entries: Map<unknown, KeyEntry<T>> = new Map()
+  let plain: Map<unknown, Node[]> = new Map()
 
   const renderFull = (list: readonly T[]): void => {
     const next: Node[] = []
@@ -175,6 +176,80 @@ export function For<T>(props: {
       )
     }
     current = swapNodes(marker, current, next)
+    entries = new Map()
+    plain = new Map()
+  }
+
+  /**
+   * 最小移动重排（SolidJS-style）：丢弃 dropped 节点的 watcher（DOM 仍挂在
+   * `current` 里），移除不再存活的节点，存活节点按 `next` 顺序以单次后向
+   * 插入锚定到 marker。返回 `next`。
+   */
+  const reconcileList = (
+    parent: Node | null,
+    marker: Node,
+    currentNodes: Node[],
+    next: Node[],
+    droppedNodes: Node[][],
+  ): Node[] => {
+    for (const nodes of droppedNodes) {
+      for (const n of nodes) cleanupWatchers(n)
+    }
+    if (!parent) return next
+    const keep = new Set(next)
+    for (const n of currentNodes) {
+      if (!keep.has(n)) parent.removeChild(n)
+    }
+    let ref: Node = marker
+    for (let i = next.length - 1; i >= 0; i--) {
+      const node = next[i] as Node
+      if (node.nextSibling !== ref) parent.insertBefore(node, ref)
+      applyScopeRoots(node, parent)
+      ref = node
+    }
+    return next
+  }
+
+  /**
+   * 默认 keying（无 getKey）：对象/函数按引用复用节点——移动不重建、children
+   * 不重跑；原始值按位置（无稳定身份，按值会坍缩重复项）。同一引用出现两次
+   * 同样会坍缩，这两种情况都回退整表重建（renderFull）。
+   */
+  const renderDefaultKeyed = (list: readonly T[]): void => {
+    const parent = marker.parentNode
+    const next: Node[] = []
+    const nextPlain = new Map<unknown, Node[]>()
+    const childFn = props.children as (item: T, index: () => number) => unknown
+    let fallback = false
+    const seen = new Set<unknown>()
+    for (let i = 0; i < list.length; i++) {
+      const item = list[i] as T
+      const key = defaultForKey(item)
+      if (seen.has(key)) {
+        fallback = true
+        break
+      }
+      seen.add(key)
+      const existing = plain.get(key)
+      if (existing) {
+        nextPlain.set(key, existing)
+        next.push(...existing)
+      } else {
+        const nodes = toNodes(childFn(item, () => i))
+        nextPlain.set(key, nodes)
+        next.push(...nodes)
+      }
+    }
+    if (fallback) {
+      renderFull(list)
+      return
+    }
+    const dropped: Node[][] = []
+    for (const [key, nodes] of plain) {
+      if (!nextPlain.has(key)) dropped.push(nodes)
+    }
+    current = reconcileList(parent, marker, current, next, dropped)
+    plain = nextPlain
     entries = new Map()
   }
 
@@ -207,37 +282,17 @@ export function For<T>(props: {
         next.push(...entry.nodes)
       }
     }
-    // Dispose entries that dropped out of the list (watchers only — their
-    // DOM nodes are still attached among `current` and get removed below).
-    for (const entry of entries.values()) {
-      for (const n of entry.nodes) cleanupWatchers(n)
-    }
-    // Minimal-move reconciliation (SolidJS-style): only detach/reattach a node
-    // when its DOM location actually needs to change. Dropped keys are removed
-    // once; surviving keys keep their watchers (insertBefore/removeChild do not
-    // lose them) and are repositioned with a single backward pass that anchors
-    // each node immediately before the one we just placed (ending at `marker`).
-    if (parent) {
-      const keep = new Set(next)
-      for (const n of current) {
-        if (!keep.has(n)) parent.removeChild(n)
-      }
-      let ref: Node = marker
-      for (let i = next.length - 1; i >= 0; i--) {
-        const node = next[i] as Node
-        if (node.nextSibling !== ref) parent.insertBefore(node, ref)
-        applyScopeRoots(node, parent)
-        ref = node
-      }
-    }
-    current = next
+    const dropped: Node[][] = []
+    for (const entry of entries.values()) dropped.push(entry.nodes)
+    current = reconcileList(parent, marker, current, next, dropped)
     entries = nextEntries
+    plain = new Map()
   }
 
   const render = (): void => {
     const list = unwrap(props.each) as readonly T[]
     if (props.getKey) renderKeyed(list)
-    else renderFull(list)
+    else renderDefaultKeyed(list)
   }
 
   render()
@@ -252,6 +307,7 @@ export function For<T>(props: {
     for (const n of current) cleanupWatchers(n)
     current = []
     entries = new Map()
+    plain = new Map()
   })
 
   return frag

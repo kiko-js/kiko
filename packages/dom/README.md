@@ -1,6 +1,6 @@
 # @kikojs/dom
 
-基于 [signal-polyfill](https://github.com/nicolo-ribaudo/signal-polyfill) 的响应式 DOM 库：自定义 JSX 运行时直接编译为真实 DOM 节点（无虚拟 DOM、无 diff），组件函数只执行一次，信号变化只更新被读取到的节点。
+基于 [signal-polyfill](https://github.com/nicolo-ribaudo/signal-polyfill) 的响应式 DOM 库：自定义 JSX 运行时直接编译为真实 DOM 节点（无虚拟 DOM、无 diff），组件体推迟到消费点执行（惰性物化），信号变化只更新被读取到的节点。
 
 ## 安装
 
@@ -40,9 +40,26 @@ render(<Counter />, document.getElementById("app")!)
 
 信号可以直接嵌入 children / props / 属性，更新时只重写对应的文本节点或属性；信号值为 `Node` 或数组时会触发 marker 锚定的子树替换（结构化响应式）。
 
+## 惰性物化（lazy materialization）
+
+`jsx(组件)` 不再立即执行组件体，而是返回一个待物化占位；组件体在消费点执行——父组件体内（`appendChild`/`toNodes`）、`render`/`createPortal` 挂载点、或水合采纳该 children 时。语义变化：
+
+- children 不再先于父组件求值：`<Router><Outlet/></Router>` 等词法写法直接成立（不再需要 thunk children）。
+- 未展示分支的组件体不执行：`<Show when={false}>{<Heavy/>}</Show>` 中 `Heavy` 零成本。
+- 水合对齐不受影响：惰性求值发生在游标采纳位置上，保持「采纳顺序 == 求值顺序 == 文档序」。
+
+需要节点对象本身时用 `realize` 显式物化（同步执行组件体，返回的节点身份稳定）；需要在挂载后拿到根元素时用组件级 `ref`（jsx 层属性，不进入组件 props；水合期在元素采纳完成后触发）：
+
+```tsx
+import { render, realize } from "@kikojs/dom"
+
+const el = realize(<Card />) // 同步物化，el 是真实节点
+render(<Card ref={node => console.log(node)} />, container)
+```
+
 ## 控制流与扩展
 
-- `Show` / `For`：条件与列表渲染（非 keyed 协调）
+- `Show` / `For`：条件与列表渲染；`For` 无 `getKey` 时默认按条目引用复用节点（移动不重建、children 不重跑；重复条目回退整表重建），`getKey` 提供显式 key
 - `ErrorBoundary`：渲染错误隔离
 - `Suspend` / `lazy`：异步组件与代码分割
 - `Style`：作用域 CSS

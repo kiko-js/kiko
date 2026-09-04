@@ -173,6 +173,24 @@ describe("hydrate", () => {
     dispose()
   })
 
+  it("reuses hydrated nodes for object items on reorder", async () => {
+    const container = document.createElement("div")
+    const a = { id: 1 }
+    const b = { id: 2 }
+    const list = createSignal([a, b])
+    const dispose = await ssrThenHydrate(
+      () =>
+        For({ each: list, children: (item: { id: number }) => jsx("li", { children: item.id }) }),
+      container,
+    )
+    expect(container.textContent).toBe("12")
+    list.set([b, a])
+    await flush()
+    // 水合采纳的节点按引用复用,顺序跟随数据
+    expect(container.textContent).toBe("21")
+    dispose()
+  })
+
   it("hydrates ErrorBoundary fallback", async () => {
     const container = document.createElement("div")
     const Boom = (): Node => {
@@ -298,6 +316,20 @@ describe("hydrate", () => {
     count.set(99)
     await flush()
     expect(container.textContent).toBe("1")
+  })
+
+  it("fires a component ref with the adopted root element", async () => {
+    const container = document.createElement("div")
+    const seen: Element[] = []
+    const Card = (): Node => jsx("article", { children: jsx("h2", { children: "t" }) })
+    // ref 是 jsx 层属性：水合期推迟到元素采纳完成后触发
+    const dispose = await ssrThenHydrate(
+      () => jsx(Card, { ref: (el: Element) => void seen.push(el) }),
+      container,
+    )
+    expect(seen.length).toBe(1)
+    expect((seen[0] as HTMLElement).tagName).toBe("ARTICLE")
+    dispose()
   })
 })
 

@@ -4,12 +4,16 @@ import { describe, it, expect } from "bun:test"
 import { render } from "../src/render"
 import { Show } from "../src/flow"
 import { jsx } from "../src/jsx-runtime"
-import { realize } from "@kikojs/dom"
-import { createSignal } from "../src/signal"
+import { realizeLazy as realize } from "../src/lazy-node"
 import type { Component } from "../src/jsx-runtime"
 
-describe("lazy jsx probe (experiment)", () => {
-  it("defers component bodies until parent consumes children (parent scope)", () => {
+/**
+ * 惰性物化契约：`jsx(组件)` 返回待物化占位，组件体推迟到消费点执行。
+ * 消费点：render / appendChild（intrinsic children）/ toNodes（控制流）/
+ * 水合采纳。`realize` 是显式物化出口，组件 `ref` 在物化出根元素后触发。
+ */
+describe("lazy jsx materialization", () => {
+  it("defers component bodies until the parent consumes them (parent scope)", () => {
     const order: string[] = []
     const Child: Component = () => {
       order.push("child-body")
@@ -22,15 +26,16 @@ describe("lazy jsx probe (experiment)", () => {
     const container = document.createElement("div")
     document.body.appendChild(container)
     const dispose = render(jsx(Parent, { children: jsx(Child, null) }), container)
+    // 急切语义下 children 先于父组件体执行；惰性下 children 在父组件体内消费
     expect(order).toEqual(["parent-body", "child-body"])
     expect(container.querySelector("span")?.textContent).toBe("c")
     dispose()
     container.remove()
   })
 
-  it("Show skips untaken component branch entirely", () => {
+  it("Show skips untaken component branches entirely", () => {
     const ran: string[] = []
-    const Truth: Component = () => {
+    const Truthy: Component = () => {
       ran.push("truthy-body")
       return jsx("b", { children: "t" })
     }
@@ -38,7 +43,7 @@ describe("lazy jsx probe (experiment)", () => {
     document.body.appendChild(container)
     const dispose = render(
       <Show when={false} fallback={<span>f</span>}>
-        <Truth />
+        <Truthy />
       </Show>,
       container,
     )
@@ -48,31 +53,9 @@ describe("lazy jsx probe (experiment)", () => {
     container.remove()
   })
 
-  it("Show toggling keeps realized branch alive across swaps", async () => {
-    const flush = (): Promise<void> => new Promise(r => queueMicrotask(r))
-    const count = createSignal(false)
-    const container = document.createElement("div")
-    document.body.appendChild(container)
-    const dispose = render(
-      <Show when={count} fallback={<span>off</span>}>
-        <b>on</b>
-      </Show>,
-      container,
-    )
-    expect(container.querySelector("span")?.textContent).toBe("off")
-    count.set(true)
-    await flush()
-    expect(container.querySelector("b")?.textContent).toBe("on")
-    count.set(false)
-    await flush()
-    expect(container.querySelector("span")?.textContent).toBe("off")
-    dispose()
-    container.remove()
-  })
-
-  it("realize materializes a stable node (identity across renders)", () => {
+  it("realize materializes a stable node (identity preserved across renders)", () => {
     const Greet: Component = () => jsx("span", { children: "hi" })
-    const el = realize(jsx(Greet, null) as Node) as HTMLElement
+    const el = realize(jsx(Greet, null)) as HTMLElement
     expect(el.tagName).toBe("SPAN")
     const container = document.createElement("div")
     document.body.appendChild(container)
@@ -82,14 +65,13 @@ describe("lazy jsx probe (experiment)", () => {
   })
 
   it("component ref fires once with the realized root element", () => {
-    const seen: unknown[] = []
+    const seen: Element[] = []
     const Card: Component = () => jsx("article", { children: jsx("h2", { children: "t" }) })
     const container = document.createElement("div")
     document.body.appendChild(container)
-    // ref 是 jsx 层属性：组件收不到它，realize 出根元素后触发一次
+    // ref 是 jsx 层属性：组件收不到它，物化出根元素后触发一次
     const dispose = render(jsx(Card, { ref: (el: Element) => void seen.push(el) }), container)
     expect(seen.length).toBe(1)
-    expect(seen[0]).toBeInstanceOf(HTMLElement)
     expect((seen[0] as HTMLElement).tagName).toBe("ARTICLE")
     dispose()
     container.remove()

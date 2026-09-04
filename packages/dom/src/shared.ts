@@ -21,6 +21,15 @@ export function unwrap<T>(value: T | WatchableSignal<T>): T {
   return isSignal(value) ? (value as WatchableSignal<T>).get() : (value as T)
 }
 
+/**
+ * For 无 getKey 时的默认 key:item 本身(Map 按 SameValueZero——对象/函数
+ * 按引用复用节点,移动不重建;原始值按值)。重复 key(同一引用出现两次,或
+ * 重复的原始值)会坍缩,调用方需检测并回退整表重建。
+ */
+export function defaultForKey(item: unknown): unknown {
+  return item
+}
+
 /** Recursively stringify style children: signals resolve to their current
  * snapshot, arrays flatten, everything else becomes `String(value)`. */
 export function extractCssText(children: unknown): string {

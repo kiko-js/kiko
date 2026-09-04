@@ -196,6 +196,77 @@ describe("For", () => {
     expect(Array.from(el.querySelectorAll("li")).map(li => li.textContent)).toEqual(["only"])
   })
 
+  it("reuses nodes for object items on reorder without re-running children", async () => {
+    const a = { id: 1 }
+    const b = { id: 2 }
+    const runs: number[] = []
+    const list = createSignal([a, b])
+    const el = jsx("ul", {
+      children: For({
+        each: list,
+        children: item => {
+          runs.push(item.id)
+          return jsx("li", { children: item.id })
+        },
+      }),
+    }) as HTMLElement
+    expect(Array.from(el.querySelectorAll("li")).map(li => li.textContent)).toEqual(["1", "2"])
+    expect(runs).toEqual([1, 2])
+    list.set([b, a])
+    await flush()
+    // 同一引用换位:节点复用、children 不重跑,顺序跟随数据
+    expect(runs).toEqual([1, 2])
+    expect(Array.from(el.querySelectorAll("li")).map(li => li.textContent)).toEqual(["2", "1"])
+  })
+
+  it("creates nodes only for new object keys and drops removed ones", async () => {
+    const a = { id: 1 }
+    const b = { id: 2 }
+    const c = { id: 3 }
+    const runs: number[] = []
+    const list = createSignal([a, b])
+    jsx("ul", {
+      children: For({
+        each: list,
+        children: item => {
+          runs.push(item.id)
+          return jsx("li", { children: item.id })
+        },
+      }),
+    })
+    list.set([c, a])
+    await flush()
+    // b 移除、c 新建、a 复用:只有 c 重跑 children
+    expect(runs).toEqual([1, 2, 3])
+  })
+
+  it("falls back to full re-render for duplicate items (same ref or primitive value)", async () => {
+    const shared = { id: 1 }
+    const list = createSignal([shared, shared])
+    const el = jsx("ul", {
+      children: For({
+        each: list,
+        children: (item: { id: number }) => jsx("li", { children: item.id }),
+      }),
+    }) as HTMLElement
+    expect(Array.from(el.querySelectorAll("li")).map(li => li.textContent)).toEqual(["1", "1"])
+    const strings = createSignal(["a", "a", "b"])
+    const el2 = jsx("ul", {
+      children: For({
+        each: strings,
+        children: item => jsx("li", { children: item }),
+      }),
+    }) as HTMLElement
+    expect(Array.from(el2.querySelectorAll("li")).map(li => li.textContent)).toEqual([
+      "a",
+      "a",
+      "b",
+    ])
+    strings.set(["b", "a"])
+    await flush()
+    expect(Array.from(el2.querySelectorAll("li")).map(li => li.textContent)).toEqual(["b", "a"])
+  })
+
   it("passes an index accessor", () => {
     const seen: [string, number][] = []
     jsx("ul", {

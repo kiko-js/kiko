@@ -1,7 +1,7 @@
 /** @jsxImportSource @kikojs/dom */
 import "./setup"
 import { describe, it, expect, beforeEach } from "bun:test"
-import { jsx, render } from "@kikojs/dom"
+import { jsx, render, realize } from "@kikojs/dom"
 import { computed, createSignal } from "@kikojs/signal"
 import { cleanupWatchers } from "@kikojs/dom/jsx-runtime"
 import { createRouter } from "../src/router"
@@ -79,13 +79,45 @@ describe("Router components", () => {
     container.remove()
   })
 
+  it("nested Router scopes its frame with LEXICAL children (no thunk needed)", async () => {
+    const outer = createRouter({ mode: "path", routes: createRoutes() })
+    const inner = createRouter({
+      mode: "path",
+      routes: [{ path: "/", component: () => jsx("p", { children: "inner" }) }],
+    })
+    const container = document.createElement("div")
+    document.body.appendChild(container)
+    // 惰性物化后 children 在内层 Router 体内才执行，词法写法直接成立；
+    // thunk children 形态仍兼容（resolveChildren 支持函数）。
+    const dispose = render(
+      <Router router={outer}>
+        <Link to="/about" activeClass="on">
+          go
+        </Link>
+        <Router router={inner}>
+          <Outlet />
+        </Router>
+      </Router>,
+      container,
+    )
+    await drainMicrotasks()
+    expect(container.querySelector("p")?.textContent).toBe("inner")
+    outer.push("/about")
+    await drainMicrotasks()
+    expect(container.querySelector("a")?.classList.contains("on")).toBe(true)
+    dispose()
+    outer.dispose()
+    inner.dispose()
+    container.remove()
+  })
+
   it("Outlet renders the initial route and passes params to the component", async () => {
     window.history.replaceState(null, "", "/users/42")
     const router = createRouter({ mode: "path", routes: createRoutes() })
-    const tree = (
+    const tree = realize(
       <Router router={router}>
         <Outlet />
-      </Router>
+      </Router>,
     ) as DocumentFragment
     await drainMicrotasks()
     expect(tree.textContent).toBe("user")
@@ -388,10 +420,10 @@ describe("Router components", () => {
         },
       ],
     })
-    const tree = (
+    const tree = realize(
       <Router router={router}>
         <Outlet />
-      </Router>
+      </Router>,
     ) as DocumentFragment
     await drainMicrotasks()
     expect(tree.textContent).toBe("layout:saved")
@@ -515,10 +547,10 @@ describe("JSX composition (children evaluate before Router)", () => {
     const router = createRouter({ mode: "path", routes: createRoutes() })
     // Outlet 在 Router 的渲染帧内创建，创建时刻捕获 router；此后交换循环
     // 用捕获值响应式换内容。
-    const tree = (
+    const tree = realize(
       <Router router={router}>
         <Outlet />
-      </Router>
+      </Router>,
     ) as DocumentFragment
     await drainMicrotasks()
     expect(tree.textContent).toBe("home")
@@ -530,10 +562,10 @@ describe("JSX composition (children evaluate before Router)", () => {
 
   it("Navigate composed as JSX child of Router navigates after mount", async () => {
     const router = createRouter({ mode: "path", routes: createRoutes() })
-    const tree = (
+    const tree = realize(
       <Router router={router}>
         <Navigate to="/about" />
-      </Router>
+      </Router>,
     ) as DocumentFragment
     await drainMicrotasks()
     expect(router.location.get().path).toBe("/about")
@@ -543,12 +575,12 @@ describe("JSX composition (children evaluate before Router)", () => {
   it("Link activeClass works when composed inside Router", async () => {
     const router = createRouter({ mode: "path", routes: createRoutes() })
     // Link 在 Router 渲染帧内创建，创建时刻捕获 router 并订阅 path 变化。
-    const tree = (
+    const tree = realize(
       <Router router={router}>
         <Link to="/about" activeClass="active">
           go
         </Link>
-      </Router>
+      </Router>,
     ) as DocumentFragment
     const link = tree.firstChild as HTMLAnchorElement
     expect(link.classList.contains("active")).toBe(false)
@@ -591,10 +623,10 @@ describe("JSX composition (children evaluate before Router)", () => {
       },
     ]
     const router = createRouter({ mode: "path", routes })
-    const tree = (
+    const tree = realize(
       <Router router={router}>
         <Outlet />
-      </Router>
+      </Router>,
     ) as DocumentFragment
     await drainMicrotasks()
     // 初始在 "/"：根 Outlet 渲染布局，布局内 Outlet 无下一层可渲染
