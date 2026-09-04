@@ -5,7 +5,6 @@ import { createRouter } from "../src/router"
 import { createMemoryHistory } from "../src/history"
 import { useRouter } from "../src/hooks"
 import { withSSRRouter } from "../src/server"
-import { clearActiveRouter, setActiveRouter } from "../src/context"
 import { setSSRRuntime } from "@kikojs/dom"
 import { renderToFragment, ssrRuntime } from "../../dom/src/ssr"
 
@@ -76,27 +75,7 @@ describe("router SSR", () => {
     expect(html).toBe("<main><p>users list</p></main>")
   })
 
-  it("Link renders a static anchor using the preset active router", async () => {
-    const router = createRouter({
-      history: createMemoryHistory("/"),
-      routes: [
-        { path: "/", component: Home, children: [{ path: "about", component: () => <p>A</p> }] },
-      ],
-    })
-    setActiveRouter(router)
-    try {
-      const html = await renderToFragment(() => (
-        <Link to="/about" class="nav">
-          About
-        </Link>
-      ))
-      expect(html).toBe('<a class="nav" href="/about">About</a>')
-    } finally {
-      clearActiveRouter(router)
-    }
-  })
-
-  it("Link falls back to the raw `to` when no router is preset", async () => {
+  it("Link falls back to the raw `to` when no router is reachable", async () => {
     const html = await renderToFragment(() => <Link to="/about">About</Link>)
     expect(html).toBe('<a href="/about">About</a>')
   })
@@ -136,33 +115,6 @@ describe("router SSR", () => {
     const html = await withSSRRouter(router, () => renderToFragment(() => <Outlet />))
     expect(html).toBe("<p>users</p>")
     expect(seenMode).toBe("path")
-  })
-
-  it("request scope wins over a stale preset active router", async () => {
-    const routerA = createRouter({
-      base: "/a",
-      history: createMemoryHistory("/a/"),
-      routes: [
-        { path: "/", component: Home, children: [{ path: "about", component: () => <p>A</p> }] },
-      ],
-    })
-    const routerB = createRouter({
-      base: "/b",
-      history: createMemoryHistory("/b/"),
-      routes: [
-        { path: "/", component: Home, children: [{ path: "about", component: () => <p>B</p> }] },
-      ],
-    })
-    // 模拟上一个请求的遗留状态：setActiveRouter 压栈且未清理
-    setActiveRouter(routerA)
-    try {
-      const html = await withSSRRouter(routerB, () =>
-        renderToFragment(() => <Link to="/about">About</Link>),
-      )
-      expect(html).toBe('<a href="/b/about">About</a>')
-    } finally {
-      clearActiveRouter(routerA)
-    }
   })
 
   it("concurrent renders keep each request's router isolated across awaits", async () => {

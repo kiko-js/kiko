@@ -1,32 +1,29 @@
 import { createSignal } from "@kikojs/signal"
 import type { Router } from "./types"
 
-// activeRouter 是响应式信号：JSX children 先于 Router 组件体求值，Outlet /
-// Link.activeClass / Navigate 在创建时拿不到 router，通过 effect 依赖本信号，
-// Router 挂载（setActiveRouter）后自动补跑。
+// Router 的隐式注入机制（不依赖 context），三条解析路径按序生效：
 //
-// 为支持多个 Router 共存（例如测试隔离、嵌套/并行路由树），这里改用栈：
-// 每个 Router 挂载时压栈、卸载时出栈，dispose 一个 Router 只会恢复上一个
-// 活动的 router，而不是把全局活动状态整个清空（旧的单例实现会误清他人）。
+// 1) 渲染帧：Router/Outlet 渲染子树期间压帧，帧内创建的组件精确捕获——
+//    嵌套/并存 Router 各自作用域，互不串扰。栈仅在同步渲染 walk 期间存在，
+//    无需挂载/卸载管理。
+// 2) activeRouter 信号：kiko 的 jsx 急切执行组件（jsx-runtime 直接调用
+//    tag(props)），作为 Router 的 JSX children 创建的组件先于 Router 体运行，
+//    创建期拿不到 router——effect/computed 借助信号在 Router 挂载后补跑，
+//    并做一次性绑定（首个非空 router 永久生效），避免其后挂载的其他 Router
+//    串扰已绑定的组件。
+// 3) SSR 请求作用域：`@kikojs/router/server` 的 AsyncLocalStorage 兜底，按
+//    请求隔离。同步帧栈在 ssr-stream 的异步 chunkify 下会跨请求串扰，服务端
+//    只信 ALS；客户端 bundle 不导入 server 入口，getter 保持 null，零开销。
+
 const activeRouter = createSignal<Router | null>(null)
-
-// SSR 请求作用域读取器：由 `@kikojs/router/server` 注册（AsyncLocalStorage 实现）。
-// 客户端 bundle 不导入 server 入口，getter 保持 null，零开销；服务端按请求隔离，
-// 并发渲染互不串扰（activeRouter 信号是模块级单例，只适合客户端/测试）。
-let getSSRScopeRouter: (() => Router | null) | null = null
-
-/** 注册 SSR 请求作用域读取器（由 server 入口调用，传 null 撤销） */
-export function setSSRRouterScope(get: (() => Router | null) | null): void {
-  getSSRScopeRouter = get
-}
 
 // 内部栈：栈顶为当前活动 router；模块级单例语义退化为"栈顶"。
 const activeStack: Router[] = []
 
-/** 设置当前活动的 router（由 Router 组件调用） */
+/** 设置当前活动的 router（由 Router 组件挂载时调用） */
 export function setActiveRouter(router: Router | null): void {
   if (router === null) {
-    // 兼容测试/旧用法：清空活动状态（弹出栈顶，若存在）。
+    // 兼容测试/旧用法：弹出栈顶，恢复上一个活动 router。
     if (activeStack.length > 0) {
       activeStack.pop()
     }
@@ -49,19 +46,77 @@ export function clearActiveRouter(router: Router): void {
   activeRouter.set(activeStack.length > 0 ? activeStack[activeStack.length - 1]! : null)
 }
 
-/** 获取当前活动的 router；在 effect 内读取会建立响应式依赖 */
-export function getActiveRouter(): Router | null {
-  // 请求作用域优先：ALS 只在当前请求的异步链里可见，而 activeRouter 信号可能
-  // 还留着上一个请求压栈的 router（服务端 setActiveRouter 的历史用法）。
-  return getSSRScopeRouter?.() ?? activeRouter.get()
+// SSR 请求作用域读取器：由 `@kikojs/router/server` 注册（AsyncLocalStorage 实现）。
+let getSSRScopeRouter: (() => Router | null) | null = null
+
+/** 注册 SSR 请求作用域读取器（由 server 入口调用，传 null 撤销） */
+export function setSSRRouterScope(get: (() => Router | null) | null): void {
+  getSSRScopeRouter = get
 }
 
-/** 获取当前活动的 router，若不存在则抛出 */
+export interface RouterFrame {
+  router: Router
+  /** 帧对应的 Outlet 深度（根帧 0，子帧为父深度 + 1） */
+  depth: number
+}
+
+const frames: RouterFrame[] = []
+
+/** 压入渲染帧（同步渲染 walk 期间有效） */
+export function pushFrame(frame: RouterFrame): void {
+  frames.push(frame)
+}
+
+/** 弹出渲染帧（与 pushFrame 严格配对，放在 finally 中） */
+export function popFrame(): void {
+  frames.pop()
+}
+
+/** 在帧内执行同步渲染代码（Router 的根帧与测试脚手架用） */
+export function withFrame<T>(frame: RouterFrame, fn: () => T): T {
+  pushFrame(frame)
+  try {
+    return fn()
+  } finally {
+    popFrame()
+  }
+}
+
+/** 当前栈顶帧（Outlet 创建时读取层级/路由） */
+export function currentFrame(): RouterFrame | undefined {
+  return frames[frames.length - 1]
+}
+
+/**
+ * 解析当前 router：渲染帧 → SSR 请求作用域（ALS）→ activeRouter 信号。
+ * 在 effect/computed 内调用会建立信号依赖（帧/ALS 非空时不读信号）。
+ * 组件应配合一次性绑定使用：首个非空结果永久生效。
+ */
+export function currentRouter(): Router | null {
+  return currentFrame()?.router ?? getSSRScopeRouter?.() ?? activeRouter.get()
+}
+
+/** 兼容别名：信号语义的历史名称（effect 内读取会建立响应式依赖） */
+export function getActiveRouter(): Router | null {
+  return currentRouter()
+}
+
+/** 获取当前 router，若不存在则抛出（hooks 在 Router 渲染范围内调用） */
 export function useRouter(): Router {
-  // 走 getActiveRouter 而非直接读信号：SSR 下 hooks 依赖请求作用域解析
-  const router = getActiveRouter()
+  const router = currentRouter()
   if (!router) {
     throw new Error("useRouter must be used inside a Router component")
   }
   return router
+}
+
+/**
+ * 一次性绑定助手：组件/effect 持有一个 `{ router }` 槽位，每个响应式周期
+ * 调用 `bindRouter(slot)`——首个非空 router 永久生效，其后挂载的其他 Router
+ * 不会串扰。kiko 组件只跑一次，绑定的 router 生命周期即组件生命周期。
+ */
+export function bindRouter(slot: { router: Router | null }): Router | null {
+  if (slot.router) return slot.router
+  slot.router = currentRouter()
+  return slot.router
 }

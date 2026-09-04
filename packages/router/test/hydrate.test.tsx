@@ -3,7 +3,6 @@ import { describe, it, expect, beforeAll, afterAll } from "bun:test"
 import { Router, Link, Outlet, Navigate } from "../src/components"
 import { createRouter } from "../src/router"
 import { createMemoryHistory } from "../src/history"
-import { getActiveRouter } from "../src/context"
 import { setSSRRuntime, hydrate } from "@kikojs/dom"
 import { renderToFragment, ssrRuntime } from "../../dom/src/ssr"
 
@@ -127,7 +126,7 @@ describe("router hydration", () => {
     stop()
   })
 
-  it("hydrate disposer clears the active router and disposes it", async () => {
+  it("hydrate disposer disposes the router", async () => {
     const routes = [{ path: "/", component: Home }]
     const serverRouter = createRouter({ history: createMemoryHistory("/"), routes })
     setSSRRuntime(ssrRuntime)
@@ -140,6 +139,12 @@ describe("router hydration", () => {
 
     const container = mount(html)
     const clientRouter = createRouter({ history: createMemoryHistory("/"), routes })
+    let disposed = false
+    const rawDispose = clientRouter.dispose.bind(clientRouter)
+    clientRouter.dispose = () => {
+      disposed = true
+      rawDispose()
+    }
     const stop = hydrate(
       () => (
         <Router router={clientRouter}>
@@ -148,10 +153,10 @@ describe("router hydration", () => {
       ),
       container,
     )
-    expect(getActiveRouter()).toBe(clientRouter)
+    expect(disposed).toBe(false)
     stop()
     // 回归：水合模式的清理挂水合根（子树会被 Outlet 交换移走，挂节点上会丢）
-    expect(getActiveRouter()).toBeNull()
+    expect(disposed).toBe(true)
   })
 
   it("hydrates Navigate: adopts nothing, navigates after Router body runs", async () => {

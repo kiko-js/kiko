@@ -108,7 +108,11 @@ const routes = [
   `<Navigate>` 水合输出为空，导航由客户端 effect 触发。
 - **卸载清理**：Router 的 cleanup 挂在随子树移动的 marker 上——挂 container
   fragment 会被 render()/swapNodes 抽干，cleanup 永远不执行。
-- 客户端 `setActiveRouter` 是模块级全局信号，勿在服务端按请求调用（并发互踩、压栈泄漏）。
+- 隐式注入 = 渲染帧（Router/Outlet 渲染子树期间压帧）→ 请求作用域（ALS）→
+  activeRouter 信号，首次解析到非空后**一次性绑定**（组件只跑一次，其后挂载的
+  其他 Router 不串扰）。kiko 的 jsx 急切执行组件：`<Router>` 的 JSX children
+  先于 Router 体运行、走信号兜底；**嵌套 `<Router>` 必须用 thunk children**
+  （`<Router router={inner}>{() => <Outlet />}</Router>`）才能精确绑定内层。
 - 嵌套路由用 `RouteRecord.children`；叶子组件经 `Outlet` 承接。
 - Link 的 activeClass 由 effect 驱动，卸载时自动清理监听。
 
@@ -126,6 +130,6 @@ const router = createRouter({
 const html = await withSSRRouter(router, () => renderToFragment(() => <Outlet />))
 ```
 
-解析顺序：`Outlet` 显式 `router` prop → 父级 Outlet 帧 → 请求作用域（`withSSRRouter`）→ `setActiveRouter` 预置。
+解析顺序：`Outlet` 显式 `router` prop → 渲染帧 → 请求作用域（`withSSRRouter`）→ `setActiveRouter` 预置。
 服务端完整流程：`await router.ready` → `withSSRRouter(...)`。
 客户端水合：`hydrate(() => <Router router={clientRouter}>…</Router>, container)`。

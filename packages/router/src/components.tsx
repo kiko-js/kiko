@@ -15,7 +15,16 @@ import {
   toNodes,
   trackCleanup,
 } from "@kikojs/dom/jsx-runtime"
-import { clearActiveRouter, getActiveRouter, setActiveRouter } from "./context"
+import {
+  bindRouter,
+  clearActiveRouter,
+  currentFrame,
+  currentRouter,
+  popFrame,
+  pushFrame,
+  setActiveRouter,
+  withFrame,
+} from "./context"
 import { getRouteProps } from "./router"
 import type { KeepAlive, NavPath, RouteMatch, RouteRecord, Router } from "./types"
 
@@ -28,45 +37,47 @@ export function Router(props: RouterProps): Node {
   const router = props.router
   if (getSSRRuntime()) {
     // SSR 字符串模式：无 DOM、无 effect。children 在 JSX 求值期就已被序列化
-    // 成字符串，这里直接透传；不调 setActiveRouter——activeStack 是模块级栈，
-    // 服务端没有卸载时机，压栈会随请求数无限增长。服务端渲染路由时用
-    // createMemoryHistory，并在根 Outlet 显式传 router（见 README「SSR」）。
-    return props.children as Node
+    // 成字符串，这里直接透传。服务端不压渲染帧——ssr-stream 的异步 chunkify
+    // 会让并发请求的组件执行交错在同一微任务链里，同步帧栈会跨请求串扰；
+    // 服务端解析走 withSSRRouter 的 AsyncLocalStorage 请求作用域（见 README「SSR」）。
+    return (resolveChildren(props.children) ?? null) as Node
   }
 
   if (isHydrating()) {
     // 水合：SSR 输出就是 children 的序列化结果（Router 不产生包装标记），
-    // 按标准协议采纳。children 组件的 PendingNode 惰性解析——执行时本组件
-    // 体已运行、activeRouter 已设置。清理挂水合根：路由内容会被 Outlet 的
-    // 分支交换移出初始位置，挂在子树节点上的 cleanup 会随交换丢失。
+    // 按标准协议采纳。children 组件在 hydrateFragment 的同步 walk 里执行，
+    // 创建时刻从渲染帧捕获 router；信号兜底覆盖帧外的早创建组件。清理挂
+    // 水合根：路由内容会被 Outlet 的分支交换移出初始位置，挂在子树节点上
+    // 的 cleanup 会随交换丢失。
     setActiveRouter(router)
     onHydrateCleanup(() => {
       clearActiveRouter(router)
       router.dispose()
     })
-    return hydrateFragment(props.children) as unknown as Node
+    return withFrame({ router, depth: 0 }, () =>
+      hydrateFragment(resolveChildren(props.children)),
+    ) as unknown as Node
   }
-  // JSX children 先于本组件体求值，因此这里设置的是"信号"——children 中的
-  // Outlet / Link / Navigate 创建的 effect 依赖它，挂载后自动补跑。
+  // 渲染帧 + activeRouter 信号：帧覆盖 children 的同步 walk（布局组件体内
+  // 创建的组件精确捕获帧内 router）；作为 JSX children 早创建的组件由信号
+  // 在挂载后补跑并一次性绑定。卸载出栈恢复上一个活动 router。
   setActiveRouter(router)
-
   const container = document.createDocumentFragment()
-  if (props.children) {
-    const nodes = toNodes(props.children)
+  pushFrame({ router, depth: 0 })
+  try {
+    const nodes = toNodes(resolveChildren(props.children) ?? [])
     for (const node of nodes) {
       container.appendChild(node)
     }
+  } finally {
+    popFrame()
   }
   // 清理挂到随子树移动的 marker 上，而不是 container fragment——render() /
   // swapNodes 会把 fragment 抽干，空 fragment 脱离 DOM 后 cleanupWatchers
-  // 永远够不到它（Outlet 曾因此泄漏；实测 Router 同样会：卸载后
-  // clearActiveRouter 与 router.dispose 均不执行）。放末尾：children 顺序
-  // 不变（既有测试依赖 firstChild == 第一个子节点）。
+  // 永远够不到它。放末尾：children 顺序不变（既有测试依赖 firstChild）。
   const marker = document.createComment("router")
   container.appendChild(marker)
-
   trackCleanup(marker, () => {
-    // 从栈中移除自己，恢复上一个活动 router（多 Router 共存时不误清他人）
     clearActiveRouter(router)
     router.dispose()
   })
@@ -74,6 +85,14 @@ export function Router(props: RouterProps): Node {
   return container
 }
 
+/**
+ * children thunk 协议：kiko 的 jsx 急切执行组件，嵌套 Router 的 JSX children
+ * 会先于内层 Router 体运行、被信号兜底绑到外层。函数 children 延迟到 Router
+ * 帧内求值，子树精确绑定。与 @kikojs/dom 渲染函数的 thunk 惯例一致。
+ */
+function resolveChildren(children: unknown): unknown {
+  return typeof children === "function" ? (children as () => unknown)() : children
+}
 interface LinkProps {
   to: NavPath
   replace?: boolean
@@ -104,14 +123,17 @@ function resolveHref(router: Router | null, to: string): string {
 }
 
 export function Link(props: LinkProps): Node {
+  // 一次性绑定槽位：创建时刻先试帧/ALS/信号；作为 Router 的 JSX children
+  // 早创建时为 null，effect/点击时补绑——首个非空 router 永久生效。
+  const slot = { router: currentRouter() }
+  const resolve = (): Router | null => bindRouter(slot)
   if (getSSRRuntime()) {
     // SSR：只输出静态 <a href>。activeClass 高亮与点击导航依赖 DOM/effect，
-    // 无法序列化，由水合后的客户端分支接管。href 依据预置的 activeRouter
-    // 解析模式/base；未预置时退化为原始 to。onClick 由 ssrJsx 丢弃，无需取出。
+    // 无法序列化，由水合后的客户端分支接管。onClick 由 ssrJsx 丢弃，无需取出。
     const { to, replace: _r, state: _s, activeClass: _ac, exact: _ex, children, ...rest } = props
     return jsx("a", {
       ...rest,
-      href: resolveHref(getActiveRouter(), to),
+      href: resolveHref(resolve(), to),
       children,
     })
   }
@@ -126,9 +148,8 @@ export function Link(props: LinkProps): Node {
     const target = (e.currentTarget as HTMLAnchorElement).getAttribute("target")
     if (target && target !== "_self") return
     e.preventDefault()
-    // JSX children 先于父组件求值：Link 创建时 Router 尚未 setActiveRouter，
-    // 因此点击时惰性解析——模块槽位在 Router 挂载后保持有效。
-    const router = getActiveRouter()
+    // 点击时惰性补绑（JSX children 先于 Router 体创建，槽位此刻可能仍空）
+    const router = resolve()
     if (router) {
       void router.navigate(to, { replace, state }).catch(err => {
         reportError(err)
@@ -139,23 +160,22 @@ export function Link(props: LinkProps): Node {
   }
 
   if (isHydrating()) {
-    // 水合：SSR 已输出 <a href>（href 由 SSR 分支按预置/请求作用域解析）。
-    // 采纳现有元素并重放 props（onClick 委托等），采纳后补上响应式部分：
-    // href 按 mode/base 修正 + activeClass 高亮。children 交由标准游标采纳，
-    // 不能像客户端分支那样手动 append（PendingNode 无法 append）。
+    // 水合：SSR 已输出 <a href>。采纳现有元素并重放 props（onClick 委托等），
+    // 采纳后补上响应式部分：href 按 mode/base 修正 + activeClass 高亮。
+    // children 交由标准游标采纳，不能像客户端分支那样手动 append。
     return hydratePendingElement("a", { ...rest, onClick, children }, el => {
-      const stop = attachLinkEffects(el as HTMLAnchorElement, to, activeClass, exact)
+      const stop = attachLinkEffects(el as HTMLAnchorElement, to, activeClass, exact, resolve)
       trackCleanup(el, stop)
     })
   }
 
   const anchor = jsx("a", {
     ...rest,
-    href: resolveHref(getActiveRouter(), to),
+    href: resolveHref(resolve(), to),
     onClick,
   })
 
-  const stop = attachLinkEffects(anchor as HTMLAnchorElement, to, activeClass, exact)
+  const stop = attachLinkEffects(anchor as HTMLAnchorElement, to, activeClass, exact, resolve)
   // effect 的 watcher 不挂在 anchor 上，不 track 会在 Router 卸载后泄漏
   trackCleanup(anchor, stop)
 
@@ -168,19 +188,19 @@ export function Link(props: LinkProps): Node {
 
   return anchor
 }
-
-/** href 修正 + activeClass 高亮的响应式绑定（客户端与水合共用）。 */
+/** href 修正 + activeClass 高亮的响应式绑定（客户端与水合共用）。
+ *  resolve 为一次性绑定读取：effect 首个非空 router 永久生效，此后只订阅
+ *  path 变化，不会被其后挂载的其他 Router 串扰。 */
 function attachLinkEffects(
   anchorEl: HTMLAnchorElement,
   to: string,
   activeClass: string | undefined,
   exact: boolean | undefined,
+  resolve: () => Router | null,
 ): () => void {
   const el = anchorEl as HTMLElement
   return effect(() => {
-    // Update href when the router appears (JSX children evaluate before Router
-    // mounts) so middle-click/new-tab use the correct mode/base.
-    const router = getActiveRouter()
+    const router = resolve()
     anchorEl.setAttribute("href", resolveHref(router, to))
     if (!activeClass || !router) return
     const match = isActivePath(router.path.get(), to, exact ?? false)
@@ -206,18 +226,6 @@ interface OutletProps {
    */
   keyBy?: (entry: RouteMatch, router: Router) => unknown
 }
-
-/**
- * 嵌套布局渲染帧：渲染 route component 期间压栈，嵌套 Outlet 创建时
- * 从中读取自己的层级（根 Outlet 无帧，depth 为 0）。
- * 栈仅在同步渲染期间存在——与 @kikojs/dom 的 context 栈同构。
- */
-interface OutletFrame {
-  router: Router
-  depth: number
-}
-
-const frameStack: OutletFrame[] = []
 
 const DEFAULT_KEEP_ALIVE_MAX = 10
 
@@ -263,52 +271,50 @@ interface OutletSnapshot {
 export function Outlet(props: OutletProps): Node {
   if (getSSRRuntime()) {
     // SSR 字符串模式：无 DOM/watcher/effect，静态输出当前深度匹配的路由
-    // 组件。router 取 props.router ?? 父 Outlet 帧 ?? 预置的 activeRouter；
-    // 都拿不到时输出空（与客户端"无 router 渲染空"语义一致）。
-    const creationFrame = frameStack.length > 0 ? frameStack[frameStack.length - 1] : undefined
-    const staticRouter = props.router ?? creationFrame?.router ?? getActiveRouter()
-    const depth = creationFrame ? creationFrame.depth : 0
+    // 组件。router 取 props.router ?? 渲染帧 ?? 请求作用域（ALS）；都拿不到
+    // 时输出空（与客户端"无 router 渲染空"语义一致）。
+    const staticRouter = props.router ?? currentRouter()
+    const depth = currentFrame()?.depth ?? 0
     // SSR 边界：无 router / 无匹配组件时输出空（客户端同语义）；类型层面
     // Node 在 SSR 下实际为序列化字符串，空即空串。
     if (!staticRouter) return null as unknown as Node
     const entry = staticRouter.matched.get()[depth]
     const component = entry?.route?.component
     if (!component) return null as unknown as Node
-    frameStack.push({ router: staticRouter, depth: depth + 1 })
+    pushFrame({ router: staticRouter, depth: depth + 1 })
     try {
       return component(getRouteProps(staticRouter)) as unknown as Node
     } finally {
-      frameStack.pop()
+      popFrame()
     }
   }
-  // 创建时捕获层级：JSX 求值发生在父组件同步渲染期间（帧已压栈），
-  // 响应式重渲染时不再有帧，depth 必须在创建时定格。
-  const creationFrame = frameStack.length > 0 ? frameStack[frameStack.length - 1] : undefined
-  const staticRouter = props.router ?? creationFrame?.router ?? null
-  const depth = creationFrame ? creationFrame.depth : 0
+  // 一次性绑定槽位：嵌套 Outlet 创建于父帧内精确捕获；作为 Router 的 JSX
+  // children 早创建的根 Outlet 为 null，快照响应式补绑（首个非空生效）。
+  const slot = { router: props.router ?? currentRouter() }
+  const resolve = (): Router | null => bindRouter(slot)
+  const depth = currentFrame()?.depth ?? 0
 
   if (isHydrating()) {
     // 水合：SSR 输出就是匹配路由组件的渲染结果（Outlet 不产生包装标记），
-    // 无现成锚点。惰性解析（此时 Router 体已运行）：在标准游标协议下采纳
-    // 路由组件输出，再插入客户端侧 marker 供后续导航的分支交换使用。
+    // 无现成锚点。Router 的水合帧覆盖本 walk：创建时刻已捕获 router，
     return hydratePendingGroup(() => {
-      const router = staticRouter ?? getActiveRouter()
+      const router = resolve()
       if (!router) return []
       const entry = router.matched.get()[depth]
       const component = entry?.route?.component
       if (!entry || !component) return []
       let adopted: Node[]
-      frameStack.push({ router, depth: depth + 1 })
+      pushFrame({ router, depth: depth + 1 })
       try {
         adopted = hydrateValue(component(getRouteProps(router)))
       } finally {
-        frameStack.pop()
+        popFrame()
       }
       if (adopted.length === 0) return []
       const marker = document.createComment("outlet")
       const parent = adopted[0]!.parentNode
       if (parent) parent.insertBefore(marker, adopted[0]!)
-      attachOutletLoop(marker, props, staticRouter, depth, adopted)
+      attachOutletLoop(marker, props, resolve, depth, adopted)
       return adopted
     })
   }
@@ -316,7 +322,7 @@ export function Outlet(props: OutletProps): Node {
   const marker = document.createComment("outlet")
   const parent = document.createDocumentFragment()
   parent.appendChild(marker)
-  attachOutletLoop(marker, props, staticRouter, depth, null)
+  attachOutletLoop(marker, props, resolve, depth, null)
   return parent
 }
 
@@ -327,7 +333,7 @@ export function Outlet(props: OutletProps): Node {
 function attachOutletLoop(
   marker: Comment,
   props: OutletProps,
-  staticRouter: Router | null,
+  resolve: () => Router | null,
   depth: number,
   preset: Node[] | null,
 ): void {
@@ -340,10 +346,11 @@ function attachOutletLoop(
   // 换入换出只是 detach/reinsert，不重跑 component、不丢状态。
   const cache = new Map<string, Node[]>()
 
-  // 快照只依赖 activeRouter + matched（path 信号驱动）：
+  // 快照只依赖一次性绑定的 router + matched（path 信号驱动）：绑定为 null
+  // 时读取 currentRouter（帧/ALS/信号）建立依赖，Router 挂载后补绑重算；
   // query/hash 变化不会让它重算，自然也不会触发渲染函数。
   const snapshot = computed<OutletSnapshot>(() => {
-    const router = staticRouter ?? getActiveRouter()
+    const router = resolve()
     if (!router) return { router: null, component: null, key: null, keep: null }
     const matched = router.matched.get()
     const entry = matched[depth]
@@ -411,12 +418,12 @@ function attachOutletLoop(
     try {
       // untrack：props 快照一次性读取，不让 Outlet 订阅 params/query/location
       const routeProps = untrack(() => getRouteProps(router))
-      frameStack.push({ router, depth: depth + 1 })
+      pushFrame({ router, depth: depth + 1 })
       try {
         const node = snap.component(routeProps)
         next.push(node)
       } finally {
-        frameStack.pop()
+        popFrame()
       }
     } catch (err) {
       reportError(err)
@@ -492,14 +499,18 @@ export function Navigate(props: NavigateProps): Node {
     // SSR：导航是客户端副作用，服务端渲染时不输出、不导航（空串）。
     return null as unknown as Node
   }
+  // 一次性绑定：Router 渲染帧内的 Navigate 创建即捕获；作为 JSX children
+  // 早创建时为 null，effect 读帧/ALS/信号在 Router 挂载后补绑并导航一次。
+  const slot = { router: currentRouter() }
+  const resolve = (): Router | null => bindRouter(slot)
   if (isHydrating()) {
     // 水合：SSR 输出为空（无标记、无节点），游标不消费。没有 DOM 锚点
-    // 可挂，effect 的清理挂水合根。effect 立即首跑（activeRouter 为 null
-    // 时不导航），Router 体运行设置信号后补跑——与客户端语义一致。
+    // 可挂，effect 的清理挂水合根。
     let done = false
     const stop = effect(() => {
-      const router = getActiveRouter()
-      if (!router || done) return
+      if (done) return
+      const router = resolve()
+      if (!router) return
       done = true
       void router
         .navigate(props.to, { replace: props.replace ?? true, state: props.state })
@@ -510,14 +521,12 @@ export function Navigate(props: NavigateProps): Node {
     onHydrateCleanup(stop)
     return hydratePendingGroup(() => [])
   }
-  // 与 Outlet 同理：作为 Router 的 JSX children 时创建阶段拿不到 router，
-  // 导航延迟到 effect——Router 挂载后 activeRouter 信号变化触发补跑。
   const marker = document.createComment("navigate")
   let done = false
-
   const dispose = effect(() => {
-    const router = getActiveRouter()
-    if (!router || done) return
+    if (done) return
+    const router = resolve()
+    if (!router) return
     done = true
     void router
       .navigate(props.to, { replace: props.replace ?? true, state: props.state })

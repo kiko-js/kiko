@@ -1,4 +1,8 @@
-import { getActiveRouter, useRouter as useRouterContext } from "./context"
+import {
+  currentRouter,
+  setActiveRouter as setActiveRouterContext,
+  useRouter as useRouterContext,
+} from "./context"
 import { isActivePath } from "./components"
 import { createMatcher } from "./matcher"
 import { navigateFrom } from "./utils"
@@ -24,11 +28,17 @@ function toReactive<T>(signal: Signal.State<T> | Signal.Computed<T>): ReactiveSn
   })
 }
 
-export { setActiveRouter } from "./context"
-
 /** 获取当前活动的 router */
 export function useRouter(): Router {
   return useRouterContext()
+}
+
+/**
+ * 预置活动 router（客户端 Router 挂载与测试脚手架用；服务端用 withSSRRouter）。
+ * 组件解析顺序：渲染帧 → SSR 请求作用域 → 本信号；一次性绑定语义见 context。
+ */
+export function setActiveRouter(router: Router | null): void {
+  setActiveRouterContext(router)
 }
 
 /** 获取当前路由参数（需要在 Router 组件内调用） */
@@ -65,9 +75,9 @@ export function useRoute(): ReactiveSnapshot<{
   return toReactive(routeSignal)
 }
 
-/** 安全获取 router，可能返回 null */
+/** 安全获取 router，可能返回 null（Router 渲染范围外/无 SSR 请求作用域时） */
 export function tryUseRouter(): Router | null {
-  return getActiveRouter()
+  return currentRouter()
 }
 
 /**

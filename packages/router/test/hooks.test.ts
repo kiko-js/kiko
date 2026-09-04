@@ -1,5 +1,5 @@
 import "./setup"
-import { describe, it, expect, beforeEach, afterEach } from "bun:test"
+import { describe, it, expect, beforeEach } from "bun:test"
 import { createRouter } from "../src/router"
 import { Router, Outlet } from "../src/components"
 import {
@@ -15,9 +15,16 @@ import {
   useNavigate,
   type ReactiveSnapshot,
 } from "../src/hooks"
+import { withFrame } from "../src/context"
 import { navigateFrom } from "../src/utils"
 import { cleanupWatchers } from "@kikojs/dom/jsx-runtime"
-import type { RouteLocation, RouteParams, RouteQuery, RouteRecord } from "../src/types"
+import type {
+  RouteLocation,
+  RouteParams,
+  RouteQuery,
+  RouteRecord,
+  Router as RouterInstance,
+} from "../src/types"
 
 function flushMicrotasks(): Promise<void> {
   const { promise, resolve } = Promise.withResolvers<void>()
@@ -38,43 +45,41 @@ const routes: RouteRecord[] = [
   { path: "/search", component: () => document.createTextNode("search") },
 ]
 
+// hooks 在渲染帧内调用（对应组件在 Router 渲染范围内的创建时刻）
+function withRouter<T>(router: RouterInstance, fn: () => T): T {
+  return withFrame({ router, depth: 0 }, fn)
+}
+
 describe("router hooks", () => {
   beforeEach(() => {
     window.history.replaceState(null, "", "/")
+    // activeRouter 是模块级信号，跨测试残留会污染一次性绑定
     setActiveRouter(null)
   })
 
-  afterEach(() => {
-    setActiveRouter(null)
-  })
-
-  it("useRouter throws outside Router and returns the active router inside", () => {
-    setActiveRouter(null)
+  it("useRouter throws outside Router and returns the scoped router inside", () => {
     expect(() => useRouter()).toThrow(/inside a Router/)
 
     const router = createRouter({ mode: "path", routes })
-    setActiveRouter(router)
-    expect(useRouter()).toBe(router)
-    expect(tryUseRouter()).toBe(router)
+    expect(withRouter(router, () => useRouter())).toBe(router)
+    expect(withRouter(router, () => tryUseRouter())).toBe(router)
 
-    setActiveRouter(null)
+    // Router 渲染范围外捕获不到 router
     expect(tryUseRouter()).toBeNull()
     router.dispose()
   })
 
-  it("tryUseRouter returns null when no router is active", () => {
-    setActiveRouter(null)
+  it("tryUseRouter returns null when no router is in scope", () => {
     expect(tryUseRouter()).toBeNull()
   })
 
   it("useParams/useQuery/useLocation expose live reactive snapshots", async () => {
     window.history.replaceState(null, "", "/users/42?tab=a&tag=x&tag=y#frag")
     const router = createRouter({ mode: "path", routes })
-    setActiveRouter(router)
 
-    const params = useParams()
-    const query = useQuery()
-    const location = useLocation()
+    const params = withRouter(router, () => useParams())
+    const query = withRouter(router, () => useQuery())
+    const location = withRouter(router, () => useLocation())
 
     expect(params.get()).toEqual({ id: "42" })
     expect(params.id).toBe("42")
@@ -96,16 +101,14 @@ describe("router hooks", () => {
     expect(query.get()).toEqual({ q: "hi" })
     expect(location.get().path).toBe("/search")
 
-    setActiveRouter(null)
     router.dispose()
   })
 
   it("useRoute returns a live aggregate snapshot", async () => {
     window.history.replaceState(null, "", "/users/7")
     const router = createRouter({ mode: "path", routes })
-    setActiveRouter(router)
 
-    const route = useRoute()
+    const route = withRouter(router, () => useRoute())
     expect(route.route?.path).toBe("/users/:id")
     expect(route.matched.map((m: { route: RouteRecord }) => m.route.path)).toEqual(["/users/:id"])
     expect(route.params).toEqual({ id: "7" })
@@ -118,13 +121,11 @@ describe("router hooks", () => {
     expect(route.params).toEqual({})
     expect(route.location.path).toBe("/about")
 
-    setActiveRouter(null)
     router.dispose()
   })
 
   it("useNavigate (curried) returns a navigate function bound to the router", async () => {
     const router = createRouter({ mode: "path", routes })
-    setActiveRouter(router)
 
     const navigate = navigateFrom(router)
     await navigate("/about")
@@ -134,7 +135,6 @@ describe("router hooks", () => {
     expect(router.location.get().path).toBe("/search")
     expect(router.location.get().state).toEqual({ from: "test" })
 
-    setActiveRouter(null)
     router.dispose()
   })
 
@@ -167,7 +167,7 @@ describe("router hooks", () => {
         { path: "/users/:id", component: Page },
       ],
     })
-    const tree = Router({ router, children: Outlet({}) })
+    const tree = withFrame({ router, depth: 0 }, () => Router({ router, children: Outlet({}) }))
     await drainMicrotasks()
 
     expect(tree.textContent).toBe("page")
@@ -188,13 +188,12 @@ describe("router hooks", () => {
   it("R13: useIsActive is reactive and segment-aware", async () => {
     window.history.replaceState(null, "", "/users/42")
     const router = createRouter({ mode: "path", routes })
-    setActiveRouter(router)
 
-    const active = useIsActive("/users", { exact: true })
+    const active = withRouter(router, () => useIsActive("/users", { exact: true }))
     expect(active.get()).toBe(false)
 
     // 非 exact：/users 前缀匹配 /users/42
-    const loose = useIsActive("/users")
+    const loose = withRouter(router, () => useIsActive("/users"))
     expect(loose.get()).toBe(true)
 
     router.push("/about")
@@ -207,16 +206,14 @@ describe("router hooks", () => {
     expect(active.get()).toBe(false) // exact 不匹配 /users/7
     expect(loose.get()).toBe(true) // 前缀匹配
 
-    setActiveRouter(null)
     router.dispose()
   })
 
   it("R13: useMatch is reactive and returns params", async () => {
     window.history.replaceState(null, "", "/users/42")
     const router = createRouter({ mode: "path", routes })
-    setActiveRouter(router)
 
-    const match = useMatch("/users/:id")
+    const match = withRouter(router, () => useMatch("/users/:id"))
     expect(match.get()).toEqual({ id: "42" })
 
     router.push("/about")
@@ -227,22 +224,19 @@ describe("router hooks", () => {
     await drainMicrotasks()
     expect(match.get()).toEqual({ id: "99" })
 
-    setActiveRouter(null)
     router.dispose()
   })
 
-  it("P10: useNavigate hook reads the active router", async () => {
+  it("P10: useNavigate hook reads the scoped router", async () => {
     const router = createRouter({ mode: "path", routes })
-    setActiveRouter(router)
 
-    const navigate = useNavigate()
+    const navigate = withRouter(router, () => useNavigate())
     await navigate("/about")
     expect(router.location.get().path).toBe("/about")
 
     await navigate("/search", { replace: true })
     expect(router.location.get().path).toBe("/search")
 
-    setActiveRouter(null)
     router.dispose()
   })
 })

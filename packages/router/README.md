@@ -133,9 +133,11 @@ const router = createRouter({
 - **`Navigate`**：导航是客户端副作用，SSR 输出为空。
 
 服务端必须用 **`createMemoryHistory`**（path / hash 两种 history 都会读取
-`window`），并以请求路径为初始路径。解析顺序：`Outlet` 的显式 `router` prop →
-父级 Outlet 帧 → 请求作用域（`withSSRRouter`）→ `setActiveRouter` 预置（仅客户端 /
-测试）。
+`window`），并以请求路径为初始路径。解析顺序（组件/hook 隐式拿 router）：
+`Outlet` 显式 `router` prop → 渲染帧（Router/Outlet 渲染子树期间压帧）→
+请求作用域（`withSSRRouter`）→ 客户端 `setActiveRouter` 预置。首次解析到非空
+router 后一次性绑定（组件只跑一次，绑定值随组件生命周期），其后挂载的其他
+Router 不会串扰。
 
 服务端完整流程：**渲染前 `await router.ready`**（初始守卫/重定向落定，否则重定向页
 会按重定向前的内容输出），再用 **`withSSRRouter`**（`@kikojs/router/server`，
@@ -184,6 +186,17 @@ const stop = hydrate(
 
 也可以在 `<Outlet router={router} />` 显式传 prop（嵌套布局由此自动向子级传递）；
 但 `Link` 与 hooks 无法传 prop，建议统一走 `withSSRRouter`。
+
+**嵌套 `<Router>`**（微前端/子应用）建议用 thunk children——kiko 的 jsx 急切
+执行组件，普通 JSX children 会先于内层 Router 体运行，被信号兜底绑到外层；
+函数 children 延迟到内层渲染帧内求值，子树精确绑定：
+
+```tsx
+<Router router={outer}>
+  <Nav />
+  <Router router={inner}>{() => <Outlet />}</Router>
+</Router>
+```
 
 > ⚠️ 客户端的 `setActiveRouter` 是模块级全局信号，不要在服务端按请求调用——
 > 并发请求会互相覆盖且压栈不清理。它只用于客户端 Router 挂载与测试。
