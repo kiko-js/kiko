@@ -692,7 +692,7 @@ describe("popstate redirect re-runs guards on the target", () => {
     await drainMicrotasks()
     expect(router.location.get().path).toBe("/about")
     router.back()
-    await drainMicrotasks()
+    await waitFor(() => router.location.get().path === "/about")
     // Popstate hit /old → redirect → commit → /secret's beforeEnter must run
     // and bounce to /about again (guard saw the redirect target).
     expect(guardTargets).toContain("/secret")
