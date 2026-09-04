@@ -94,7 +94,9 @@ render(app, document.getElementById("app")!)
 - store 同值写入短路；`Signal.Computed` 订阅不到「普通字段值」变化——这是 keyed `For` 的 index 做成 `Signal.State` 的原因（见 `kiko/control-flow`）。
 - `<style>` 内联元素就是 `Style` 组件（默认作用域 CSS，`<style global>` 全局），见 `kiko/dom-rendering`。
 - `@kikojs/dom/server` 的渲染函数接收 **thunk**：`renderToFragment(() => <App/>)`，不是节点本身。
-- `Router`/`Link` 使用 DOM API，目前仅客户端（见 `kiko/router` 与 `kiko/ssr`）。
+- `Router`/`Link` 的 **path/hash history 是客户端专用**（读取 `window`）。SSR 用
+  `createMemoryHistory` + `withSSRRouter`（`@kikojs/router/server`）做字符串渲染；
+  路由树**水合尚未支持**（SSR 页面目前不能直接 `hydrate` Router 组件树）。
 
 ## 参考实现
 

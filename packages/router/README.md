@@ -126,18 +126,23 @@ const router = createRouter({
 `@kikojs/router` 的组件可以在 kiko 的 SSR 字符串模式下安全渲染，不会因为触碰
 `document` / `window` 而抛错：
 
-- **`Router`**：透传给其 children（内容已在 JSX 求值期序列化）；不压入 active 栈。
+- **`Router`**：透传给其 children（内容已在 JSX 求值期序列化）；不触碰 active 栈。
 - **`Outlet`**：静态渲染当前深度匹配的路由组件，嵌套布局按 SSR 帧栈解析深度；
   拿不到 router 时输出空（与客户端“无 router 渲染空”语义一致）。
-- **`Link`**：输出静态 `<a href>`（模式/base 按预置的 active router 解析）。
+- **`Link`**：输出静态 `<a href>`（模式 / base 按请求作用域内的 active router 解析）。
 - **`Navigate`**：导航是客户端副作用，SSR 输出为空。
 
-服务端必须用 **`createMemoryHistory`**（path / hash 两种 history 都会读取 `window`），
-并以请求路径为初始路径。由于 JSX 的 children 先于 `Router` 组件体求值，`Outlet`
-在根层级拿不到 router 的唯一方式是显式传 `router` prop 或用 `setActiveRouter` 预置：
+服务端必须用 **`createMemoryHistory`**（path / hash 两种 history 都会读取
+`window`），并以请求路径为初始路径。解析顺序：`Outlet` 的显式 `router` prop →
+父级 Outlet 帧 → 请求作用域（`withSSRRouter`）→ `setActiveRouter` 预置（仅客户端 /
+测试）。
+
+推荐用 **`withSSRRouter`**（`@kikojs/router/server`）按请求绑定 router
+（AsyncLocalStorage 实现），同一进程并发渲染多条请求互不串扰：
 
 ```tsx
-import { createMemoryHistory, createRouter, Outlet, setActiveRouter } from "@kikojs/router"
+import { createRouter, Outlet } from "@kikojs/router"
+import { withSSRRouter } from "@kikojs/router/server"
 import { renderToFragment } from "@kikojs/dom/server"
 
 const router = createRouter({
@@ -145,13 +150,14 @@ const router = createRouter({
   routes: [{ path: "/", component: Layout, children: [{ path: "users", component: Users }] }],
 })
 
-// 方式一：预置 active router（渲染前设置，渲染后无需清理——不压栈）
-setActiveRouter(router)
-const html = await renderToFragment(() => <Outlet router={router} />)
+const html = await withSSRRouter(router, () => renderToFragment(() => <Outlet />))
 ```
 
-> 已知限制：`activeRouter` 是模块级全局栈，暂未按请求隔离；同一进程内并发渲染
-> 多条不同路径请串行处理或在每个请求用独立的 router 显式传 prop。
+也可以在 `<Outlet router={router} />` 显式传 prop（嵌套布局由此自动向子级传递）；
+但 `Link` 与 hooks 无法传 prop，建议统一走 `withSSRRouter`。
+
+> ⚠️ 客户端的 `setActiveRouter` 是模块级全局信号，不要在服务端按请求调用——
+> 并发请求会互相覆盖且压栈不清理。它只用于客户端 Router 挂载与测试。
 
 ## API
 
@@ -160,7 +166,8 @@ const html = await renderToFragment(() => <Outlet router={router} />)
 - **Hooks**：`useRouter`、`useRoute`、`useParams`、`useQuery`、`useLocation`、`useIsActive`、`useMatch`、`useNavigate`
 - **导航**：`useNavigate`、`redirect`、`redirectReplace`、`buildPath`
 - **守卫**：`createAuthGuard`、`combineGuards`
-- **历史**：`createPathHistory`、`createHashHistory`
+- **历史**：`createPathHistory`、`createHashHistory`、`createMemoryHistory`
+- **SSR**：`withSSRRouter`（`@kikojs/router/server`）
 
 ## 文档
 

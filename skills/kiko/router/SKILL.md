@@ -2,10 +2,11 @@
 name: kiko/router
 description: >-
   @kikojs/router 配置驱动路由：createRouter、Router/Link/Outlet/Navigate
-  组件、useRouter/useParams/useQuery/useLocation/useRoute/useNavigate hooks、
-  嵌套路由、动态参数、query/hash、守卫（beforeEnter/beforeLeave/beforeEach、
-  redirect）、path/hash 两种模式、createPathHistory/createHashHistory。
-  目前仅客户端（Router/Link 使用 DOM API）。
+  组件、useRouter/useParams/useQuery/useLocation/useRoute/useNavigate/useIsActive/
+  useMatch hooks、嵌套路由、动态参数、query/hash、守卫（beforeEnter/beforeLeave/
+  beforeEach、redirect）、scrollBehavior 滚动管理、keepAlive 离屏保留、catch-all
+  404、path/hash/memory 三种 history、SSR 字符串渲染（withSSRRouter）。
+  客户端水合（Router 树）尚未支持。
 type: sub-skill
 library: kiko
 requires:
@@ -60,18 +61,16 @@ function UserPage() {
 
 ## Hooks
 
-| hook                 | 返回                                             |
-| -------------------- | ------------------------------------------------ |
-| `useRouter()`        | 当前 `Router` 实例（无上下文时抛错）             |
-| `tryUseRouter()`     | 可能为 undefined 版本                            |
-| `useParams()`        | `Signal.Computed<RouteParams>` 当前参数          |
-| `useQuery()`         | `Signal.Computed<RouteQuery>` 当前 query         |
-| `useLocation()`      | `Signal.Computed<RouteLocation>` 当前位置        |
-| `useRoute()`         | 当前匹配路由记录                                 |
-| `useNavigate()`      | `nav(path, { replace })` 编程式导航              |
-| `setActiveRouter(r)` | （模块槽模式）手动设置活动路由，供非组件环境使用 |
-
-编程式导航：`nav("/x", { replace: true })`、`nav(-1)`（history 后退）等。
+| hook                                                                                                                                             | 返回                                                                    |
+| ------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------- |
+| `useRouter()`                                                                                                                                    | 当前 `Router` 实例（无上下文时抛错）                                    |
+| `tryUseRouter()`                                                                                                                                 | 可能为 undefined 版本                                                   |
+| `useParams()`                                                                                                                                    | `Signal.Computed<RouteParams>` 当前参数                                 |
+| `useQuery()`                                                                                                                                     | `Signal.Computed<RouteQuery>` 当前 query                                |
+| `useLocation()`                                                                                                                                  | `Signal.Computed<RouteLocation>` 当前位置                               |
+| `useNavigate()`                                                                                                                                  | `(to, { replace, state }) => Promise`，也可传数字（go）                 |
+| `setActiveRouter(r)`                                                                                                                             | 预置活动 router（客户端 Router 挂载与测试用；服务端用 `withSSRRouter`） |
+| 编程式导航：`router.push(path)` / `router.replace(path)` / `router.back()` / `router.forward()` / `router.go(delta)`；组件内用 `useNavigate()`。 |
 
 ## 守卫与重定向
 
@@ -95,13 +94,31 @@ const routes = [
 
 - `getRouteProps(router)`：把当前匹配转成 `{ params, query, location }`（`RouteComponentProps`），供非 JSX 或自定义渲染路径使用。
 - `buildPath` / `getQueryValue` / `pathsEqual` / `useNavigate`。
-- `createPathHistory` / `createHashHistory`：可注入的 history 适配器（测试/自定义后端）。
+- `createPathHistory` / `createHashHistory` / `createMemoryHistory`：可注入的 history 适配器（SSR/测试用 memory）。
 - 模式 `mode: "path"`（history API）或 `"hash"`（`#/path`，支持片段 `#/path#frag`）。
-- 路由状态：`router.location`（State）、`router.params`/`router.query`（Computed）、`router.state`。
+- 路由状态：`router.location`（State）、`router.path`/`router.params`/`router.query`/`router.matched`/`router.currentRoute`（Computed）。
 
 ## 陷阱与限制
 
-- **仅客户端**：`Router`/`Link` 使用 DOM API（history、window），SSR/水合下不可直接使用。SSR 场景需用 `getRouteProps` 直接渲染匹配路由（待正式支持）。
+- **path/hash history 客户端专用**：读取 `window`。SSR 用 `createMemoryHistory` +
+  `withSSRRouter`（`@kikojs/router/server`，AsyncLocalStorage 按请求隔离，并发渲染
+  安全）。**路由树水合尚未支持**——SSR 产物不要直接 `hydrate` Router 组件树。
+- 客户端 `setActiveRouter` 是模块级全局信号，勿在服务端按请求调用（并发互踩、压栈泄漏）。
 - 嵌套路由用 `RouteRecord.children`；叶子组件经 `Outlet` 承接。
-- `useParams`/`useQuery` 返回 `Signal.Computed`——在 JSX 中直接放入属性/子节点以自动订阅，或在 `effect`/`.get()` 中读取快照。
 - Link 的 activeClass 由 effect 驱动，卸载时自动清理监听。
+
+## SSR
+
+```tsx
+import { createRouter, Outlet } from "@kikojs/router"
+import { withSSRRouter } from "@kikojs/router/server"
+import { renderToFragment } from "@kikojs/dom/server"
+
+const router = createRouter({
+  history: createMemoryHistory(requestUrlPath), // 服务端必须 memory
+  routes,
+})
+const html = await withSSRRouter(router, () => renderToFragment(() => <Outlet />))
+```
+
+解析顺序：`Outlet` 显式 `router` prop → 父级 Outlet 帧 → 请求作用域（`withSSRRouter`）→ `setActiveRouter` 预置。

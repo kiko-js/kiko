@@ -3,6 +3,8 @@ import { describe, it, expect, beforeAll, afterAll } from "bun:test"
 import { Router, Link, Outlet, Navigate } from "../src/components"
 import { createRouter } from "../src/router"
 import { createMemoryHistory } from "../src/history"
+import { useRouter } from "../src/hooks"
+import { withSSRRouter } from "../src/server"
 import { clearActiveRouter, setActiveRouter } from "../src/context"
 import { setSSRRuntime } from "@kikojs/dom"
 import { renderToFragment, ssrRuntime } from "../../dom/src/ssr"
@@ -102,5 +104,94 @@ describe("router SSR", () => {
   it("Navigate renders nothing on the server", async () => {
     const html = await renderToFragment(() => <Navigate to="/x" />)
     expect(html).toBe("")
+  })
+
+  it("withSSRRouter resolves Link href per request scope (no setActiveRouter)", async () => {
+    const router = createRouter({
+      base: "/app",
+      history: createMemoryHistory("/app/users"),
+      routes: [
+        { path: "/", component: Home, children: [{ path: "users", component: () => <p>U</p> }] },
+      ],
+    })
+    const html = await withSSRRouter(router, () =>
+      renderToFragment(() => <Link to="/users/1">U1</Link>),
+    )
+    expect(html).toBe('<a href="/app/users/1">U1</a>')
+  })
+
+  it("withSSRRouter resolves Outlet and hooks without a preset router", async () => {
+    let seenMode = ""
+    const Users = (): Node => {
+      seenMode = useRouter().mode
+      return <p>users</p>
+    }
+    const router = createRouter({
+      history: createMemoryHistory("/users"),
+      routes: [
+        { path: "/", component: Home },
+        { path: "/users", component: Users },
+      ],
+    })
+    const html = await withSSRRouter(router, () => renderToFragment(() => <Outlet />))
+    expect(html).toBe("<p>users</p>")
+    expect(seenMode).toBe("path")
+  })
+
+  it("request scope wins over a stale preset active router", async () => {
+    const routerA = createRouter({
+      base: "/a",
+      history: createMemoryHistory("/a/"),
+      routes: [
+        { path: "/", component: Home, children: [{ path: "about", component: () => <p>A</p> }] },
+      ],
+    })
+    const routerB = createRouter({
+      base: "/b",
+      history: createMemoryHistory("/b/"),
+      routes: [
+        { path: "/", component: Home, children: [{ path: "about", component: () => <p>B</p> }] },
+      ],
+    })
+    // 模拟上一个请求的遗留状态：setActiveRouter 压栈且未清理
+    setActiveRouter(routerA)
+    try {
+      const html = await withSSRRouter(routerB, () =>
+        renderToFragment(() => <Link to="/about">About</Link>),
+      )
+      expect(html).toBe('<a href="/b/about">About</a>')
+    } finally {
+      clearActiveRouter(routerA)
+    }
+  })
+
+  it("concurrent renders keep each request's router isolated across awaits", async () => {
+    const routerA = createRouter({
+      base: "/a",
+      history: createMemoryHistory("/a/"),
+      routes: [
+        { path: "/", component: Home, children: [{ path: "about", component: () => <p>A</p> }] },
+      ],
+    })
+    const routerB = createRouter({
+      base: "/b",
+      history: createMemoryHistory("/b/"),
+      routes: [
+        { path: "/", component: Home, children: [{ path: "about", component: () => <p>B</p> }] },
+      ],
+    })
+    // 请求 A 的组件在渲染中途挂起，等请求 B 完整渲染完再恢复——
+    // 恢复后仍必须解析到 A 的 router（base /a），不能读到 B 或 null。
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>()
+    const Nav = async (): Promise<Node> => {
+      await gate
+      return <Link to="/about">About</Link>
+    }
+    const renderA = withSSRRouter(routerA, () => renderToFragment(() => <Nav />))
+    const renderB = withSSRRouter(routerB, () => renderToFragment(() => <Nav />))
+    release()
+    const [a, b] = await Promise.all([renderA, renderB])
+    expect(a).toBe('<a href="/a/about">About</a>')
+    expect(b).toBe('<a href="/b/about">About</a>')
   })
 })
