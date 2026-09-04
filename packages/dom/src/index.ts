@@ -22,7 +22,5 @@ export {
 export { render } from "./render"
 export { hydrate, hydrateWithState } from "./hydrate"
 export { createPortal } from "./portal"
-export { createContext, useContext } from "./context"
-export type { Context } from "./context"
 export { Show, For, ErrorBoundary, Suspend } from "./flow"
 export { lazy } from "./lazy"
