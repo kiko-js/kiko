@@ -21,7 +21,7 @@
     "auto-changeset": "bun run scripts/auto-changeset.ts"
   },
   "devDependencies": {
-    "@changesets/cli": "^3.0.1",
+    "@changesets/cli": "^2.31.1",
     "@types/bun": "^1.4.0",
     "esbuild": "^0.28.2",
     "husky": "^9.1.7",
