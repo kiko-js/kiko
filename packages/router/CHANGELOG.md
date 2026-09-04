@@ -1,5 +1,22 @@
 # @kikojs/router
 
+## 0.1.1
+
+### Patch Changes
+
+- ### @kikojs/dom (patch)
+  - remove dead code and speculative API, fix docs drift (dcc7cf6)
+
+  ### @kikojs/router (patch)
+  - remove dead code and speculative API, fix docs drift (dcc7cf6)
+
+  ### @kikojs/signal (patch)
+  - remove dead code and speculative API, fix docs drift (dcc7cf6)
+
+- Updated dependencies
+  - @kikojs/dom@0.1.1
+  - @kikojs/signal@0.0.7
+
 ## 0.1.0
 
 ### Minor Changes
