@@ -8,6 +8,7 @@ import {
   attachDelegationRoot,
   cleanupWatchers,
   detachDelegationRoot,
+  setRef,
   jsx,
   setProp,
   Style,
@@ -214,8 +215,12 @@ export function hydrateJsx(
   if (typeof tag === "function") {
     // 组件：透传其返回值（PendingNode / 数组 / 文本），由父级游标对齐
     // 惰性原型：组件体推迟到游标采纳该 children 时执行，保持
-    // 采纳顺序 == 求值顺序 == 文档序
-    return new KikoLazy(() => tag(p)) as unknown as unknown
+    // 采纳顺序 == 求值顺序 == 文档序；ref 剥离后在元素采纳完成时触发
+    const ref = p.ref
+    if (ref == null) return new KikoLazy(() => tag(p)) as unknown as unknown
+    const rest = { ...p } as Props
+    delete rest.ref
+    return new KikoLazy(() => adoptComponentRef(tag(rest), ref)) as unknown as unknown
   }
 
   if (tag === "style") {
@@ -249,6 +254,30 @@ export function hydrateStyle(props: StyleProps): PendingNode {
     // PendingNode 会被 toNodes 兜底转成 "[object Object]" 文本
     () => Style(props),
   )
+}
+
+/**
+ * 组件根的 ref 在水合期的触发点：元素级 PendingNode 采纳（hydrateElement
+ * 重放 props）完成后以真实元素触发；组级/非节点输出无法确定唯一元素，
+ * 原型下告警跳过。
+ */
+export function adoptComponentRef(node: unknown, ref: unknown): unknown {
+  if (node instanceof PendingNode && node.kind === "element") {
+    return new PendingNode(
+      "element",
+      el => {
+        const out = node.resolve(el)
+        if (el instanceof Node && el.nodeType === Node.ELEMENT_NODE)
+          setRef(el as Parameters<typeof setRef>[0], ref)
+        return out
+      },
+      node.rebuild,
+    )
+  }
+  if (node != null) {
+    warn("ref on a component that does not return a single element is ignored")
+  }
+  return node
 }
 
 /** 信号子节点：采纳 `<!---->` 标记 + 快照内容，挂 watcher */

@@ -4,6 +4,7 @@ import { describe, it, expect } from "bun:test"
 import { render } from "../src/render"
 import { Show } from "../src/flow"
 import { jsx } from "../src/jsx-runtime"
+import { realize } from "@kikojs/dom"
 import { createSignal } from "../src/signal"
 import type { Component } from "../src/jsx-runtime"
 
@@ -58,6 +59,7 @@ describe("lazy jsx probe (experiment)", () => {
       </Show>,
       container,
     )
+    expect(container.querySelector("span")?.textContent).toBe("off")
     count.set(true)
     await flush()
     expect(container.querySelector("b")?.textContent).toBe("on")
@@ -65,6 +67,43 @@ describe("lazy jsx probe (experiment)", () => {
     await flush()
     expect(container.querySelector("span")?.textContent).toBe("off")
     dispose()
+    container.remove()
+  })
+
+  it("realize materializes a stable node (identity across renders)", () => {
+    const Greet: Component = () => jsx("span", { children: "hi" })
+    const el = realize(jsx(Greet, null) as Node) as HTMLElement
+    expect(el.tagName).toBe("SPAN")
+    const container = document.createElement("div")
+    document.body.appendChild(container)
+    render(el, container)
+    expect(container.querySelector("span")?.textContent).toBe("hi")
+    container.remove()
+  })
+
+  it("component ref fires once with the realized root element", () => {
+    const seen: unknown[] = []
+    const Card: Component = () => jsx("article", { children: jsx("h2", { children: "t" }) })
+    const container = document.createElement("div")
+    document.body.appendChild(container)
+    // ref 是 jsx 层属性：组件收不到它，realize 出根元素后触发一次
+    const dispose = render(jsx(Card, { ref: (el: Element) => void seen.push(el) }), container)
+    expect(seen.length).toBe(1)
+    expect(seen[0]).toBeInstanceOf(HTMLElement)
+    expect((seen[0] as HTMLElement).tagName).toBe("ARTICLE")
+    dispose()
+    container.remove()
+  })
+
+  it("component ref cleanup runs on dispose", () => {
+    let cleaned = 0
+    const Box: Component = () => jsx("div", null)
+    const container = document.createElement("div")
+    document.body.appendChild(container)
+    const dispose = render(jsx(Box, { ref: () => () => void cleaned++ }), container)
+    expect(cleaned).toBe(0)
+    dispose()
+    expect(cleaned).toBe(1)
     container.remove()
   })
 })

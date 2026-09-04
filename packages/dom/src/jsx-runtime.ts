@@ -12,7 +12,13 @@ import {
 } from "./style"
 import { extractCssText, isPromiseLike } from "./shared"
 import { getSSRRuntime } from "./ssr-mode"
-import { hydrateFragment, hydrateJsx, hydrateStyle, isHydrating } from "./hydrate"
+import {
+  adoptComponentRef,
+  hydrateFragment,
+  hydrateJsx,
+  hydrateStyle,
+  isHydrating,
+} from "./hydrate"
 
 export type Props = Record<string, unknown> & { children?: unknown }
 export type Component<P = Props> = (props: P) => Node
@@ -512,7 +518,7 @@ function applyProp(el: StyledElement, key: string, value: unknown): void {
   }
 }
 
-function setRef(el: StyledElement, value: unknown): void {
+export function setRef(el: StyledElement, value: unknown): void {
   if (typeof value === "function") {
     const refFn = value as (el: StyledElement) => void | (() => void)
     const cleanup = refFn(el)
@@ -621,8 +627,14 @@ export function jsx(
 
   if (typeof tag === "function") {
     // 惰性原型：组件体推迟到消费点执行（appendChild/toNodes/render/水合采纳）
-    if (lazyMode.enabled) return new KikoLazy(() => tag(p)) as unknown as Node
-    return tag(p)
+    if (!lazyMode.enabled) return tag(p)
+    // `ref` 是 jsx 层的属性，不进入组件 props：realize 出根元素后触发
+    // （与 intrinsic setRef 同一语义；转发型组件的根就是目标元素，行为等价）
+    const ref = p.ref
+    if (ref == null) return new KikoLazy(() => tag(p)) as unknown as Node
+    const rest = { ...p } as Props
+    delete rest.ref
+    return new KikoLazy(() => fireComponentRef(tag(rest), ref)) as unknown as Node
   }
 
   // `<style>` is the intrinsic spelling of the Style component: scoped by
@@ -646,6 +658,19 @@ export function Fragment(props: Props): DocumentFragment {
   const frag = document.createDocumentFragment()
   appendChild(frag, props.children)
   return frag
+}
+
+/** 组件根的 ref 触发：客户端根元素直接触发；水合期推迟到该元素采纳后。 */
+function fireComponentRef(node: unknown, ref: unknown): unknown {
+  if (isHydrating()) return adoptComponentRef(node, ref)
+  if (node instanceof Node && node.nodeType === Node.ELEMENT_NODE) {
+    setRef(node as StyledElement, ref)
+    return node
+  }
+  if (node != null) {
+    console.warn(`[kiko] ref on a component that does not return a single element is ignored`)
+  }
+  return node
 }
 
 export interface StyleProps {
