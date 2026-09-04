@@ -50,11 +50,19 @@ function getSinceRef(): string {
   if (argIdx !== -1 && process.argv[argIdx + 1]) {
     return process.argv[argIdx + 1]!
   }
-  // 找最新 tag
+  // 发布提交（changesets action 的 version PR commit）之后的提交才需要生成 changeset；
+  // 否则旧时代的 v* tag / 无 tag 会把已发布的提交全部重扫一遍
+  const releaseCommit = execSync(
+    `git log -1 --no-merges --fixed-strings --format=%H --grep="chore: release"`,
+  )
+    .toString()
+    .trim()
+  if (releaseCommit) {
+    return releaseCommit
+  }
   try {
     return execSync("git describe --tags --abbrev=0").toString().trim()
   } catch {
-    // 没有 tag，返回第一个 commit
     return execSync("git rev-list --max-parents=0 HEAD").toString().trim()
   }
 }
