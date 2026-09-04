@@ -1,6 +1,7 @@
 import { describe, it, expect } from "bun:test"
 import { effect } from "../src/effect"
 import { createSignal } from "../src/signal"
+import { batch } from "../src/scheduler"
 import { onCleanup } from "../src/scope"
 
 function waitForMicrotask(): Promise<void> {
@@ -247,5 +248,46 @@ describe("effect error isolation", () => {
     } finally {
       globalThis.reportError = prevReport
     }
+  })
+})
+
+/** Drain a few microtask rounds so scheduled effect flushes settle. */
+async function drainFlushes(): Promise<void> {
+  for (let i = 0; i < 10; i++) await waitForMicrotask()
+}
+
+describe("sync write coalescing", () => {
+  it("coalesces 100k plain sync writes into a single effect run", async () => {
+    const a = createSignal(0)
+    let runs = 0
+    effect(() => {
+      void a.get()
+      runs++
+    })
+    expect(runs).toBe(1) // initial run only; no await between writes → no flush
+    for (let iter = 0; iter < 1000; iter++) {
+      for (let i = 0; i < 100; i++) a.set(a.get() + 1)
+    }
+    expect(runs).toBe(1)
+    await drainFlushes()
+    expect(runs).toBe(2) // 100k writes coalesced into exactly one re-run
+  })
+
+  it("coalesces 100k batched sync writes into a single effect run", async () => {
+    const a = createSignal(0)
+    let runs = 0
+    effect(() => {
+      void a.get()
+      runs++
+    })
+    expect(runs).toBe(1) // initial run only
+    for (let iter = 0; iter < 1000; iter++) {
+      batch(() => {
+        for (let i = 0; i < 100; i++) a.set(a.get() + 1)
+      })
+    }
+    expect(runs).toBe(1)
+    await drainFlushes()
+    expect(runs).toBe(2) // 100k batched writes coalesced into exactly one re-run
   })
 })

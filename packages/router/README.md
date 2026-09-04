@@ -159,7 +159,7 @@ const html = await renderToFragment(() => <Outlet router={router} />)
 - **组件**：`Router`、`Link`、`Outlet`、`Navigate`
 - **Hooks**：`useRouter`、`useRoute`、`useParams`、`useQuery`、`useLocation`、`useIsActive`、`useMatch`、`useNavigate`
 - **导航**：`useNavigate`、`redirect`、`redirectReplace`、`buildPath`
-- **守卫**：`createAuthGuard`、`combineGuards`、`createAsyncGuard`
+- **守卫**：`createAuthGuard`、`combineGuards`
 - **历史**：`createPathHistory`、`createHashHistory`
 
 ## 文档

@@ -3,8 +3,9 @@
  *
  * 用法：bun run scripts/auto-changeset.ts [--since <ref>] [--dry-run]
  *
- * 默认从最新 tag 开始扫描提交，解析 conventional commits (feat/fix/refactor...)
- * 并按包路径分组，生成一个 changeset 文件。
+ * 锚点：最近一次 "chore: release" 发布提交之后的提交才参与生成（无发布
+ * 历史时退回最新 tag / 根提交）。解析 conventional commits (feat/fix/...)
+ * 并按包路径分组，生成一个 changeset 文件；未识别的 type 会被跳过。
  */
 
 import { execSync } from "node:child_process"
@@ -83,6 +84,9 @@ function parseCommit(hash: string): Commit | null {
   if (!match) return null
 
   const [, type, scope, breakingMark, restSubject] = match
+  const t = type!.toLowerCase()
+  // 白名单外 type（update:、init:、拼写错误等）不参与 bump，直接跳过
+  if (!(t in BUMP_LEVELS)) return null
   const body = lines.slice(1).join("\n").trim()
 
   // 检查 BREAKING CHANGE
@@ -91,7 +95,7 @@ function parseCommit(hash: string): Commit | null {
 
   return {
     hash,
-    type: type!.toLowerCase(),
+    type: t,
     scope: scope ?? null,
     subject: restSubject!.trim(),
     body,

@@ -34,7 +34,7 @@ Monorepo: `@kikojs/signal` (signal toolkit), `@kikojs/dom` (DOM + SSR), `@kikojs
 ### Testing
 
 - Framework: `bun:test` (Jest-compatible API)
-- DOM: `happy-dom` v17 (injected via `test/setup.ts`)
+- DOM: `happy-dom` v20 (injected via `test/setup.ts`)
 - JSX tests need `/** @jsxImportSource @kikojs/dom */` pragma
 - DOM tests: `beforeAll(async () => { await import('./setup') })`
 

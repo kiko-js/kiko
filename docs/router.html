@@ -432,11 +432,6 @@
                 <td><code>combineGuards(...guards): RouteGuard</code></td>
                 <td>组合多个守卫，按顺序执行，遇到第一个拦截结果立即返回。</td>
               </tr>
-              <tr>
-                <td><code>createAsyncGuard</code></td>
-                <td><code>createAsyncGuard(check, redirectTo): RouteGuard</code></td>
-                <td>异步权限校验守卫。</td>
-              </tr>
             </tbody>
           </table>
           <div class="code-block">
@@ -523,11 +518,6 @@
                 <td><code>navigateFrom(router): (to, options?) =&gt; void</code></td>
                 <td>把 router 绑定为导航函数（组件内请用 <code>useNavigate()</code> hook）。</td>
               </tr>
-              <tr>
-                <td><code>openExternal</code></td>
-                <td><code>openExternal(url, target?)</code></td>
-                <td>在新窗口打开外部链接。</td>
-              </tr>
             </tbody>
           </table>
           <div class="code-block">
@@ -599,10 +589,6 @@
               <tr>
                 <td><code>RouteMatch</code></td>
                 <td>匹配结果：<code>{ route, params, remaining }</code></td>
-              </tr>
-              <tr>
-                <td><code>RouterState</code></td>
-                <td><code>{ location, params, query, matched, currentRoute }</code></td>
               </tr>
               <tr>
                 <td><code>Router</code></td>

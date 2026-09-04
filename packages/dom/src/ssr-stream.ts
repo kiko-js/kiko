@@ -18,18 +18,19 @@
 
 import { isSignal } from "./signal"
 import type { WatchableSignal } from "./signal"
-import { isPromiseLike, unwrap } from "./shared"
+import { extractCssText, isPromiseLike, unwrap } from "./shared"
 import { getSSRRuntime, setSSRRuntime } from "./ssr-mode"
 import type { SSRRuntime } from "./ssr-mode"
 import {
   escapeText,
   escapeAttr,
   serializeAttrs,
-  extractCssText,
   escapeStyleText,
   toRawText,
   guardRawText,
   SSRElement,
+  VOID_ELEMENTS,
+  RAW_TEXT_ELEMENTS,
 } from "./ssr"
 import type { AsyncComponent, Component, Props, StyleProps } from "./jsx-runtime"
 
@@ -102,25 +103,6 @@ function chunkify(value: unknown): StreamChunk[] {
 // ---------------------------------------------------------------------------
 // 元素 / 组件 → 块树
 // ---------------------------------------------------------------------------
-
-const VOID_ELEMENTS = new Set([
-  "area",
-  "base",
-  "br",
-  "col",
-  "embed",
-  "hr",
-  "img",
-  "input",
-  "link",
-  "meta",
-  "param",
-  "source",
-  "track",
-  "wbr",
-])
-
-const RAW_TEXT_ELEMENTS = new Set(["script", "noscript", "iframe", "xmp", "noembed", "noframes"])
 
 function streamJsx(
   tag: string | Component<any> | AsyncComponent<any>,
@@ -293,29 +275,6 @@ export const ssrStreamRuntime: SSRRuntime = {
 // ---------------------------------------------------------------------------
 // 入口：遍历块树并流式输出
 // ---------------------------------------------------------------------------
-
-/** 把块树序列化为 HTML 字符串（用于测试与兜底） */
-export function chunkToString(chunk: StreamChunk): Promise<string> {
-  const parts: string[] = []
-  const collect = async (c: StreamChunk): Promise<void> => {
-    switch (c.kind) {
-      case "empty":
-        return
-      case "sync":
-        parts.push(c.html)
-        return
-      case "async": {
-        const resolved = await c.promise
-        for (const r of resolved) await collect(r)
-        return
-      }
-      case "sequence":
-        for (const child of c.chunks) await collect(child)
-        return
-    }
-  }
-  return collect(chunk).then(() => parts.join(""))
-}
 
 /**
  * 流式渲染：返回 `ReadableStream<string>`，同步骨架立即输出，异步内容

@@ -1,7 +1,7 @@
 ---
 name: kiko/router
 description: >-
-  @kikojs/router 声明式路由：createRouter、Router/Route/Link/Outlet/Navigate
+  @kikojs/router 配置驱动路由：createRouter、Router/Link/Outlet/Navigate
   组件、useRouter/useParams/useQuery/useLocation/useRoute/useNavigate hooks、
   嵌套路由、动态参数、query/hash、守卫（beforeEnter/beforeLeave/beforeEach、
   redirect）、path/hash 两种模式、createPathHistory/createHashHistory。
@@ -54,7 +54,6 @@ function UserPage() {
 ## 组件
 
 - `Router router={…}`：挂载路由实例，提供上下文（需在使用 hooks/Link/Outlet 的子树外层）。
-- `Route path element`：`<Route path="/" element={<Home/>}/>`。
 - `Link`：`to`、`activeClass`、`exact`（严格匹配）、`replace`、`target="_blank"`、修饰键（`modifier keys`）、多 class。激活态用 `activeClass`。
 - `Outlet`：渲染当前匹配的子路由（嵌套布局）；无匹配可配合重定向/404。
 - `Navigate to replace`：一次性导航（渲染即跳转）。
@@ -89,7 +88,7 @@ const routes = [
 
 - 全局守卫：`RouterOptions.beforeEach`。
 - `redirect(path)` / `redirectReplace(path)`；守卫返回字符串即视为 `{ path }` 重定向；返回 `false` 中止导航。
-- `combineGuards(...)`、`createAuthGuard(...)`、`createAsyncGuard(...)`（`kiko` 的 guards 模块）。
+- `combineGuards(...)`、`createAuthGuard(...)`（`kiko` 的 guards 模块）。
 - 重定向有深度上限 `MAX_REDIRECT_DEPTH = 10`，防循环。
 
 ## 工具

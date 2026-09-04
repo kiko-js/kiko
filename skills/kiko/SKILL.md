@@ -53,7 +53,7 @@ render(app, document.getElementById("app")!)
 | 异步与事件：createResource / createEmitter                                                               | `kiko/async`         |
 | JSX 渲染：jsx 工厂 / render / hydrate / createPortal / ref / Style                                       | `kiko/dom-rendering` |
 | 控制流：Show / For / ErrorBoundary / Suspend / lazy                                                      | `kiko/control-flow`  |
-| SSR 与水合：@kikojs/dom/server / renderToFragment / renderToDocument                                     | `kiko/ssr`           |
+| SSR 与水合：@kikojs/dom/server / renderToFragment / renderToStream                                       | `kiko/ssr`           |
 | 路由：createRouter / Router / Link / Outlet / hooks / 守卫                                               | `kiko/router`        |
 
 ## Quick Decision Tree

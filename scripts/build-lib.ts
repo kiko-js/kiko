@@ -34,10 +34,6 @@ export interface BuildOptions {
   entrypoints: string[]
   /** Packages left unbundled (peer/runtime deps). */
   external?: string[]
-  /** Build platform; defaults to "browser". */
-  target?: "browser" | "node"
-  /** Minify output; defaults to "true". */
-  minify?: boolean
   /** Code-splitting into chunks; defaults to "true" (shared deps extracted). */
   splitting?: boolean
 }
@@ -62,14 +58,13 @@ export async function buildPackage(opts: BuildOptions): Promise<void> {
       outdir: "dist",
       bundle: true,
       format: "esm",
-      platform: opts.target === "node" ? "node" : "browser",
+      platform: "browser",
       target: ["es2020"],
       // Extract modules shared between entry points into chunks instead of
       // duplicating them per entry (e.g. dom's jsx core is used by 3 entries).
       // esbuild emits proper re-export facades, so this is single-instance.
       splitting: opts.splitting ?? true,
-      // Published artifacts are minified; consumers re-bundle from dist anyway.
-      minify: opts.minify ?? true,
+      minify: true,
       external: opts.external,
       // Automatic JSX runtime for @kikojs/router's components.tsx; inert for
       // the other packages (no .tsx). The runtime import stays external.

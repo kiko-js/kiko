@@ -9,7 +9,7 @@ import {
   adoptSheet,
   unadoptSheet,
 } from "./style"
-import { isPromiseLike } from "./shared"
+import { extractCssText, isPromiseLike } from "./shared"
 import { getSSRRuntime } from "./ssr-mode"
 import { hydrateFragment, hydrateJsx, hydrateStyle, isHydrating } from "./hydrate"
 
@@ -652,24 +652,6 @@ export interface StyleProps {
   global?: boolean
   /** CSP nonce for the fallback `<style>` element (ignored with constructable sheets). */
   nonce?: string
-}
-
-function extractCssText(children: unknown): string {
-  const parts: string[] = []
-  const visit = (value: unknown): void => {
-    if (value == null || value === false || value === true) return
-    if (isSignal(value)) {
-      visit((value as WatchableSignal<unknown>).get())
-      return
-    }
-    if (Array.isArray(value)) {
-      for (const c of value) visit(c)
-      return
-    }
-    parts.push(String(value))
-  }
-  visit(children)
-  return parts.join("\n")
 }
 
 function collectCssSignals(children: unknown): WatchableSignal<unknown>[] {

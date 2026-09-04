@@ -1,7 +1,7 @@
 ---
 name: kiko/signals
 description: >-
-  kiko 的响应式核心：createSignal、computed/derived、effect（含批量、
+  kiko 的响应式核心：createSignal、computed、effect（含批量、
   错误隔离、清理作用域）、batch、untrack、on 依赖辅助、onCleanup、
   createWatcher、toSignalValue、watchValue。处理「如何声明可变状态、
   如何派生、如何跑副作用」。
@@ -26,13 +26,13 @@ count.set(1)
 count.set(v => v + 1) // 函数式写：基于当前值
 ```
 
-## 派生：computed / derived
+## 派生：computed
 
 ```ts
-import { computed, derived } from "@kikojs/signal"
+import { computed } from "@kikojs/signal"
 
 const double = computed(() => count.get() * 2) // Signal.Computed<number>
-const alias = derived(() => count.get()) // derived 是 computed 的别名
+// derived(fn) 是 computed 的别名，已弃用——请直接使用 computed
 ```
 
 `computed` 惰性求值、按依赖缓存；依赖不变时重复 `.get()` 不会重跑。

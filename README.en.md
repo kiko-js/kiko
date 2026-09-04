@@ -76,7 +76,7 @@ bun run fmt          # format with oxfmt
 bun run site:build   # build the docs site (auto-builds first)
 ```
 
-> Package entry points point at the `dist/` build output when published, so tests, examples and the docs site need a build first (`bun run test` / `bun run site:build` do this automatically via their `pre*` hooks).
+> Package entry points point at the `dist/` build output when published, so tests, examples and the docs site need a build first. Only `bun run site:build` builds automatically (via its `presite:build` hook); for `bun run test`, run `bun run build` first.
 
 ## License
 

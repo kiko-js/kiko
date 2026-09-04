@@ -51,11 +51,3 @@ export function navigateFrom(
 ): (to: NavPath | number, options?: { replace?: boolean; state?: unknown }) => Promise<void> {
   return (to, options) => router.navigate(to, options)
 }
-
-/** 向后兼容别名：保留旧的 useNavigate 名字指向 navigateFrom。 */
-export const useNavigate = navigateFrom
-
-/** 跳转到外部链接 */
-export function openExternal(url: string, target: string = "_blank"): void {
-  window.open(url, target)
-}

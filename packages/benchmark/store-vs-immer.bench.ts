@@ -23,7 +23,7 @@
  */
 
 import { produce, setAutoFreeze } from "immer"
-import { createSignal, computed, effect, batch, createStore } from "@kikojs/signal"
+import { createSignal, computed, effect, createStore } from "@kikojs/signal"
 
 setAutoFreeze(false)
 
@@ -212,47 +212,6 @@ hdr("Reactivity — effect re-run (1k iterations, awaited flush)")
   await benchAsync("raw    effect re-run after set", () => {
     raw.set(sink + 1)
   })
-}
-
-hdr("Reactivity — sync write coalescing (verification)")
-
-// How many effect runs do N synchronous signal writes actually trigger?
-// Because `effect` re-runs flush on a microtask, ALL writes in one synchronous
-// block coalesce into a SINGLE flush (dedup), even across very many writes.
-// `batch()` therefore does not change the run count for a pure sync block — its
-// value is deferring the flush to the batch boundary (e.g. keeping an in-flight
-// flush from interleaving with async work). This section verifies that
-// invariant rather than racing two equivalent workloads. Lower = better.
-{
-  const a = createSignal(0)
-  let runs = 0
-  effect(() => {
-    void a.get()
-    runs++
-  })
-
-  // 1000×100 = 100k sync writes, no await between them → expect a single run
-  // after the microtask flush (0 during the writes themselves).
-  runs = 0
-  for (let iter = 0; iter < 1000; iter++) {
-    for (let i = 0; i < 100; i++) a.set(a.get() + 1)
-  }
-  await new Promise<void>(resolve => setTimeout(resolve, 0))
-  const syncRuns = runs
-
-  // Same but wrapped in batch().
-  runs = 0
-  for (let iter = 0; iter < 1000; iter++) {
-    batch(() => {
-      for (let i = 0; i < 100; i++) a.set(a.get() + 1)
-    })
-  }
-  await new Promise<void>(resolve => setTimeout(resolve, 0))
-  const batchRuns = runs
-
-  console.log(`  ${"effect runs for 100k plain sync writes".padEnd(56)} ${syncRuns}`)
-  console.log(`  ${"effect runs for 100k batched sync writes".padEnd(56)} ${batchRuns}`)
-  console.log(`  ${"expected (dedup to a single run)".padEnd(56)} 1`)
 }
 
 // ═══════════════════════════════════════════════════════════════════════

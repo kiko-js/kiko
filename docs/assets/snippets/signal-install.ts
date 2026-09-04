@@ -2,7 +2,6 @@ import {
   createSignal,
   isSignal,
   computed,
-  derived,
   toSignalValue,
   watchValue,
   effect,

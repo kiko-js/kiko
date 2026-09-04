@@ -1,4 +1,4 @@
-import { createSignal, computed, derived } from "@kikojs/signal"
+import { createSignal, computed } from "@kikojs/signal"
 
 const count = createSignal(1)
 
@@ -9,6 +9,4 @@ console.log(doubled.get()) // 2
 count.set(5)
 console.log(doubled.get()) // 10
 
-// derived 是 computed 的别名
-const label = derived(() => `count = ${count.get()}`)
-console.log(label.get()) // "count = 5"
+// derived(fn) 是 computed 的别名，已弃用——新代码请直接使用 computed

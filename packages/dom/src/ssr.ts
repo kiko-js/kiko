@@ -1,7 +1,7 @@
-import { isSignal } from "./signal"
+import { isSignal, reportError } from "./signal"
 import type { WatchableSignal } from "./signal"
 import { createScopeAttr, rewriteScopedCss } from "./style"
-import { isPromiseLike, isTruthy, unwrap } from "./shared"
+import { extractCssText, isPromiseLike, isTruthy, unwrap } from "./shared"
 import type { SSRRuntime } from "./ssr-mode"
 import type { AsyncComponent, Component, Props, StyleProps } from "./jsx-runtime"
 
@@ -121,24 +121,6 @@ function extractScopeMarkers(html: string): { cleaned: string; attrs: string[] }
 }
 
 /** @internal exported for ssr-stream */
-export function extractCssText(children: unknown): string {
-  const parts: string[] = []
-  const visit = (value: unknown): void => {
-    if (value == null || value === false || value === true) return
-    if (isSignal(value)) {
-      visit((value as WatchableSignal<unknown>).get())
-      return
-    }
-    if (Array.isArray(value)) {
-      for (const c of value) visit(c)
-      return
-    }
-    parts.push(String(value))
-  }
-  visit(children)
-  return parts.join("\n")
-}
-/** @internal exported for ssr-stream */
 export function escapeStyleText(css: string): string {
   // Prevent `</style>` in CSS from closing the element early and enabling
   // markup injection. The backslash keeps the HTML parser from seeing a tag
@@ -162,7 +144,8 @@ export function ssrStyle(props: StyleProps): SSRValue {
 // ---------------------------------------------------------------------------
 // 元素 / 组件
 
-const VOID_ELEMENTS = new Set([
+/** @internal exported for ssr-stream */
+export const VOID_ELEMENTS = new Set([
   "area",
   "base",
   "br",
@@ -182,7 +165,15 @@ const VOID_ELEMENTS = new Set([
 // RAW TEXT 元素：HTML 解析器把内容当纯文本，字符引用（&lt;）不会被解码，
 // 所以普通文本转义会破坏内容（如 <script> 里的 JS 会变成字面 "&lt;"）。
 // 这些元素的内容按原样序列化，只防御把自身结束标签写进内容的注入。
-const RAW_TEXT_ELEMENTS = new Set(["script", "noscript", "iframe", "xmp", "noembed", "noframes"])
+/** @internal exported for ssr-stream */
+export const RAW_TEXT_ELEMENTS = new Set([
+  "script",
+  "noscript",
+  "iframe",
+  "xmp",
+  "noembed",
+  "noframes",
+])
 
 /**
  * raw-text 元素的内容序列化：逐叶取 String，不做 HTML 转义。
@@ -343,17 +334,13 @@ export function ssrErrorBoundary(props: {
   }
 }
 
-function reportErrorSSR(error: unknown): void {
-  if (typeof reportError === "function") reportError(error)
-}
-
 export function ssrSuspend(props: { fallback?: unknown; children: unknown }): SSRValue {
   const wrap = (content: SSRValue): SSRValue => {
     if (isPromiseLike(content)) {
       return Promise.resolve(content).then(
         c => new SSRElement(`<!--suspend-->${raw(c)}<!--/suspend-->`),
         rejected => {
-          reportErrorSSR(rejected)
+          reportError(rejected)
           return Promise.resolve(toSSRString(props.fallback)).then(
             c => new SSRElement(`<!--suspend-->${raw(c)}<!--/suspend-->`),
           )

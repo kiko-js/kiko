@@ -12,7 +12,6 @@ import {
   tryUseRouter,
   createAuthGuard,
   combineGuards,
-  createAsyncGuard,
   redirect,
   redirectReplace,
   buildPath,

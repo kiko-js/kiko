@@ -76,7 +76,7 @@ bun run fmt          # oxfmt 格式化
 bun run site:build   # 构建文档站（会先自动构建）
 ```
 
-> 包的入口在发布时指向 `dist/` 打包产物，因此运行测试、示例或文档站前需要先构建（`bun run test` / `bun run site:build` 已通过 pre 钩子自动完成）。
+> 包的入口在发布时指向 `dist/` 打包产物，因此运行测试、示例或文档站前需要先构建：`bun run site:build` 会通过 `presite:build` 钩子自动构建，但 `bun run test` 不会——请先执行 `bun run build`。
 
 ## 许可证
 

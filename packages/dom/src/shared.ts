@@ -20,3 +20,23 @@ export function isTruthy(cond: unknown): boolean {
 export function unwrap<T>(value: T | WatchableSignal<T>): T {
   return isSignal(value) ? (value as WatchableSignal<T>).get() : (value as T)
 }
+
+/** Recursively stringify style children: signals resolve to their current
+ * snapshot, arrays flatten, everything else becomes `String(value)`. */
+export function extractCssText(children: unknown): string {
+  const parts: string[] = []
+  const visit = (value: unknown): void => {
+    if (value == null || value === false || value === true) return
+    if (isSignal(value)) {
+      visit((value as WatchableSignal<unknown>).get())
+      return
+    }
+    if (Array.isArray(value)) {
+      for (const c of value) visit(c)
+      return
+    }
+    parts.push(String(value))
+  }
+  visit(children)
+  return parts.join("\n")
+}

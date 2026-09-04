@@ -30,15 +30,3 @@ export function combineGuards(...guards: RouteGuard[]): RouteGuard {
     return true
   }
 }
-
-/** 创建一个延迟守卫：模拟异步权限校验 */
-export function createAsyncGuard(
-  check: (to: RouteLocation, from: RouteLocation | null, router: Router) => Promise<boolean>,
-  redirectTo: string,
-): RouteGuard {
-  return async (to, from, router) => {
-    if (to.fullPath === redirectTo) return true
-    const ok = await check(to, from, router)
-    return ok || { path: redirectTo }
-  }
-}

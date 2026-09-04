@@ -1,7 +1,7 @@
 ---
 name: kiko/ssr
 description: >-
-  @kikojs/dom/server 服务端渲染与水合：renderToFragment / renderToDocument、
+  @kikojs/dom/server 服务端渲染与水合：renderToFragment / renderToStream、
   导入即注册字符串运行时、控制流与 Style 的 SSR 支持、客户端 hydrate 的
   对齐规则（相邻文本合并的 splitText、Show 分支重建、Suspend 静态采用）。
   参考全栈示例 examples/ssr。

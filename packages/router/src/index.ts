@@ -20,6 +20,7 @@ export {
   navigateFrom,
   defineRoutes,
 } from "./utils"
+export { createAuthGuard, combineGuards } from "./guards"
 export { createPathHistory, createHashHistory, createMemoryHistory } from "./history"
 export type {
   KeepAlive,

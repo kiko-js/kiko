@@ -1,7 +1,7 @@
 import "./setup"
 import { describe, it, expect, beforeEach } from "bun:test"
 import { createRouter } from "../src/router"
-import { createAuthGuard, combineGuards, createAsyncGuard } from "../src/guards"
+import { createAuthGuard, combineGuards } from "../src/guards"
 import type { RouteRecord } from "../src/types"
 
 function flushMicrotasks(): Promise<void> {
@@ -122,18 +122,6 @@ describe("guard helpers", () => {
     await settleCalls(calls)
     expect(router.location.get().path).toBe("/login")
     expect(calls).toEqual(["first", "second", "first", "second", "third"])
-    router.dispose()
-  })
-
-  it("createAsyncGuard redirects on failed check", async () => {
-    const router = createRouter({
-      mode: "path",
-      routes: createRoutes(),
-      beforeEach: createAsyncGuard(async () => false, "/login"),
-    })
-    router.push("/admin")
-    await drainMicrotasks()
-    expect(router.location.get().path).toBe("/login")
     router.dispose()
   })
 })
