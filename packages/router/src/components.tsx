@@ -86,13 +86,15 @@ export function Router(props: RouterProps): Node {
 }
 
 /**
- * children thunk 协议：kiko 的 jsx 急切执行组件，嵌套 Router 的 JSX children
- * 会先于内层 Router 体运行、被信号兜底绑到外层。函数 children 延迟到 Router
- * 帧内求值，子树精确绑定。与 @kikojs/dom 渲染函数的 thunk 惯例一致。
+ * children thunk 协议（兼容形态）：惰性物化后词法 children 已在 Router 帧内
+ * 求值、精确绑定内层；thunk 形态（`() => node`）保留兼容——且 lazy/async
+ * 组件在帧外微任务执行时仍依赖信号兜底（bindRouter 一次性绑定）。与
+ * @kikojs/dom 渲染函数的 thunk 惯例一致。
  */
 function resolveChildren(children: unknown): unknown {
   return typeof children === "function" ? (children as () => unknown)() : children
 }
+
 interface LinkProps {
   to: NavPath
   replace?: boolean

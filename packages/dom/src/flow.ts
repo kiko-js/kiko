@@ -211,9 +211,9 @@ export function For<T>(props: {
   }
 
   /**
-   * 默认 keying（无 getKey）：对象/函数按引用复用节点——移动不重建、children
-   * 不重跑；原始值按位置（无稳定身份，按值会坍缩重复项）。同一引用出现两次
-   * 同样会坍缩，这两种情况都回退整表重建（renderFull）。
+   * 默认 keying（无 getKey）：key = 条目本身（SameValueZero）——对象/函数按
+   * 引用复用节点（移动不重建、children 不重跑），原始值按值复用。重复条目
+   * （同一引用出现两次，或重复的原始值）会坍缩 key → 回退整表重建。
    */
   const renderDefaultKeyed = (list: readonly T[]): void => {
     const parent = marker.parentNode

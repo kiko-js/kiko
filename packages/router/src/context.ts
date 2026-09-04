@@ -6,11 +6,10 @@ import type { Router } from "./types"
 // 1) 渲染帧：Router/Outlet 渲染子树期间压帧，帧内创建的组件精确捕获——
 //    嵌套/并存 Router 各自作用域，互不串扰。栈仅在同步渲染 walk 期间存在，
 //    无需挂载/卸载管理。
-// 2) activeRouter 信号：kiko 的 jsx 急切执行组件（jsx-runtime 直接调用
-//    tag(props)），作为 Router 的 JSX children 创建的组件先于 Router 体运行，
-//    创建期拿不到 router——effect/computed 借助信号在 Router 挂载后补跑，
-//    并做一次性绑定（首个非空 router 永久生效），避免其后挂载的其他 Router
-//    串扰已绑定的组件。
+// 2) activeRouter 信号：词法 children 已由惰性物化推迟到 Router 帧内求值
+//    （帧精确捕获）；但 lazy/async 路由组件在帧弹出后的微任务里才执行，拿
+//    不到帧——effect/computed 借助信号兜底补绑，并做一次性绑定（首个非空
+//    router 永久生效），避免其后挂载的其他 Router 串扰已绑定的组件。
 // 3) SSR 请求作用域：`@kikojs/router/server` 的 AsyncLocalStorage 兜底，按
 //    请求隔离。同步帧栈在 ssr-stream 的异步 chunkify 下会跨请求串扰，服务端
 //    只信 ALS；客户端 bundle 不导入 server 入口，getter 保持 null，零开销。

@@ -405,8 +405,8 @@ export function hydrateFor(props: {
       current = out
     }
 
-    // 更新：keyed 与 flow.ts 的 renderKeyed 相同；无 getKey 时默认按引用
-    // 复用水合采纳的节点（与 flow.ts 的 renderDefaultKeyed 同语义）
+    // 更新：keyed 与 flow.ts 的 renderKeyed 相同；无 getKey 时按条目身份
+    // （SameValueZero）复用水合采纳的节点（与 flow.ts 的 renderDefaultKeyed 同语义）
     const render = (): void => {
       const list = unwrap(props.each) as readonly unknown[]
       if (!getKey) {
