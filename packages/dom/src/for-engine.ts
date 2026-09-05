@@ -23,6 +23,11 @@ export interface ForCoreOptions<T> {
   marker: Node
   /** children 渲染函数(keyed 传 accessor、默认传值,签名在此保持宽松) */
   children: (item: T | (() => T), index: () => number) => unknown
+  /**
+   * 节点物化钩子:客户端 toNodes;水合传 hydrateValue(逐游标消费现有节点)。
+   * adopt* 方法走它,更新方法始终走 toNodes(存活节点复用,只物化新条目)。
+   */
+  render?: (value: unknown) => Node[]
 }
 
 export interface ForCore<T> {
@@ -38,8 +43,19 @@ export interface ForCore<T> {
   identity(list: readonly T[]): void
   /** 整表重建:children 全量重跑,节点全换 */
   full(list: readonly T[]): void
+  /** 水合初次采纳(keyed):逐项建条目 + 物化钩子消费现有节点,不做重排 */
+  adoptKeyed(list: readonly T[], getKey: (item: T, index: number) => unknown): void
+  /** 水合初次采纳(默认身份):游标必须逐项消费,重复身份只登记首个条目 */
+  adoptIdentity(list: readonly T[]): void
   /** 拆除全部节点并清空条目状态(宿主 cleanup) */
   dispose(): void
+}
+
+/** keyed 条目工厂:keyed() 新建与水合采纳共用同一构造(条目模型单一来源) */
+function createKeyedEntry<T>(item: T, index: number): ForKeyEntry<T> {
+  const state = new Signal.State<T>(item)
+  const accessor = new Signal.Computed<T>(() => state.get())
+  return { nodes: [], state, accessor, idx: new Signal.State(index) }
 }
 
 /**
@@ -73,6 +89,7 @@ function reconcileForList(
 
 export function createForCore<T>(opts: ForCoreOptions<T>): ForCore<T> {
   const { marker, children } = opts
+  const renderNode = opts.render ?? toNodes
   const core: ForCore<T> = {
     current: [],
     entries: new Map(),
@@ -94,12 +111,10 @@ export function createForCore<T>(opts: ForCoreOptions<T>): ForCore<T> {
           nextEntries.set(key, existing)
           next.push(...existing.nodes)
         } else {
-          const state = new Signal.State<T>(item)
-          const accessor = new Signal.Computed<T>(() => state.get())
-          const entry: ForKeyEntry<T> = { nodes: [], state, accessor, idx: new Signal.State(i) }
+          const entry = createKeyedEntry(item, i)
           entry.nodes = toNodes(
             childFn(
-              () => accessor.get(),
+              () => entry.accessor.get(),
               () => entry.idx.get(),
             ),
           )
@@ -161,6 +176,38 @@ export function createForCore<T>(opts: ForCoreOptions<T>): ForCore<T> {
       core.current = reconcileForList(marker.parentNode, marker, core.current, next, [core.current])
       core.entries = new Map()
       core.plain = new Map()
+    },
+
+    adoptKeyed(list, getKey) {
+      const childFn = children as (item: () => T, index: () => number) => unknown
+      const out: Node[] = []
+      for (let i = 0; i < list.length; i++) {
+        const item = list[i] as T
+        const entry = createKeyedEntry(item, i)
+        entry.nodes = renderNode(
+          childFn(
+            () => entry.accessor.get(),
+            () => entry.idx.get(),
+          ),
+        )
+        core.entries.set(getKey(item, i), entry)
+        out.push(...entry.nodes)
+      }
+      core.current = out
+    },
+
+    adoptIdentity(list) {
+      const childFn = children as (item: T, index: () => number) => unknown
+      const out: Node[] = []
+      for (let i = 0; i < list.length; i++) {
+        const item = list[i] as T
+        const nodes = renderNode(childFn(item, () => i))
+        // 重复身份只登记首个条目(游标必须逐项消费,无法回退整表重建);
+        // 后续更新遇重复身份会回退全量重建
+        if (!core.plain.has(defaultForKey(item))) core.plain.set(defaultForKey(item), nodes)
+        out.push(...nodes)
+      }
+      core.current = out
     },
 
     dispose() {

@@ -2,10 +2,11 @@ import { Signal } from "signal-polyfill"
 import { realizeLazy } from "./lazy-node"
 import { createWatcher, isSignal, reportError, watchSignal } from "./signal"
 import type { WatchableSignal } from "./signal"
-import { cleanupWatchers, swapBranch, toNodes, trackCleanup, trackWatcher } from "./jsx-runtime"
+import { cleanupWatchers, toNodes, trackCleanup, trackWatcher } from "./jsx-runtime"
 import { isTruthy, unwrap, settleChildren } from "./shared"
 import { getSSRRuntime } from "./ssr-mode"
 import { createForCore } from "./for-engine"
+import { createBranchManager } from "./branch-engine"
 import { SHOW_MARKER, FOR_MARKER, ERROR_BOUNDARY_MARKER, SUSPEND_MARKER } from "./markers"
 import {
   hydrateErrorBoundary,
@@ -56,11 +57,11 @@ export function Show<T>(props: {
   const frag = document.createDocumentFragment()
   const marker = document.createComment(SHOW_MARKER)
   frag.appendChild(marker)
-  let current: Node[] = []
-  // 静态分支的节点数组（惰性求值一次）；换出时保留，换回时复用
+  const branches = createBranchManager(marker)
+  // 静态分支的节点数组(惰性求值一次);换出时保留,换回时复用
   let truthyNodes: Node[] | null = null
   let fallbackNodes: Node[] | null = null
-  // 当前可见分支是否来自静态来源（决定换出时是否保留 watcher）
+  // 当前可见分支是否来自静态来源(决定换出时是否保留 watcher)
   let currentRetained = false
 
   const render = (): void => {
@@ -69,16 +70,16 @@ export function Show<T>(props: {
     if (truthy) {
       if (typeof props.children === "function") {
         const value = (props.children as (item: T) => unknown)(cond as T)
-        current = swapBranch(marker, current, toNodes(value), currentRetained)
+        branches.swap(toNodes(value), currentRetained)
         currentRetained = false
       } else {
         if (!truthyNodes) truthyNodes = toNodes(props.children)
-        current = swapBranch(marker, current, truthyNodes, currentRetained)
+        branches.swap(truthyNodes, currentRetained)
         currentRetained = true
       }
     } else {
       if (!fallbackNodes) fallbackNodes = toNodes(props.fallback)
-      current = swapBranch(marker, current, fallbackNodes, currentRetained)
+      branches.swap(fallbackNodes, currentRetained)
       currentRetained = true
     }
   }
@@ -92,15 +93,7 @@ export function Show<T>(props: {
   }
 
   trackCleanup(marker, () => {
-    for (const n of current) cleanupWatchers(n)
-    // 保留中的隐藏分支也要清理（watcher 一直存活）
-    if (truthyNodes && truthyNodes !== current) {
-      for (const n of truthyNodes) cleanupWatchers(n)
-    }
-    if (fallbackNodes && fallbackNodes !== current) {
-      for (const n of fallbackNodes) cleanupWatchers(n)
-    }
-    current = []
+    branches.cleanup()
     truthyNodes = null
     fallbackNodes = null
   })
@@ -223,7 +216,7 @@ export function ErrorBoundary(props: {
   const frag = document.createDocumentFragment()
   const marker = document.createComment(ERROR_BOUNDARY_MARKER)
   frag.appendChild(marker)
-  let current: Node[] = []
+  const branches = createBranchManager(marker)
   // fallback 为 eager 值时是同一批节点：换出保留 watcher，换回后绑定存活
   let fallbackNodes: Node[] | null = null
   let currentIsFallback = false
@@ -241,25 +234,29 @@ export function ErrorBoundary(props: {
     return props.children()
   })
 
+  // 静态 fallback 缓存复用;函数 fallback 每次按错误重建,换出时完整清理
+  const mountFallback = (fb: unknown): void => {
+    if (typeof props.fallback === "function") {
+      branches.swap(toNodes(fb), currentIsFallback)
+      currentIsFallback = false
+    } else {
+      if (!fallbackNodes) fallbackNodes = toNodes(fb)
+      branches.swap(fallbackNodes, currentIsFallback)
+      currentIsFallback = true
+    }
+  }
+
   const render = (): void => {
     if (error.get() !== null) {
       const fb =
         typeof props.fallback === "function"
           ? (props.fallback as (e: unknown) => unknown)(error.get())
           : props.fallback
-      if (typeof props.fallback === "function") {
-        // 动态 fallback：每次重建，换出时完整清理
-        current = swapBranch(marker, current, toNodes(fb), currentIsFallback)
-        currentIsFallback = false
-      } else {
-        if (!fallbackNodes) fallbackNodes = toNodes(fb)
-        current = swapBranch(marker, current, fallbackNodes, currentIsFallback)
-        currentIsFallback = true
-      }
+      mountFallback(fb)
       return
     }
     try {
-      current = swapBranch(marker, current, toNodes(childrenComputed.get()), currentIsFallback)
+      branches.swap(toNodes(childrenComputed.get()), currentIsFallback)
       currentIsFallback = false
     } catch (e) {
       error.set(e)
@@ -274,14 +271,7 @@ export function ErrorBoundary(props: {
         typeof props.fallback === "function"
           ? (props.fallback as (e: unknown) => unknown)(e)
           : props.fallback
-      if (typeof props.fallback === "function") {
-        current = swapBranch(marker, current, toNodes(fb), currentIsFallback)
-        currentIsFallback = false
-      } else {
-        if (!fallbackNodes) fallbackNodes = toNodes(fb)
-        current = swapBranch(marker, current, fallbackNodes, currentIsFallback)
-        currentIsFallback = true
-      }
+      mountFallback(fb)
     }
   }
 
@@ -331,11 +321,7 @@ export function ErrorBoundary(props: {
   trackWatcher(marker, resetWatcher)
 
   trackCleanup(marker, () => {
-    for (const n of current) cleanupWatchers(n)
-    if (fallbackNodes && fallbackNodes !== current) {
-      for (const n of fallbackNodes) cleanupWatchers(n)
-    }
-    current = []
+    branches.cleanup()
     fallbackNodes = null
   })
 
@@ -371,7 +357,7 @@ export function Suspend(props: { fallback?: unknown; children: unknown }): Docum
   const frag = document.createDocumentFragment()
   const marker = document.createComment(SUSPEND_MARKER)
   frag.appendChild(marker)
-  let current: Node[] = []
+  const branches = createBranchManager(marker)
   // fallback 是 eager 值：同一批节点反复换入换出，保留 watcher（否则
   // 挂起 → 解析 → 再挂起后 fallback 内部绑定死亡）
   let fallbackNodes: Node[] | null = null
@@ -380,13 +366,13 @@ export function Suspend(props: { fallback?: unknown; children: unknown }): Docum
   let seq = 0
 
   const render = (value: unknown): void => {
-    current = swapBranch(marker, current, toNodes(value), currentIsFallback)
+    branches.swap(toNodes(value), currentIsFallback)
     currentIsFallback = false
   }
 
   const renderFallback = (): void => {
     if (!fallbackNodes) fallbackNodes = toNodes(props.fallback)
-    current = swapBranch(marker, current, fallbackNodes, currentIsFallback)
+    branches.swap(fallbackNodes, currentIsFallback)
     currentIsFallback = true
   }
 
@@ -422,11 +408,7 @@ export function Suspend(props: { fallback?: unknown; children: unknown }): Docum
 
   trackCleanup(marker, () => {
     seq++ // 使在途 promise 的结果失效
-    for (const n of current) cleanupWatchers(n)
-    if (fallbackNodes && fallbackNodes !== current) {
-      for (const n of fallbackNodes) cleanupWatchers(n)
-    }
-    current = []
+    branches.cleanup()
     fallbackNodes = null
   })
 

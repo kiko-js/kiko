@@ -4,7 +4,7 @@ import { describe, it, expect } from "bun:test"
 import { render } from "../src/render"
 import { Show } from "../src/flow"
 import { jsx } from "../src/jsx-runtime"
-import { realizeLazy as realize } from "../src/lazy-node"
+import { isLazy, realizeLazy as realize } from "../src/lazy-node"
 import type { Component } from "../src/jsx-runtime"
 
 /**
@@ -87,5 +87,17 @@ describe("lazy jsx materialization", () => {
     dispose()
     expect(cleaned).toBe(1)
     container.remove()
+  })
+
+  it("recognizes lazy nodes from another module instance via the Symbol.for brand", () => {
+    // 模拟另一份库实例产出的 Lazy(同 Symbol.for 注册,instanceof 会失败)
+    const fromOtherInstance = {
+      [Symbol.for("kiko.lazy-node")]: true,
+      build: () => "materialized",
+    }
+    expect(isLazy(fromOtherInstance)).toBe(true)
+    expect(realize(fromOtherInstance)).toBe("materialized")
+    // 普通对象不误判
+    expect(isLazy({ build: () => 1 })).toBe(false)
   })
 })

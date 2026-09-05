@@ -440,6 +440,27 @@ describe("For", () => {
     // The appended node is present in the right position (last).
     expect(after[3]!.textContent).toBe("4")
   })
+
+  it("renders children that return arrays of nodes", async () => {
+    const container = document.createElement("div")
+    const list = createSignal<string[][]>([["a", "b"], ["c"]])
+    const el = jsx("div", {
+      children: For({
+        each: list,
+        children: group => group.map(v => jsx("li", { children: v })),
+      }),
+    }) as HTMLElement
+    container.appendChild(el)
+    expect(Array.from(container.querySelectorAll("li")).map(n => n.textContent)).toEqual([
+      "a",
+      "b",
+      "c",
+    ])
+    // 重建身份键:数组引用变化 → 整表重建
+    list.set([["x"]])
+    await flush()
+    expect(Array.from(container.querySelectorAll("li")).map(n => n.textContent)).toEqual(["x"])
+  })
 })
 
 describe("static branch retention", () => {

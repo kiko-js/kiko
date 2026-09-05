@@ -289,6 +289,95 @@ describe("hydrate", () => {
     dispose()
   })
 
+  it("hydrates keyed For: append keeps surviving nodes attached (D4)", async () => {
+    const container = document.createElement("div")
+    const list = createSignal([{ id: 1 }, { id: 2 }])
+    const dispose = await ssrThenHydrate(
+      () =>
+        For({
+          each: list,
+          getKey: item => item.id,
+          children: item => {
+            const id = new Signal.Computed(() => item().id)
+            return jsx("li", { children: jsx("span", { children: id }) })
+          },
+        }),
+      container,
+    )
+    const lis = Array.from(container.querySelectorAll("li"))
+    expect(lis.map(n => n.textContent)).toEqual(["1", "2"])
+
+    list.set([{ id: 1 }, { id: 2 }, { id: 3 }])
+    await flush()
+    const after = Array.from(container.querySelectorAll("li"))
+    expect(after.map(n => n.textContent)).toEqual(["1", "2", "3"])
+    // 存活条目的节点是同一引用,未被拆除重挂
+    expect(after[0]).toBe(lis[0])
+    expect(after[1]).toBe(lis[1])
+    dispose()
+  })
+
+  it("hydrates For with duplicate items: adopts every entry, rebuilds on duplicate update", async () => {
+    const container = document.createElement("div")
+    const list = createSignal(["x", "x"])
+    const dispose = await ssrThenHydrate(
+      () => For({ each: list, children: item => jsx("li", { children: item }) }),
+      container,
+    )
+    // 采纳期游标逐项消费:重复条目也各得节点
+    expect(container.querySelectorAll("li").length).toBe(2)
+
+    list.set(["x"])
+    await flush()
+    expect(container.textContent).toBe("x")
+
+    // 更新期出现重复身份 → 回退整表重建(全部新节点)
+    const before = Array.from(container.querySelectorAll("li"))
+    list.set(["x", "x"])
+    await flush()
+    const after = Array.from(container.querySelectorAll("li"))
+    expect(after.map(n => n.textContent)).toEqual(["x", "x"])
+    expect(after[0]).not.toBe(before[0])
+    dispose()
+  })
+
+  it("hydrates Show: static branches keep node identity across toggles", async () => {
+    const container = document.createElement("div")
+    const on = createSignal(true)
+    const dispose = await ssrThenHydrate(
+      () => Show({ when: on, fallback: "off", children: jsx("b", { children: "on" }) }),
+      container,
+    )
+    const b = container.querySelector("b")!
+    expect(container.textContent).toBe("on")
+    on.set(false)
+    await flush()
+    expect(container.textContent).toBe("off")
+    on.set(true)
+    await flush()
+    // 静态分支换出保留 watcher,换回复用同一节点(绑定仍存活)
+    expect(container.querySelector("b")).toBe(b)
+    dispose()
+  })
+
+  it("hydrates Suspend whose signal value is a mixed array", async () => {
+    const container = document.createElement("div")
+    const { promise, resolve } = Promise.withResolvers<Node>()
+    const state = createSignal<unknown>(["a", promise])
+    // 手写 SSR 产物结构(流式模式下未决 promise 会先输出 fallback;
+    // renderToFragment 会 await 未决 promise,无法在测试里直接产出该结构)
+    container.innerHTML = "<!--suspend-->loading<!--/suspend-->"
+    const dispose = hydrate(() => Suspend({ fallback: "loading", children: state }), container)
+    // 初始 settle:数组含未决 promise → 保留已采纳的 fallback 内容
+    expect(container.textContent).toBe("loading")
+    resolve(jsx("b", { children: "async" }))
+    await promise
+    await flush()
+    // settle 后换入混合数组:同步项 + 已解析节点
+    expect(container.textContent).toBe("aasync")
+    dispose()
+  })
+
   it("hydrates a scoped Style element from SSR output", async () => {
     const container = document.createElement("div")
     const dispose = await ssrThenHydrate(
@@ -505,6 +594,69 @@ describe("hydrate exception paths", () => {
     expect(container.textContent).toBe("fresh")
     dispose()
   })
+
+  it("reuses cached fallback nodes across pending cycles, keeping bindings alive", async () => {
+    const container = document.createElement("div")
+    const state = createSignal<unknown>("a")
+    const fallbackState = createSignal("F1")
+    const dispose = await ssrThenHydrate(
+      () => Suspend({ fallback: jsx("span", { children: fallbackState }), children: state }),
+      container,
+    )
+    expect(container.textContent).toBe("a")
+
+    const { promise: p1, resolve: resolve1 } = Promise.withResolvers<Node>()
+    state.set(p1)
+    await flush()
+    const loadingSpan = container.querySelector("span")!
+    expect(container.textContent).toBe("F1")
+
+    // 缓存的 fallback 内部信号绑定存活
+    fallbackState.set("F2")
+    await flush()
+    expect(loadingSpan.textContent).toBe("F2")
+
+    resolve1(jsx("span", { children: "resolved" }))
+    await p1
+    await flush()
+    expect(container.textContent).toBe("resolved")
+
+    // 第二轮 pending 复用同一批 fallback 节点(身份复用,非重新物化)
+    const { promise: p2 } = Promise.withResolvers<Node>()
+    state.set(p2)
+    await flush()
+    expect(container.querySelector("span")).toBe(loadingSpan)
+    expect(container.textContent).toBe("F2")
+
+    // dispose 清理隐藏的缓存 fallback(绑定停止,不泄漏)
+    dispose()
+    fallbackState.set("F3")
+    await flush()
+    expect(loadingSpan.textContent).toBe("F2")
+  })
+
+  it("materializes a lazy component fallback via rebuild without consuming the cursor", async () => {
+    const container = document.createElement("div")
+    const state = createSignal<unknown>("a")
+    const Spinner: Component = () => jsx("span", { children: "loading" })
+    const dispose = await ssrThenHydrate(
+      () => Suspend({ fallback: jsx(Spinner, {}), children: state }),
+      container,
+    )
+    expect(container.textContent).toBe("a")
+
+    const { promise, resolve } = Promise.withResolvers<Node>()
+    state.set(promise)
+    await flush()
+    // 修复前:toNodes(KikoLazy→PendingNode) 字符串化或消费水合游标
+    expect(container.textContent).toBe("loading")
+
+    resolve(jsx("span", { children: "done" }))
+    await promise
+    await flush()
+    expect(container.textContent).toBe("done")
+    dispose()
+  })
 })
 
 describe("水合边界", () => {
@@ -603,5 +755,57 @@ describe("hydrateWithState — 信号状态恢复", () => {
     expect(container.textContent).toBe("7")
     dispose()
     script.remove()
+  })
+
+  it("reports a mismatch when the server serialized more signals than the client creates", () => {
+    const container = document.createElement("div")
+    container.innerHTML = "<div></div>"
+    const errors: string[] = []
+    const orig = console.error
+    console.error = (m: unknown) => errors.push(String(m))
+    const dispose = hydrateWithState(() => jsx("div", { children: "static" }), container, [1, 2])
+    console.error = orig
+    expect(errors.some(e => e.includes("signal state mismatch"))).toBe(true)
+    expect(errors.some(e => e.includes("server serialized 2 signals, client created 0"))).toBe(true)
+    dispose()
+  })
+
+  it("reports a mismatch when the client creates more signals than the server serialized", () => {
+    const container = document.createElement("div")
+    container.innerHTML = "<div></div>"
+    const errors: string[] = []
+    const orig = console.error
+    console.error = (m: unknown) => errors.push(String(m))
+    const dispose = hydrateWithState(
+      () => {
+        createSignal(0)
+        createSignal(0)
+        return jsx("div", { children: "static" })
+      },
+      container,
+      [1],
+    )
+    console.error = orig
+    expect(errors.some(e => e.includes("server serialized 1 signals, client created 2"))).toBe(true)
+    dispose()
+  })
+  it("stays silent when server and client signal counts match", async () => {
+    const container = document.createElement("div")
+    setSSRRuntime(ssrRuntime)
+    const server = createSignal(9)
+    container.innerHTML = await renderToFragment(() => jsx("div", { children: server }))
+    setSSRRuntime(null)
+    const errors: string[] = []
+    const orig = console.error
+    console.error = (m: unknown) => errors.push(String(m))
+    const dispose = hydrateWithState(
+      () => jsx("div", { children: createSignal(0) }),
+      container,
+      [9],
+    )
+    console.error = orig
+    expect(container.textContent).toBe("9")
+    expect(errors.some(e => e.includes("signal state mismatch"))).toBe(false)
+    dispose()
   })
 })

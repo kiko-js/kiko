@@ -11,14 +11,14 @@ import {
   jsx,
   setProp,
   Style,
-  swapBranch,
   swapNodes,
   toNodes,
   trackCleanup,
   trackWatcher,
 } from "./jsx-runtime"
-import { isPromiseLike, isTruthy, unwrap, defaultForKey, settleChildren } from "./shared"
-import { createForCore, type ForKeyEntry } from "./for-engine"
+import { isPromiseLike, isTruthy, unwrap, settleChildren } from "./shared"
+import { createForCore } from "./for-engine"
+import { createBranchManager } from "./branch-engine"
 import { SUSPEND_END_MARKER } from "./markers"
 import type { AsyncComponent, Component, Props, StyleProps } from "./jsx-runtime"
 
@@ -49,7 +49,10 @@ function endHydrate(): void {
   hydrateDepth--
 }
 
-// 当前游标：采纳中的节点列表与位置
+// 当前游标：采纳中的节点列表与位置。
+// 单实例约束：游标是模块级状态,一次 hydrate() 一个根(beginHydrate/endHydrate
+// 保护嵌套)。水合必须在单个同步栈内完成——并行水合多个根(Islands)会互相
+// 消费游标。需要并发时,每次 hydrate() 调用整体串行化,或等待文档级拆分。
 let cursor: Node[] = []
 let cursorPos = 0
 
@@ -301,6 +304,17 @@ function hydrateSignalChild(signal: WatchableSignal<unknown>): Node[] {
   return [marker, ...current]
 }
 
+/**
+ * 分支值物化:惰性组件先 realize(水合模式下组件体产出 PendingNode),再走
+ * rebuild(客户端模式重建,不消费游标);其余值走 toNodes。Show/Suspend/
+ * ErrorBoundary 的分支切换共用。
+ */
+function toBranchNodes(value: unknown): Node[] {
+  if (isLazy(value)) return toBranchNodes(realizeLazy(value))
+  if (value instanceof PendingNode && value.rebuild) return toNodes(value.rebuild())
+  return toNodes(value)
+}
+
 export function hydrateShow(props: {
   when: unknown
   fallback?: unknown
@@ -323,19 +337,28 @@ export function hydrateShow(props: {
     }
     // 切换分支时无法用游标采纳（水合已结束）：PendingNode 走 rebuild 重建，
     // 其余值走 toNodes。初次采纳仍用 hydrateValue 对齐 SSR 现有节点。
-    const toBranchNodes = (value: unknown): Node[] => {
-      if (value instanceof PendingNode && value.rebuild) return toNodes(value.rebuild())
-      return toNodes(value)
+    // 静态（非函数）分支值按值身份缓存同一批节点:换出保留 watcher,换回复用
+    // (与客户端 Show 的 truthyNodes/fallbackNodes 缓存语义一致;PendingNode
+    // 首次 rebuild 后同样入缓存,内部绑定跨切换存活)
+    const retainable = (value: unknown): boolean => typeof value !== "function"
+    const staticCache = new Map<unknown, Node[]>()
+    const toRetainedNodes = (value: unknown): Node[] => {
+      const cached = staticCache.get(value)
+      if (cached) return cached
+      const nodes = toBranchNodes(value)
+      if (retainable(value)) staticCache.set(value, nodes)
+      return nodes
     }
-    // 静态（非函数、非 PendingNode）分支值是同一批节点：换出保留 watcher，
-    // 换回后内部绑定存活（与客户端 Show 的保留语义一致）
-    const retainable = (value: unknown): boolean =>
-      typeof value !== "function" && !(value instanceof PendingNode)
-    let current = hydrateValue(branch())
-    let currentRetained = false
+    const branches = createBranchManager(marker)
+    // 初次采纳的节点若来自静态分支,同样进缓存并保留——首个 toggle 不得
+    // 清理它们(否则换回时是另一批节点)
+    const initial = branch()
+    branches.adopt(hydrateValue(initial))
+    let currentRetained = retainable(initial)
+    if (currentRetained) staticCache.set(initial, branches.current)
     const render = (): void => {
       const value = branch()
-      current = swapBranch(marker, current, toBranchNodes(value), currentRetained)
+      branches.swap(toRetainedNodes(value), currentRetained)
       currentRetained = retainable(value)
     }
     if (isSignal(props.when)) {
@@ -343,11 +366,8 @@ export function hydrateShow(props: {
       const watcher = watchSignal(signal, render)
       trackWatcher(marker, watcher)
     }
-    trackCleanup(marker, () => {
-      for (const n of current) cleanupWatchers(n)
-      current = []
-    })
-    return [marker, ...current]
+    trackCleanup(marker, () => branches.cleanup())
+    return [marker, ...branches.current]
   })
 }
 export function hydrateFor(props: {
@@ -363,42 +383,14 @@ export function hydrateFor(props: {
     }
     const getKey = props.getKey
     // 更新路径与 flow.ts 完全共用同一引擎(ForCore);水合特有的是初次采纳:
-    // 逐游标消费现有节点,不能整表重建。keyed 每项建 state/accessor/idx——
-    // 与 flow.ts 相同的条目模型,保证水合后的首次更新就走 keyed 重排。
-    const core = createForCore({ marker, children: props.children })
+    // 逐游标消费现有节点,不能整表重建——通过 render 钩子注入 hydrateValue,
+    // 条目模型与 keyed/identity 更新逻辑全部复用引擎实现。
+    const core = createForCore({ marker, children: props.children, render: hydrateValue })
 
     const adopt = (): void => {
-      const out: Node[] = []
       const list = unwrap(props.each) as readonly unknown[]
-      for (let i = 0; i < list.length; i++) {
-        const item = list[i]
-        const index = (): number => i
-        if (getKey) {
-          const state = new Signal.State<unknown>(item)
-          const accessor = new Signal.Computed<unknown>(() => state.get())
-          const entry: ForKeyEntry<unknown> = {
-            nodes: [],
-            state,
-            accessor,
-            idx: new Signal.State(i),
-          }
-          entry.nodes = hydrateValue(
-            props.children(
-              () => accessor.get(),
-              () => entry.idx.get(),
-            ),
-          )
-          core.entries.set(getKey(item, i), entry)
-          out.push(...entry.nodes)
-        } else {
-          const nodes = hydrateValue(props.children(item, index))
-          // 重复身份只登记首个条目(游标必须逐项消费,无法回退整表重建);
-          // 后续更新遇重复身份会回退全量重建
-          if (!core.plain.has(defaultForKey(item))) core.plain.set(defaultForKey(item), nodes)
-          out.push(...nodes)
-        }
-      }
-      core.current = out
+      if (getKey) core.adoptKeyed(list, getKey)
+      else core.adoptIdentity(list)
     }
 
     const render = (): void => {
@@ -431,7 +423,7 @@ export function hydrateErrorBoundary(props: {
       warn("expected error-boundary marker")
       return []
     }
-    let current: Node[] = []
+    const branches = createBranchManager(marker)
     let fallbackNodes: Node[] | null = null
     let currentIsFallback = false
     // 与客户端 ErrorBoundary 相同的驱动信号：children 在 computed 内求值，
@@ -448,15 +440,18 @@ export function hydrateErrorBoundary(props: {
         typeof props.fallback === "function"
           ? (props.fallback as (error: unknown) => unknown)(err)
           : props.fallback
-      if (typeof props.fallback === "function") return toNodes(fb)
-      if (!fallbackNodes) fallbackNodes = toNodes(fb)
+      // 函数 fallback 每次按错误重建;静态 fallback 缓存复用。PendingNode
+      // 走 rebuild,不消费水合游标
+      if (typeof props.fallback === "function") return toBranchNodes(fb)
+      if (!fallbackNodes) fallbackNodes = toBranchNodes(fb)
       return fallbackNodes
     }
 
     // 初次水合：通过 childrenComputed 采纳（依赖在水合期就建立，
     // 信号变化才能驱动后续重渲染）；抛错采纳 fallback
     try {
-      current = hydrateValue(childrenComputed.get())
+      const nodes = hydrateValue(childrenComputed.get())
+      branches.adopt(nodes)
       currentIsFallback = false
     } catch (e) {
       error.set(e)
@@ -469,9 +464,10 @@ export function hydrateErrorBoundary(props: {
         typeof props.fallback === "function"
           ? (props.fallback as (error: unknown) => unknown)(e)
           : props.fallback
-      current = hydrateValue(fb)
+      const nodes = hydrateValue(fb)
+      branches.adopt(nodes)
       if (typeof props.fallback !== "function") {
-        fallbackNodes = current
+        fallbackNodes = nodes
         currentIsFallback = true
       } else {
         currentIsFallback = false
@@ -480,12 +476,12 @@ export function hydrateErrorBoundary(props: {
 
     const render = (): void => {
       if (error.get() !== null) {
-        current = swapBranch(marker, current, renderFallback(error.get()), currentIsFallback)
+        branches.swap(renderFallback(error.get()), currentIsFallback)
         currentIsFallback = typeof props.fallback !== "function"
         return
       }
       try {
-        current = swapBranch(marker, current, toNodes(childrenComputed.get()), currentIsFallback)
+        branches.swap(toNodes(childrenComputed.get()), currentIsFallback)
         currentIsFallback = false
       } catch (e) {
         error.set(e)
@@ -494,7 +490,7 @@ export function hydrateErrorBoundary(props: {
         } catch {
           // onError 是用户代码，不能破坏错误边界
         }
-        current = swapBranch(marker, current, renderFallback(e), currentIsFallback)
+        branches.swap(renderFallback(e), currentIsFallback)
         currentIsFallback = typeof props.fallback !== "function"
       }
     }
@@ -532,10 +528,10 @@ export function hydrateErrorBoundary(props: {
     trackWatcher(marker, resetWatcher)
 
     trackCleanup(marker, () => {
-      for (const n of current) cleanupWatchers(n)
-      current = []
+      branches.cleanup()
+      fallbackNodes = null
     })
-    return [marker, ...current]
+    return [marker, ...branches.current]
   })
 }
 
@@ -590,11 +586,19 @@ export function hydrateSuspend(props: { fallback?: unknown; children: unknown })
       }
       if (node) adopted.push(node)
     }
-    let current = adopted
+    const branches = createBranchManager(marker)
+    branches.adopt(adopted)
     let seq = 0
+    // fallback 与客户端 Suspend 一致:同一批节点反复换入换出,保留 watcher
+    // (否则挂起 → 解析 → 再挂起后 fallback 内部绑定死亡);PendingNode 走
+    // rebuild,不消费水合游标
+    let fallbackNodes: Node[] | null = null
+    let currentIsFallback = false
 
     const renderFallback = (): void => {
-      current = swapNodes(marker, current, toNodes(props.fallback))
+      if (!fallbackNodes) fallbackNodes = toBranchNodes(props.fallback)
+      branches.swap(fallbackNodes, currentIsFallback)
+      currentIsFallback = true
     }
 
     const discard = (value: unknown): void => {
@@ -602,7 +606,8 @@ export function hydrateSuspend(props: { fallback?: unknown; children: unknown })
     }
 
     const swapIn = (value: unknown): void => {
-      current = swapNodes(marker, current, toNodes(value))
+      branches.swap(toBranchNodes(value), currentIsFallback)
+      currentIsFallback = false
     }
 
     const initialSeq = ++seq
@@ -610,7 +615,7 @@ export function hydrateSuspend(props: { fallback?: unknown; children: unknown })
       isStale: () => initialSeq !== seq,
       onPending: () => {},
       onResolved: resolved => {
-        current = swapNodes(marker, current, hydrateResolvedContent(resolved, adopted))
+        branches.swap(hydrateResolvedContent(resolved, adopted), false)
       },
       onRejected: reportError,
     })
@@ -631,10 +636,10 @@ export function hydrateSuspend(props: { fallback?: unknown; children: unknown })
     }
     trackCleanup(marker, () => {
       seq++ // 使在途 promise 的结果失效
-      for (const n of current) cleanupWatchers(n)
-      current = []
+      branches.cleanup()
+      fallbackNodes = null
     })
-    return [marker, ...current]
+    return [marker, ...branches.current]
   })
 }
 
