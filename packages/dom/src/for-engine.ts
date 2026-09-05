@@ -130,20 +130,25 @@ export function createForCore<T>(opts: ForCoreOptions<T>): ForCore<T> {
     },
 
     identity(list) {
+      // 先扫键再物化:重复身份直接回退全量重建。若边物化边检测,
+      // break 前已 toNodes 的节点(已注册 watcher)会既不进缓存也不进
+      // dropped,成为孤儿泄漏。
+      const seen = new Set<unknown>()
+      for (let i = 0; i < list.length; i++) {
+        const key = defaultForKey(list[i] as T)
+        if (seen.has(key)) {
+          core.full(list)
+          return
+        }
+        seen.add(key)
+      }
       const parent = marker.parentNode
       const next: Node[] = []
       const nextPlain = new Map<unknown, Node[]>()
       const childFn = children as (item: T, index: () => number) => unknown
-      let fallback = false
-      const seen = new Set<unknown>()
       for (let i = 0; i < list.length; i++) {
         const item = list[i] as T
         const key = defaultForKey(item)
-        if (seen.has(key)) {
-          fallback = true
-          break
-        }
-        seen.add(key)
         const existing = core.plain.get(key)
         if (existing) {
           nextPlain.set(key, existing)
@@ -153,10 +158,6 @@ export function createForCore<T>(opts: ForCoreOptions<T>): ForCore<T> {
           nextPlain.set(key, nodes)
           next.push(...nodes)
         }
-      }
-      if (fallback) {
-        core.full(list)
-        return
       }
       const dropped: Node[][] = []
       for (const [key, nodes] of core.plain) {

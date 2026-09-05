@@ -691,14 +691,19 @@ export function hydrate(root: () => unknown, container: Element): () => void {
   try {
     const savedCursor = cursor
     const savedPos = cursorPos
-    cursor = Array.from(container.childNodes)
-    cursorPos = 0
-    hydrateValue(root())
-    if (cursorPos < cursor.length) {
-      warn(`unmatched nodes remain in container (${cursor.length - cursorPos})`)
+    try {
+      cursor = Array.from(container.childNodes)
+      cursorPos = 0
+      hydrateValue(root())
+      if (cursorPos < cursor.length) {
+        warn(`unmatched nodes remain in container (${cursor.length - cursorPos})`)
+      }
+    } finally {
+      // 求值抛错也要恢复游标:游标是模块级单实例,半消费状态会污染
+      // 后续的 hydrate() 调用
+      cursor = savedCursor
+      cursorPos = savedPos
     }
-    cursor = savedCursor
-    cursorPos = savedPos
   } finally {
     endHydrate()
   }
