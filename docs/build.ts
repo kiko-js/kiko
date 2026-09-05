@@ -1,10 +1,10 @@
 /**
- * Build kiko documentation site.
+ * Build kiko documentation site (static output; pages are kiko components
+ * rendered client-side — no SSR).
  * Requires bun >= 1.x, run from repo root.
  *
  *   bun run docs/build.ts
  */
-
 import { cp, mkdir, rm } from "node:fs/promises"
 
 const dist = "dist"

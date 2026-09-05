@@ -6,5 +6,5 @@
     "jsxImportSource": "@kikojs/dom",
     "noEmit": true
   },
-  "include": ["assets/**/*.ts", "assets/**/*.tsx"]
+  "include": ["assets/**/*.ts", "assets/**/*.tsx", "src/**/*.ts", "src/**/*.tsx"]
 }
