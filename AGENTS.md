@@ -41,6 +41,11 @@ Monorepo: `@kikojs/signal` (signal toolkit), `@kikojs/dom` (DOM + SSR), `@kikojs
 - JSX tests need `/** @jsxImportSource @kikojs/dom */` pragma
 - DOM tests: `beforeAll(async () => { await import('./setup') })`
 
+### Development Workflow
+
+- After finishing any code change (verified + cleaned up), commit it locally by default.
+- **Do NOT `git push`** unless the user explicitly asks to push; leave commits local and report the commit hash.
+
 ### Release
 
 - Changesets auto-generated from conventional commits (`feat:` → minor, `fix:` → patch)
