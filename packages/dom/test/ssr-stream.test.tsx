@@ -150,3 +150,113 @@ describe("renderToStream — 异步 Suspend", () => {
     expect(rest.join("")).toBe("<p>loaded</p><!--/suspend--></div>")
   })
 })
+
+describe("renderToStream — 异步 Suspend reject", () => {
+  it("reject 时上报错误并渲染 fallback，流正常完成（不整流出错）", async () => {
+    const reported: unknown[] = []
+    const original = globalThis.reportError
+    // @ts-ignore
+    globalThis.reportError = (e: unknown) => reported.push(e)
+    try {
+      const stream = renderToStream(() =>
+        jsx(Suspend, {
+          fallback: jsx("p", { children: "load failed" }),
+          children: Promise.reject(new Error("boom")),
+        }),
+      )
+      expect((await streamToChunks(stream)).join("")).toBe(
+        "<!--suspend--><p>load failed</p><!--/suspend-->",
+      )
+      expect(reported).toHaveLength(1)
+    } finally {
+      // @ts-ignore
+      globalThis.reportError = original
+    }
+  })
+
+  it("数组 children 任一 reject 同样渲染 fallback", async () => {
+    const original = globalThis.reportError
+    // @ts-ignore
+    globalThis.reportError = () => {}
+    try {
+      const stream = renderToStream(() =>
+        jsx(Suspend, {
+          fallback: "load failed",
+          children: [Promise.resolve("fine"), Promise.reject(new Error("boom"))],
+        }),
+      )
+      expect((await streamToChunks(stream)).join("")).toBe(
+        "<!--suspend-->load failed<!--/suspend-->",
+      )
+    } finally {
+      // @ts-ignore
+      globalThis.reportError = original
+    }
+  })
+})
+
+describe("renderToStream — abort", () => {
+  it("abort 后流以 reason 报错，未决内容不再输出", async () => {
+    const ac = new AbortController()
+    const late = wait(300).then(() => jsx("p", { children: "late" }))
+    const stream = renderToStream(
+      () =>
+        jsx("div", {
+          children: jsx(Suspend, {
+            fallback: jsx("p", { children: "..." }),
+            children: late,
+          }),
+        }),
+      { signal: ac.signal },
+    )
+    const chunks: string[] = []
+    const drained = (async () => {
+      const reader = stream.getReader()
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) break
+        chunks.push(value)
+      }
+    })()
+    await wait(20) // 骨架已 flush，Suspend 仍在等待
+    ac.abort(new Error("client gone"))
+    await expect(drained).rejects.toThrow("client gone")
+    const html = chunks.join("")
+    expect(html).toContain("<!--suspend-->")
+    expect(html).not.toContain("late")
+  })
+
+  it("signal 已 abort 时立即报错，不执行渲染", async () => {
+    const ac = new AbortController()
+    ac.abort(new Error("pre-aborted"))
+    const stream = renderToStream(() => jsx("p", { children: "never" }), { signal: ac.signal })
+    const reader = stream.getReader()
+    await expect(reader.read()).rejects.toThrow("pre-aborted")
+  })
+
+  it("未 abort 时带 signal 也正常完成", async () => {
+    const ac = new AbortController()
+    const stream = renderToStream(() => jsx("p", { children: "ok" }), { signal: ac.signal })
+    expect((await streamToChunks(stream)).join("")).toBe("<p>ok</p>")
+  })
+
+  it("abort 后运行时槽已恢复，同进程可继续串行渲染", async () => {
+    const ac = new AbortController()
+    const stream = renderToStream(
+      () =>
+        jsx("div", {
+          children: jsx(Suspend, {
+            fallback: jsx("p", { children: "..." }),
+            children: wait(300).then(() => jsx("p", { children: "late" })),
+          }),
+        }),
+      { signal: ac.signal },
+    )
+    const reader = stream.getReader()
+    await reader.read() // 骨架已 flush
+    ac.abort(new Error("client gone"))
+    await reader.read().catch(() => {}) // 确认流已报错
+    // abort 前流式运行时占据槽位；恢复必须先于消费方通知，串行渲染才不被污染
+    expect(await renderToFragment(() => jsx("p", { children: "next" }))).toBe("<p>next</p>")
+  })
+})

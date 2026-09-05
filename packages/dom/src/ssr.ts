@@ -209,9 +209,17 @@ export function guardRawText(text: string, tag: string): string {
   return text.replace(new RegExp("</" + tag, "gi"), "<\\/" + tag)
 }
 
+/** 合法属性名。值有 escapeAttr 防护，名字却直接拼进输出——外部数据
+ * spread 进 props 时恶意键名可注入标签（如 `x"><script>…`），序列化前校验。
+ * 覆盖 data-* / aria-* / xlink:href / xml:lang 等；非法名丢弃并告警。 */
+const ATTR_NAME_PATTERN = /^[a-zA-Z_:@][a-zA-Z0-9_:.-]*$/
+
 function serializeAttr(key: string, value: unknown): string {
   if (value == null || value === false) return ""
-  if (key === "className") key = "class"
+  if (!ATTR_NAME_PATTERN.test(key)) {
+    console.warn(`[kiko ssr] dropped invalid attribute name ${JSON.stringify(key)}`)
+    return ""
+  }
   if (key === "style" && value && typeof value === "object" && !Array.isArray(value)) {
     const src = value as Record<string, string>
     const css = Object.entries(src)

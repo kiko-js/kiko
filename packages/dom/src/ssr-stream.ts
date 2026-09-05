@@ -25,7 +25,7 @@ import {
  *   子树是兄弟节点、无法回溯。需要 scoped style 时请用 `renderToFragment`。
  */
 
-import { isSignal } from "./signal"
+import { isSignal, reportError } from "./signal"
 import type { WatchableSignal } from "./signal"
 import { extractCssText, isPromiseLike, isTruthy, unwrap } from "./shared"
 import { useSSRRuntime } from "./ssr-mode"
@@ -229,7 +229,8 @@ function streamErrorBoundary(props: {
 /**
  * 流式 Suspend：同步内容直接输出；异步内容产出 async chunk——
  * `renderToStream` 遍历到此时先 flush 已缓冲的同步骨架、再 await 解析后
- * 继续输出真实内容。
+ * 继续输出真实内容。reject 时上报错误并渲染 `fallback`（与字符串模式
+ * ssrSuspend 的 reject 分支对齐），不再让整条流出错。
  */
 function streamSuspend(props: { fallback?: unknown; children: unknown }): StreamChunk {
   const children = unwrap(props.children)
@@ -244,12 +245,18 @@ function streamSuspend(props: { fallback?: unknown; children: unknown }): Stream
         restore()
       }
     })
+  // reject 时上报错误并渲染 fallback（与字符串模式 ssrSuspend 的 reject 分支对齐）
+  const resolveWithFallback = (value: unknown): Promise<StreamChunk[]> =>
+    resolveAsync(value).catch(rejected => {
+      reportError(rejected)
+      return resolveAsync(props.fallback)
+    })
   if (isPromiseLike(children)) {
     return {
       kind: "sequence",
       chunks: [
         sync(markerHtml(SUSPEND_MARKER)),
-        { kind: "async", promise: resolveAsync(children) },
+        { kind: "async", promise: resolveWithFallback(children) },
         sync(markerHtml(SUSPEND_END_MARKER)),
       ],
     }
@@ -260,7 +267,7 @@ function streamSuspend(props: { fallback?: unknown; children: unknown }): Stream
       kind: "sequence",
       chunks: [
         sync(markerHtml(SUSPEND_MARKER)),
-        { kind: "async", promise: Promise.all(children).then(resolved => chunkify(resolved)) },
+        { kind: "async", promise: resolveWithFallback(Promise.all(children)) },
         sync(markerHtml(SUSPEND_END_MARKER)),
       ],
     }
@@ -299,34 +306,79 @@ export const ssrStreamRuntime: SSRRuntime = {
  * 流式渲染：返回 `ReadableStream<string>`，同步骨架立即输出，异步内容
  * resolve 后补发。适用于 HTTP 流式响应（TTFB 低于 `renderToFragment`）。
  *
+ * `options.signal`（AbortSignal）：abort 后渲染在下一个 await 边界停止，
+ * 流以 `signal.reason` 报错——不做静默截断（半截 HTML 以 200 返回比可见
+ * 失败更危险）。已 flush 的片段不回收，由消费方（HTTP 层）自行处理。
+ *
  * ```ts
- * const stream = renderToStream(() => <App />)
+ * const stream = renderToStream(() => <App />, { signal: req.abortSignal })
  * return new Response(stream, { headers: { "content-type": "text/html" } })
  * ```
  */
-export function renderToStream(component: () => unknown): ReadableStream<string> {
+export function renderToStream(
+  component: () => unknown,
+  options?: { signal?: AbortSignal },
+): ReadableStream<string> {
+  const signal = options?.signal
   return new ReadableStream<string>({
     async start(controller) {
+      let aborted = false
+      let abortPromise: Promise<never> | null = null
+      let removeAbortListener: (() => void) | null = null
+      // abort 时在通知消费方之前恢复运行时槽（下方 useSSRRuntime 的 restore
+      // 幂等，重复调用无害）：错误路径 restore 在 finally 中先于 controller.error
+      // 执行，abort 路径对齐这一顺序，否则消费方（HTTP 层）在 abort 后的
+      // 后续渲染会拿到残留的流式运行时
+      let restoreRuntime: (() => void) | null = null
+      if (signal) {
+        const reason = (): unknown => signal.reason ?? new Error("renderToStream aborted")
+        let rejectAbort!: (r: unknown) => void
+        abortPromise = new Promise<never>((_, reject) => {
+          rejectAbort = reject
+        })
+        // 竞速点之外（如渲染全程同步完成）的 rejection 自行消费，避免 unhandled
+        abortPromise.catch(() => {})
+        const onAbort = (): void => {
+          aborted = true
+          restoreRuntime?.()
+          try {
+            controller.error(reason())
+          } catch {
+            // 流已关闭或已出错——中止无需再报
+          }
+          rejectAbort(reason())
+        }
+        if (signal.aborted) onAbort()
+        else {
+          signal.addEventListener("abort", onAbort, { once: true })
+          removeAbortListener = () => signal.removeEventListener("abort", onAbort)
+        }
+      }
+      if (aborted) return
+      const race = <T>(p: PromiseLike<T>): Promise<T> =>
+        abortPromise ? Promise.race([p, abortPromise]) : Promise.resolve(p)
       const ctx: StreamContext = {
         emit(chunk: string) {
-          if (chunk) controller.enqueue(chunk)
+          if (chunk && !aborted) controller.enqueue(chunk)
         },
       }
       try {
         // 临时切换为流式运行时,让 JSX 求值构建块树
-        const restore = useSSRRuntime(ssrStreamRuntime)
+        restoreRuntime = useSSRRuntime(ssrStreamRuntime)
         try {
           const result = component()
           const root = isPromiseLike(result)
-            ? await result.then(r => streamValue(r))
+            ? await race(result.then(r => streamValue(r)))
             : streamValue(result)
-          await flushChunks(root, ctx)
-          controller.close()
+          await flushChunks(root, ctx, race)
+          if (!aborted) controller.close()
         } finally {
-          restore()
+          restoreRuntime()
         }
       } catch (e) {
-        controller.error(e)
+        if (!aborted) controller.error(e)
+      } finally {
+        removeAbortListener?.()
       }
     },
   })
@@ -337,8 +389,16 @@ export interface StreamContext {
   emit(chunk: string): void
 }
 
-/** 按文档序遍历块树，同步叶立即输出，异步叶 await 后继续 */
-async function flushChunks(chunk: StreamChunk, ctx: StreamContext): Promise<void> {
+/**
+ * 按文档序遍历块树，同步叶立即输出，异步叶 await 后继续。
+ * `race`（renderToStream 注入）把每个 await 点挂在 abort 竞速上，使中止
+ * 能在下一个边界打断渲染，而不是无限等待挂死的 promise。
+ */
+async function flushChunks(
+  chunk: StreamChunk,
+  ctx: StreamContext,
+  race?: <T>(p: PromiseLike<T>) => Promise<T>,
+): Promise<void> {
   switch (chunk.kind) {
     case "empty":
       return
@@ -346,12 +406,12 @@ async function flushChunks(chunk: StreamChunk, ctx: StreamContext): Promise<void
       ctx.emit(chunk.html)
       return
     case "async": {
-      const resolved = await chunk.promise
-      for (const r of resolved) await flushChunks(r, ctx)
+      const resolved = await (race ? race(chunk.promise) : chunk.promise)
+      for (const r of resolved) await flushChunks(r, ctx, race)
       return
     }
     case "sequence":
-      for (const child of chunk.chunks) await flushChunks(child, ctx)
+      for (const child of chunk.chunks) await flushChunks(child, ctx, race)
       return
   }
 }

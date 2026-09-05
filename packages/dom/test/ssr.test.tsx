@@ -86,6 +86,28 @@ describe("renderToFragment — 元素与属性", () => {
       `<p title="it&#39;s"></p>`,
     )
   })
+
+  it("drops invalid attribute names (injection guard) and warns", async () => {
+    const warns: string[] = []
+    const orig = console.warn
+    console.warn = (m: unknown) => warns.push(String(m))
+    try {
+      expect(
+        await renderToFragment(() =>
+          jsx("div", {
+            'x"><script>alert(1)</script>': "1",
+            "data-id": "a",
+            "aria-label": "b",
+            "xlink:href": "#c",
+          }),
+        ),
+      ).toBe(`<div data-id="a" aria-label="b" xlink:href="#c"></div>`)
+      expect(warns).toHaveLength(1)
+      expect(warns[0]).toContain("dropped invalid attribute name")
+    } finally {
+      console.warn = orig
+    }
+  })
 })
 
 describe("renderToFragment — 控制流", () => {
