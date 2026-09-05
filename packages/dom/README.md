@@ -73,6 +73,7 @@ render(<Card ref={node => console.log(node)} />, container)
 - **`Show` 的 children**：函数 children 在每次 `when` 变化且为真时重跑；静态 children 是同一批节点，切换分支时保留内部绑定，换回时复用，真值不变时不重插 DOM。
 - **`Suspend` 的 SSR 产物结构**：`<!--suspend-->…<!--/suspend-->`，未决 promise 时中间是 fallback 内容，settle 后换入真实内容（流式模式结构相同）。
 - **`hydrate()` 的前提**：两端组件树一致、`createSignal` 创建顺序一致（数量失配会 `console.error` 报出两端计数）。服务端嵌入了信号状态（`script#kiko-state`）必须用 `hydrateWithState()`——裸 `hydrate()` 会忽略该状态并告警。错位默认 `console.error`（带采纳位置与所在元素），测试/CI 可用 `hydrate(root, el, { strict: true })` 升级为 throw。
+- **SSR 信号状态的 JSON 契约**（`serializeSignals` / `restoreSignals` / `signalStateScript` / `hydrateWithState`）：默认只做 `JSON.stringify` / `JSON.parse` 往返，零逐值校验、零报错——信号值只承诺 **JSON 语义等价**（有限数 / string / boolean / null / 纯对象 / 数组），其余类型（Date / Map / Set / 类实例 / undefined / NaN…）由 JSON 静默降级。排查类型降级时开**调试模式** `setSignalStateDebug(true)`（服务端与客户端各自开启）：服务端跑无损 gate，无法完美转换的值记录错误并在 envelope `l` 字段标记位置；客户端恢复到该位置时直接 throw。类型保真用**依赖注入 codec** `setSignalStateCodec({ encode, decode })`——`encode` 在服务端把值转成可往返的 tag（如 `Date → { $date: iso }`），`decode` 在客户端还原；两端需共享同一份对称实现。
 - **dispose 必须调用**：`render` / `hydrate` 返回的 disposer 负责拆除 watcher 与委托根；不调用则根级 cleanup（如 Router dispose）与节点 watcher 永久驻留。
 
 ## 事件委托与挂载点

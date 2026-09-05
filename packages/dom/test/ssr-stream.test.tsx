@@ -91,6 +91,32 @@ describe("renderToStream — 同步内容", () => {
     const html = (await streamToChunks(stream)).join("")
     expect(html).toBe(`<style nonce="stream-nonce">.a { color: red }</style>`)
   })
+
+  it("omits scoped <Style> in streaming (no global leak) and warns", async () => {
+    const warns: string[] = []
+    const orig = console.warn
+    console.warn = (m: unknown) => warns.push(String(m))
+    let html = ""
+    try {
+      const stream = renderToStream(() =>
+        jsx("div", {
+          children: [
+            Style({ children: ".card { color: red }" }),
+            jsx("div", { class: "card", children: "x" }),
+          ],
+        }),
+      )
+      html = (await streamToChunks(stream)).join("")
+    } finally {
+      console.warn = orig
+    }
+    // 修复前：scoped css 静默降级为全局 → <style>.card…</style> 泄漏整页
+    expect(html).toContain("<style></style>")
+    expect(html).not.toContain(".card { color: red }")
+    expect(html).not.toMatch(/data-kiko-v\d/)
+    expect(warns).toHaveLength(1)
+    expect(warns[0]).toContain("omitted (no effect)")
+  })
 })
 
 describe("renderToStream — 异步 Suspend", () => {

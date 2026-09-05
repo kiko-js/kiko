@@ -11,6 +11,8 @@ import {
   signalStateScript,
   restoreSignals,
   stopSignalRestore,
+  setSignalStateCodec,
+  setSignalStateDebug,
   isCapturing,
   isRestoring,
 } from "../src/signal-serialize"
@@ -150,55 +152,126 @@ describe("信号序列化 — envelope 与安全", () => {
     expect(script).toBe('<script id="kiko-state" type="application/json">{"v":1,"s":[42]}</script>')
   })
 
-  it("循环引用 throw 且带信号序号", () => {
-    startSignalCapture()
-    const cyc: Record<string, unknown> = {}
-    cyc.self = cyc
-    createSignal(cyc)
-    expect(() => serializeSignals()).toThrow(/signal #0.*cyclic/)
-    stopSignalCapture()
-  })
-
-  it("bigint / 函数 throw 且带值描述", () => {
-    startSignalCapture()
-    createSignal(1n)
-    expect(() => serializeSignals()).toThrow(/signal #0.*bigint/)
-    stopSignalCapture()
-    startSignalCapture()
-    createSignal(() => 1)
-    expect(() => serializeSignals()).toThrow(/signal #0.*Function/)
-    stopSignalCapture()
-  })
-
-  it("嵌套在对象里的不可序列化值同样 throw", () => {
-    startSignalCapture()
-    const outer: Record<string, unknown> = { deep: { fn: () => 1 } }
-    createSignal(outer)
-    expect(() => serializeSignals()).toThrow(/signal #0.*\.deep\.fn/)
-    stopSignalCapture()
-  })
-
-  it("有损类型聚合 warn（undefined / NaN / Date / Map）", () => {
-    startSignalCapture()
-    createSignal(undefined)
-    createSignal(NaN)
-    createSignal(new Date(0))
-    createSignal(new Map([[1, 2]]))
-    const warns: string[] = []
-    const orig = console.warn
-    console.warn = (m: unknown) => warns.push(String(m))
+  it("循环引用 throw 且带信号序号（调试模式）", () => {
+    setSignalStateDebug(true)
     try {
-      serializeSignals()
+      startSignalCapture()
+      const cyc: Record<string, unknown> = {}
+      cyc.self = cyc
+      createSignal(cyc)
+      expect(() => serializeSignals()).toThrow(/signal #0.*cyclic/)
+      stopSignalCapture()
     } finally {
-      console.warn = orig
+      setSignalStateDebug(false)
+    }
+  })
+
+  it("bigint / 函数 throw 且带值描述（调试模式）", () => {
+    setSignalStateDebug(true)
+    try {
+      startSignalCapture()
+      createSignal(1n)
+      expect(() => serializeSignals()).toThrow(/signal #0.*bigint/)
+      stopSignalCapture()
+      startSignalCapture()
+      createSignal(() => 1)
+      expect(() => serializeSignals()).toThrow(/signal #0.*Function/)
+      stopSignalCapture()
+    } finally {
+      setSignalStateDebug(false)
+    }
+  })
+
+  it("嵌套在对象里的不可序列化值同样 throw（调试模式）", () => {
+    setSignalStateDebug(true)
+    try {
+      startSignalCapture()
+      const outer: Record<string, unknown> = { deep: { fn: () => 1 } }
+      createSignal(outer)
+      expect(() => serializeSignals()).toThrow(/signal #0.*\.deep\.fn/)
+      stopSignalCapture()
+    } finally {
+      setSignalStateDebug(false)
+    }
+  })
+
+  it("调试模式:无法完美 JSON 化的值在序列化端标记 + 记录", () => {
+    class Point {
+      x = 1
+    }
+    setSignalStateDebug(true)
+    try {
+      startSignalCapture()
+      createSignal(undefined)
+      createSignal(NaN)
+      createSignal(new Date(0))
+      createSignal(new Map([[1, 2]]))
+      createSignal(new Point())
+      const errors: string[] = []
+      const orig = console.error
+      console.error = (m: unknown) => errors.push(String(m))
+      let payload: { l?: number[]; s: unknown[] }
+      try {
+        payload = JSON.parse(serializeSignals()) as { l?: number[]; s: unknown[] }
+      } finally {
+        console.error = orig
+        stopSignalCapture()
+      }
+      // 全部不可完美转换 → 位置都被标记到 envelope.l
+      expect(payload.l).toEqual([0, 1, 2, 3, 4])
+      expect(errors).toHaveLength(1)
+      expect(errors[0]).toContain("cannot be perfectly converted to JSON")
+      expect(errors[0]).toContain("#4 Point instance")
+    } finally {
+      setSignalStateDebug(false)
+    }
+  })
+
+  it("调试模式:纯 JSON 数据（有限数/string/boolean/null/纯对象/数组）不被标记", () => {
+    setSignalStateDebug(true)
+    try {
+      startSignalCapture()
+      createSignal(0)
+      createSignal("x")
+      createSignal({ a: 1, b: ["n", null, true] })
+      createSignal([1, { c: 2 }])
+      const errors: string[] = []
+      const orig = console.error
+      console.error = (m: unknown) => errors.push(String(m))
+      let payload: { l?: number[] }
+      try {
+        payload = JSON.parse(serializeSignals()) as { l?: number[] }
+      } finally {
+        console.error = orig
+        stopSignalCapture()
+      }
+      expect(payload.l).toBeUndefined()
+      expect(errors).toHaveLength(0)
+    } finally {
+      setSignalStateDebug(false)
+    }
+  })
+
+  it("非调试模式:默认只做纯 JSON,不校验不标记不报错", () => {
+    startSignalCapture()
+    createSignal(new Date(0))
+    createSignal(undefined)
+    createSignal({ a: 1 })
+    const errors: string[] = []
+    const orig = console.error
+    console.error = (m: unknown) => errors.push(String(m))
+    let payload: { l?: number[]; s: unknown[] }
+    try {
+      payload = JSON.parse(serializeSignals()) as { l?: number[]; s: unknown[] }
+    } finally {
+      console.error = orig
       stopSignalCapture()
     }
-    expect(warns).toHaveLength(1)
-    expect(warns[0]).toContain("lossy")
-    expect(warns[0]).toContain("#0 undefined→null")
-    expect(warns[0]).toContain("#1 NaN→null")
-    expect(warns[0]).toContain("#2 Date→string")
-    expect(warns[0]).toContain("#3 Map→{}")
+    // 无 l 标记、无报错;Date 降级为 ISO 字符串、undefined → null
+    expect(payload.l).toBeUndefined()
+    expect(errors).toHaveLength(0)
+    expect(payload.s[0]).toBe("1970-01-01T00:00:00.000Z")
+    expect(payload.s[1]).toBeNull()
   })
 })
 
@@ -250,6 +323,126 @@ describe("信号序列化 — 类型指纹诊断", () => {
     restoreSignals([1, "x"])
     createSignal(0)
     createSignal("")
+    const errors: string[] = []
+    const orig = console.error
+    console.error = (m: unknown) => errors.push(String(m))
+    try {
+      stopSignalRestore()
+    } finally {
+      console.error = orig
+    }
+    expect(errors.join("\n")).not.toContain("type mismatch")
+  })
+})
+
+describe("信号序列化 — 加固回归（#2 重入 / #5 有损补全 / #1 结构指纹）", () => {
+  it("#2: 重入 startSignalCapture 不截断已捕获信号", () => {
+    startSignalCapture()
+    createSignal("first")
+    const warns: string[] = []
+    const orig = console.warn
+    console.warn = (m: unknown) => warns.push(String(m))
+    try {
+      startSignalCapture() // 重入：no-op，保留首个会话已捕获的信号
+    } finally {
+      console.warn = orig
+    }
+    createSignal("second")
+    try {
+      const payload = JSON.parse(serializeSignals()) as { s: unknown[] }
+      // 修复前：重入清空列表 → 只捕获到 "second"
+      expect(payload.s).toEqual(["first", "second"])
+      expect(warns.length).toBe(1)
+    } finally {
+      stopSignalCapture()
+    }
+  })
+
+  it("非调试模式:客户端忽略服务端的 l 标记(照常降级恢复,不报错不 throw)", () => {
+    const errors: string[] = []
+    const orig = console.error
+    console.error = (m: unknown) => errors.push(String(m))
+    try {
+      // 服务端以调试模式产出了 l,但本端非调试 → 不校验不报错
+      restoreSignals({ v: 1, s: ["2026-01-01", "ok"], l: [0] })
+      expect(createSignal<unknown>(new Date(0)).get()).toBe("2026-01-01")
+      createSignal("")
+      stopSignalRestore()
+    } finally {
+      console.error = orig
+    }
+    expect(errors.some(e => /degraded/.test(String(e)))).toBe(false)
+  })
+
+  it("调试模式下降级位置恢复时 throw（fail-fast）", () => {
+    setSignalStateDebug(true)
+    try {
+      restoreSignals({ v: 1, s: ["2026-01-01"], l: [0] })
+      expect(() => createSignal(new Date(0))).toThrow(/degraded/)
+    } finally {
+      stopSignalRestore()
+      setSignalStateDebug(false)
+    }
+  })
+
+  it("codec encode 使类型化值不被标记;decode 在客户端还原类型", () => {
+    const encode = (v: unknown): unknown =>
+      v instanceof Date ? { $date: (v as Date).toISOString() } : v
+    const decode = (v: unknown): unknown =>
+      v !== null && typeof v === "object" && "$date" in v
+        ? new Date((v as { $date: string }).$date)
+        : v
+    // 调试模式下跑,证明 encode 让类型化值通过无损 gate(否则 Date 会被标 l)
+    setSignalStateDebug(true)
+    setSignalStateCodec({ encode, decode })
+    try {
+      startSignalCapture()
+      createSignal(new Date(0)) // 经 encode → {$date:"…"} 纯 JSON,不再判有损
+      const payload = JSON.parse(serializeSignals()) as { s: unknown[]; l?: number[] }
+      expect(payload.l).toBeUndefined()
+      expect(payload.s[0]).toEqual({ $date: "1970-01-01T00:00:00.000Z" })
+      stopSignalCapture()
+      // 客户端:decode 把 tag 还原成 Date 作为 createSignal 初始值
+      restoreSignals(JSON.stringify(payload))
+      const d = createSignal(new Date(0)).get()
+      expect(d).toBeInstanceOf(Date)
+      expect((d as Date).getTime()).toBe(0)
+      stopSignalRestore()
+    } finally {
+      setSignalStateCodec(null)
+      setSignalStateDebug(false)
+    }
+  })
+
+  it("#1: 服务端纯对象顶替客户端类实例时报结构错位", () => {
+    class User {
+      name: string
+      constructor(name: string) {
+        this.name = name
+      }
+      greet(): string {
+        return this.name
+      }
+    }
+    // 服务端把 User 序列化为纯对象 {name}；客户端默认仍是类实例 → 方法会丢
+    restoreSignals([{ name: "a" }])
+    createSignal(new User("b"))
+    const errors: string[] = []
+    const orig = console.error
+    console.error = (m: unknown) => errors.push(String(m))
+    try {
+      stopSignalRestore()
+    } finally {
+      console.error = orig
+    }
+    const msg = errors.join("\n")
+    expect(msg).toContain("type mismatch")
+    expect(msg).toContain("#0: serialized object, client initial User instance")
+  })
+
+  it("#1: 纯对象之间仅 key 多少不同不误报（恢复本意）", () => {
+    restoreSignals([{ a: 1, b: 2 }])
+    createSignal({ a: 0 }) // 客户端默认少字段，属合法恢复，不得误报
     const errors: string[] = []
     const orig = console.error
     console.error = (m: unknown) => errors.push(String(m))

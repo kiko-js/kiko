@@ -20,9 +20,10 @@ import {
  * 叶时先输出已缓冲的同步内容、再 await 解析后继续。
  *
  * 已知限制：
- * - `<style>` 在流式模式下输出为全局样式（不生成 scope 属性）。scope 属性需要
- *   在输出 opening tag 前从 children 提取标记，块树模式下 opening tag 与
- *   子树是兄弟节点、无法回溯。需要 scoped style 时请用 `renderToFragment`。
+ * - scoped `<Style>`(非 `<Style global>`)在流式模式下被丢弃并告警——样式无效果,
+ *   不降级为全局(避免 scoped css 泄漏到整页)。scope 属性需要把标记回溯到祖先
+ *   opening tag,块树模式下 opening tag 与子树是兄弟节点、无法回溯。需要 scoped
+ *   style 时请用 `renderToFragment`,或用 `<Style global>` 显式接受全局。
  */
 
 import { isSignal, reportError } from "./signal"
@@ -155,12 +156,19 @@ function streamJsx(
 
 function streamStyle(props: StyleProps): StreamChunk {
   if (!props.global) {
-    // 与 renderToFragment 的根级警告同类:流式输出无法回溯兄弟树,scope 属性
-    // 落不到元素上,scoped CSS 会静默降级为全局样式
+    // 流式块树无法在 opening tag 输出前把 scope 标记回溯到祖先元素(见文件头)。
+    // 与其把 scoped css 静默降级为全局(泄漏到整页、污染无关元素),不如丢弃该
+    // 样式并明确告警:样式无效果,其余渲染不受影响。需要 scoped style 请用
+    // renderToFragment,或用 <Style global> 显式接受全局。
     console.warn(
-      `[kiko] <Style> in renderToStream emits global CSS (scope attributes cannot ` +
-        `be applied retroactively in streaming mode). Use <Style global> to acknowledge.`,
+      `[kiko] scoped <Style> in renderToStream is omitted (no effect): streaming cannot ` +
+        `apply scope attributes retroactively. Use <Style global> or renderToFragment ` +
+        `for scoped css.`,
     )
+    // 保留空 <style> 节点(含 nonce):样式不生效,但维持与 renderToFragment /
+    // 水合对齐相同的节点结构,避免流式输出在这里留下空洞错位。
+    const nonceAttr = props.nonce ? ` nonce="${escapeAttr(props.nonce)}"` : ""
+    return sync(`<style${nonceAttr}></style>`)
   }
   const css = escapeStyleText(extractCssText(props.children))
   const nonceAttr = props.nonce ? ` nonce="${escapeAttr(props.nonce)}"` : ""
