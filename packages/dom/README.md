@@ -78,7 +78,10 @@ render(<Card ref={node => console.log(node)} />, container)
 ## 子路径导出
 
 - `@kikojs/dom`：客户端运行时（JSX 工厂、render、控制流）
-- `@kikojs/dom/server`：SSR 字符串运行时（`renderToFragment`）
+- `@kikojs/dom/server`：SSR 字符串运行时（`renderToFragment`、`renderToStream`）
+  与请求级作用域 `withSSRScope`。**并发渲染**（HTTP 服务每请求一段）必须把请求
+  处理包进 `withSSRScope(async () => { ... })`，SSR 运行时与信号捕获/恢复状态才
+  按请求隔离；串行使用无需包裹。
 - `@kikojs/dom/jsx-runtime`：JSX 运行时入口（`jsx`、`jsxs`、`jsxDEV`、`Fragment`）
 - `@kikojs/dom/react-portal`：React ↔ kiko 桥接
 

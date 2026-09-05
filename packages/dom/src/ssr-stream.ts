@@ -28,7 +28,7 @@ import {
 import { isSignal } from "./signal"
 import type { WatchableSignal } from "./signal"
 import { extractCssText, isPromiseLike, isTruthy, unwrap } from "./shared"
-import { getSSRRuntime, setSSRRuntime } from "./ssr-mode"
+import { useSSRRuntime } from "./ssr-mode"
 import type { SSRRuntime } from "./ssr-mode"
 import {
   escapeText,
@@ -237,12 +237,11 @@ function streamSuspend(props: { fallback?: unknown; children: unknown }): Stream
   // 异步内容 resolve 时，需要重新切回流式运行时，让 JSX 求值产出块树而非 DOM 节点
   const resolveAsync = (value: unknown): Promise<StreamChunk[]> =>
     Promise.resolve(value).then(resolved => {
-      const prev = getSSRRuntime()
-      setSSRRuntime(ssrStreamRuntime)
+      const restore = useSSRRuntime(ssrStreamRuntime)
       try {
         return chunkify(resolved)
       } finally {
-        setSSRRuntime(prev)
+        restore()
       }
     })
   if (isPromiseLike(children)) {
@@ -314,20 +313,18 @@ export function renderToStream(component: () => unknown): ReadableStream<string>
         },
       }
       try {
-        // 临时切换为流式运行时，让 JSX 求值构建块树
-        const prev = getSSRRuntime()
-        setSSRRuntime(ssrStreamRuntime)
-        let root: StreamChunk
+        // 临时切换为流式运行时,让 JSX 求值构建块树
+        const restore = useSSRRuntime(ssrStreamRuntime)
         try {
           const result = component()
-          root = isPromiseLike(result)
+          const root = isPromiseLike(result)
             ? await result.then(r => streamValue(r))
             : streamValue(result)
+          await flushChunks(root, ctx)
+          controller.close()
         } finally {
-          setSSRRuntime(prev)
+          restore()
         }
-        await flushChunks(root, ctx)
-        controller.close()
       } catch (e) {
         controller.error(e)
       }

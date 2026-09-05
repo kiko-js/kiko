@@ -21,14 +21,47 @@ export interface SSRRuntime {
   suspend(props: Record<string, unknown>): unknown
 }
 
-let runtime: SSRRuntime | null = null
-
-/** 注册 SSR 运行时（由 ssr.ts 模块加载时自调用；客户端 bundle 不会触发） */
-export function setSSRRuntime(r: SSRRuntime | null): void {
-  runtime = r
+/**
+ * 运行时槽位:模块级兜底;服务端请求作用域(@kikojs/dom/server 的
+ * AsyncLocalStorage 装置)按请求注入,并发渲染互不污染。
+ */
+interface RuntimeSlot {
+  runtime: SSRRuntime | null
 }
 
-/** 当前 SSR 运行时；null 表示客户端模式 */
+let fallback: RuntimeSlot = { runtime: null }
+
+type RuntimeScope = () => RuntimeSlot | undefined
+let scope: RuntimeScope | null = null
+
+/** 注册请求作用域读取器(由 server 侧装置调用;客户端 bundle 不触发) */
+export function setSSRRuntimeScope(read: RuntimeScope | null): void {
+  scope = read
+}
+
+function slot(): RuntimeSlot {
+  return scope?.() ?? fallback
+}
+
+/** 注册 SSR 运行时(由 server.ts 模块加载时自调用;写入当前作用域槽位) */
+export function setSSRRuntime(r: SSRRuntime | null): void {
+  slot().runtime = r
+}
+
+/** 当前 SSR 运行时;null 表示客户端模式 */
 export function getSSRRuntime(): SSRRuntime | null {
-  return runtime
+  return slot().runtime
+}
+
+/**
+ * 临时换入运行时,返回恢复函数。请求作用域内换入只影响本请求;
+ * 无作用域时行为同旧的全局换入换出(串行使用)。
+ */
+export function useSSRRuntime(r: SSRRuntime): () => void {
+  const s = slot()
+  const prev = s.runtime
+  s.runtime = r
+  return () => {
+    s.runtime = prev
+  }
 }

@@ -22,23 +22,53 @@
 
 import { Signal } from "signal-polyfill"
 
-// ---------------------------------------------------------------------------
-// 捕获状态（服务端）
-// ---------------------------------------------------------------------------
+/**
+ * 序列化状态槽:模块级兜底;服务端请求作用域(@kikojs/dom/server 的
+ * AsyncLocalStorage 装置)按请求注入,并发渲染的捕获互不污染。
+ * 客户端恢复路径从不装作用域,恒走兜底槽。
+ * @internal 槽位结构仅供 server 侧装置消费
+ */
+export interface SerializeSlot {
+  capturing: boolean
+  capturedSignals: Signal.State<unknown>[]
+  restoring: boolean
+  restoreIndex: number
+  restoreValues: unknown[]
+  restoreDeficit: number
+}
 
-let capturing = false
-const capturedSignals: Signal.State<unknown>[] = []
+let fallback: SerializeSlot = {
+  capturing: false,
+  capturedSignals: [],
+  restoring: false,
+  restoreIndex: 0,
+  restoreValues: [],
+  restoreDeficit: 0,
+}
 
-// ---------------------------------------------------------------------------
-// 恢复状态（客户端）
-// ---------------------------------------------------------------------------
+type SerializeScope = () => SerializeSlot | undefined
+let scope: SerializeScope | null = null
 
-let restoring = false
-let restoreIndex = 0
-let restoreValues: unknown[] = []
-// 恢复期客户端创建的信号数超出服务端序列化数量的缺口(全局排序契约的
-// 可检测失败:数量不一致说明两端渲染的组件树不同,静默错位恢复)
-let restoreDeficit = 0
+/** 注册请求作用域读取器(由 server 侧装置调用) */
+export function setSerializeStateScope(read: SerializeScope | null): void {
+  scope = read
+}
+
+/** @internal 供 server 侧装置创建每请求状态 */
+export function freshSerializeState(): SerializeSlot {
+  return {
+    capturing: false,
+    capturedSignals: [],
+    restoring: false,
+    restoreIndex: 0,
+    restoreValues: [],
+    restoreDeficit: 0,
+  }
+}
+
+function slot(): SerializeSlot {
+  return scope?.() ?? fallback
+}
 
 // ---------------------------------------------------------------------------
 // 公共 API
@@ -49,15 +79,16 @@ let restoreDeficit = 0
  * 重置捕获状态，后续 `createSignal` 调用会被记录。
  */
 export function startSignalCapture(): void {
-  capturing = true
-  capturedSignals.length = 0
+  const s = slot()
+  s.capturing = true
+  s.capturedSignals.length = 0
 }
 
 /**
  * 停止捕获（服务端，渲染后调用）。
  */
 export function stopSignalCapture(): void {
-  capturing = false
+  slot().capturing = false
 }
 
 /**
@@ -65,7 +96,7 @@ export function stopSignalCapture(): void {
  * 数组下标 = 信号创建顺序 ID，值 = `signal.get()` 的快照。
  */
 export function serializeSignals(): string {
-  return JSON.stringify(capturedSignals.map(s => s.get()))
+  return JSON.stringify(slot().capturedSignals.map(s => s.get()))
 }
 
 /**
@@ -73,24 +104,26 @@ export function serializeSignals(): string {
  * 解析序列化 JSON，后续 `createSignal` 将按顺序消费这些值作为初始值。
  */
 export function restoreSignals(json: string | unknown[]): void {
-  restoreValues = Array.isArray(json) ? json : JSON.parse(json)
-  restoreIndex = 0
-  restoring = true
+  const s = slot()
+  s.restoreValues = Array.isArray(json) ? json : JSON.parse(json)
+  s.restoreIndex = 0
+  s.restoring = true
 }
 
 /**
  * 停止恢复（客户端，水合后调用）。
  */
 export function stopSignalRestore(): void {
-  if (restoring && (restoreIndex < restoreValues.length || restoreDeficit > 0)) {
+  const s = slot()
+  if (s.restoring && (s.restoreIndex < s.restoreValues.length || s.restoreDeficit > 0)) {
     console.error(
-      `[kiko hydrate] signal state mismatch: server serialized ${restoreValues.length} signals, client created ${restoreIndex + restoreDeficit} — server and client must render the same component tree in the same order`,
+      `[kiko hydrate] signal state mismatch: server serialized ${s.restoreValues.length} signals, client created ${s.restoreIndex + s.restoreDeficit} — server and client must render the same component tree in the same order`,
     )
   }
-  restoring = false
-  restoreValues = []
-  restoreIndex = 0
-  restoreDeficit = 0
+  s.restoring = false
+  s.restoreValues = []
+  s.restoreIndex = 0
+  s.restoreDeficit = 0
 }
 
 /**
@@ -98,25 +131,27 @@ export function stopSignalRestore(): void {
  * - 捕获模式：记录信号。
  */
 export function trackSignal<T>(sig: Signal.State<T>): void {
-  if (capturing) capturedSignals.push(sig as Signal.State<unknown>)
+  const s = slot()
+  if (s.capturing) s.capturedSignals.push(sig as Signal.State<unknown>)
 }
 
 /** 恢复模式下的下一个初始值；无更多值时返回 undefined。 */
 export function nextRestoreValue(): unknown | undefined {
-  if (!restoring) return undefined
-  if (restoreIndex >= restoreValues.length) {
-    restoreDeficit++
+  const s = slot()
+  if (!s.restoring) return undefined
+  if (s.restoreIndex >= s.restoreValues.length) {
+    s.restoreDeficit++
     return undefined
   }
-  return restoreValues[restoreIndex++]
+  return s.restoreValues[s.restoreIndex++]
 }
 
 /** 是否正在捕获（测试用） */
 export function isCapturing(): boolean {
-  return capturing
+  return slot().capturing
 }
 
 /** 是否正在恢复（测试用） */
 export function isRestoring(): boolean {
-  return restoring
+  return slot().restoring
 }
