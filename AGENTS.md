@@ -19,7 +19,8 @@ Monorepo: `@kikojs/signal` (signal toolkit), `@kikojs/dom` (DOM + SSR), `@kikojs
 - **Cleanup is recursive**: `WeakMap<Node, Set<Watcher>>`-based. Uses `Signal.subtle.introspectSources` (not `watcher.unwatch()` with no args — that's a no-op in signal-polyfill v0.2).
 - **SSR ↔ Client alignment**: Hydration relies on `PendingNode` lazy alignment (adoption order == document order). Signal creation order must match between server and client.
 - **Marker protocol is centralized**: all comment-marker spellings (control-flow anchors, `/suspend` end marker, signal `<!---->`, scope prefixes) live in `packages/dom/src/markers.ts` — never hardcode them elsewhere; hydration alignment breaks silently on mismatch.
-- **Shared engines, no forks**: `For` updates reconcile through `for-engine.ts` (`createForCore`) on both client and hydration paths; `Suspend` promise collection goes through `shared.ts` `settleChildren`. Hydration-specific work is adoption only (cursor consumption) — do not reimplement update/reconcile logic per renderer.
+- **Shared engines, no forks**: `For` reconciles through `for-engine.ts` (`createForCore` — client and hydration share entry creation, reorder, and update paths; hydration only injects a `render` hook for cursor adoption); `Suspend` promise collection goes through `shared.ts` `settleChildren`; branch retention/cleanup (Show / Suspend / ErrorBoundary) goes through `branch-engine.ts` `createBranchManager` (cached fallback/static branches keep node identity, hidden retained branches are cleaned at dispose). Do not reimplement any of this per renderer.
+- **Hydration state is single-instance**: the adoption cursor (`hydrate.ts`) and signal capture/restore (`signal-serialize.ts`) are module-level; each `hydrate()` / render is one synchronous stack — never run two hydration roots concurrently.
 
 ### TypeScript
 

@@ -10,7 +10,8 @@
  *   createSignal 的初始值替换为序列化值（按同一顺序消费）。
  *
  * 前提：服务端与客户端的组件树结构相同，createSignal 调用顺序一致
- * （水合对齐的固有要求）。
+ * （水合对齐的固有要求）。`stopSignalRestore()` 会校验两端数量：不一致时
+ * `console.error` 报出两端信号数,使排序契约的破坏可检测(而非静默错位)。
  *
  * 限制：
  * - 仅捕获通过 `@kikojs/dom` 的 `createSignal` 创建的信号（组件内信号）。
@@ -35,6 +36,9 @@ const capturedSignals: Signal.State<unknown>[] = []
 let restoring = false
 let restoreIndex = 0
 let restoreValues: unknown[] = []
+// 恢复期客户端创建的信号数超出服务端序列化数量的缺口(全局排序契约的
+// 可检测失败:数量不一致说明两端渲染的组件树不同,静默错位恢复)
+let restoreDeficit = 0
 
 // ---------------------------------------------------------------------------
 // 公共 API
@@ -78,9 +82,15 @@ export function restoreSignals(json: string | unknown[]): void {
  * 停止恢复（客户端，水合后调用）。
  */
 export function stopSignalRestore(): void {
+  if (restoring && (restoreIndex < restoreValues.length || restoreDeficit > 0)) {
+    console.error(
+      `[kiko hydrate] signal state mismatch: server serialized ${restoreValues.length} signals, client created ${restoreIndex + restoreDeficit} — server and client must render the same component tree in the same order`,
+    )
+  }
   restoring = false
   restoreValues = []
   restoreIndex = 0
+  restoreDeficit = 0
 }
 
 /**
@@ -93,7 +103,11 @@ export function trackSignal<T>(sig: Signal.State<T>): void {
 
 /** 恢复模式下的下一个初始值；无更多值时返回 undefined。 */
 export function nextRestoreValue(): unknown | undefined {
-  if (!restoring || restoreIndex >= restoreValues.length) return undefined
+  if (!restoring) return undefined
+  if (restoreIndex >= restoreValues.length) {
+    restoreDeficit++
+    return undefined
+  }
   return restoreValues[restoreIndex++]
 }
 

@@ -27,7 +27,7 @@ import {
 
 import { isSignal } from "./signal"
 import type { WatchableSignal } from "./signal"
-import { extractCssText, isPromiseLike, unwrap } from "./shared"
+import { extractCssText, isPromiseLike, isTruthy, unwrap } from "./shared"
 import { getSSRRuntime, setSSRRuntime } from "./ssr-mode"
 import type { SSRRuntime } from "./ssr-mode"
 import {
@@ -154,6 +154,14 @@ function streamJsx(
 // ---------------------------------------------------------------------------
 
 function streamStyle(props: StyleProps): StreamChunk {
+  if (!props.global) {
+    // 与 renderToFragment 的根级警告同类:流式输出无法回溯兄弟树,scope 属性
+    // 落不到元素上,scoped CSS 会静默降级为全局样式
+    console.warn(
+      `[kiko] <Style> in renderToStream emits global CSS (scope attributes cannot ` +
+        `be applied retroactively in streaming mode). Use <Style global> to acknowledge.`,
+    )
+  }
   const css = escapeStyleText(extractCssText(props.children))
   const nonceAttr = props.nonce ? ` nonce="${escapeAttr(props.nonce)}"` : ""
   return sync(`<style${nonceAttr}>${css}</style>`)
@@ -169,7 +177,7 @@ function streamShow(props: {
   children: unknown | ((value: unknown) => unknown)
 }): StreamChunk {
   const cond = unwrap(props.when)
-  if (cond !== false && cond != null && cond !== "" && cond !== 0) {
+  if (isTruthy(cond)) {
     const value =
       typeof props.children === "function"
         ? (props.children as (value: unknown) => unknown)(cond)
