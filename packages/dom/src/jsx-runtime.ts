@@ -11,6 +11,7 @@ import {
   unadoptSheet,
 } from "./style"
 import { extractCssText, isPromiseLike } from "./shared"
+import { SCOPE_ANCHOR_PREFIX, STYLE_ANCHOR_TEXT } from "./markers"
 import { getSSRRuntime } from "./ssr-mode"
 import {
   adoptComponentRef,
@@ -163,12 +164,10 @@ export function trackCleanup(node: Node, fn: () => void): void {
 // Scoped-style anchors are comment nodes whose text carries the scope attr
 // (`kiko-scope:data-kiko-v1`). The scope ROOT is the nearest ancestor element
 // of the anchor, so the attribute is applied when the anchor is inserted.
-const SCOPE_PREFIX = "kiko-scope:"
 
 function scopeAttrOf(node: Node): string | null {
-  if (node.nodeType !== Node.COMMENT_NODE) return null
   const text = node.textContent ?? ""
-  return text.startsWith(SCOPE_PREFIX) ? text.slice(SCOPE_PREFIX.length) : null
+  return text.startsWith(SCOPE_ANCHOR_PREFIX) ? text.slice(SCOPE_ANCHOR_PREFIX.length) : null
 }
 
 /**
@@ -725,12 +724,13 @@ export function Style(props: StyleProps): Node {
   const scoped = !props.global
   const attr = scoped ? createScopeAttr() : null
   const constructable = supportsConstructable()
-
   const anchor: Node = constructable
-    ? document.createComment(scoped ? SCOPE_PREFIX + attr : "kiko-style")
+    ? document.createComment(scoped ? SCOPE_ANCHOR_PREFIX + attr : STYLE_ANCHOR_TEXT)
     : (() => {
         const frag = document.createDocumentFragment()
-        frag.appendChild(document.createComment(scoped ? SCOPE_PREFIX + attr : "kiko-style"))
+        frag.appendChild(
+          document.createComment(scoped ? SCOPE_ANCHOR_PREFIX + attr : STYLE_ANCHOR_TEXT),
+        )
         const el = document.createElement("style")
         if (props.nonce) el.setAttribute("nonce", props.nonce)
         frag.appendChild(el)

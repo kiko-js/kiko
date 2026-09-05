@@ -1,3 +1,4 @@
+import { isLazy, realizeLazy } from "./lazy-node"
 import { isSignal } from "./signal"
 import type { WatchableSignal } from "./signal"
 
@@ -48,4 +49,49 @@ export function extractCssText(children: unknown): string {
   }
   visit(children)
   return parts.join("\n")
+}
+
+export interface SettleHandlers {
+  /** 一次性判旧(代际快照):迟到结果不得覆盖新代内容 */
+  isStale: () => boolean
+  /** 存在在途 promise:先渲染挂起态(fallback) */
+  onPending: () => void
+  /** 全部 settle:以最新值渲染 */
+  onResolved: (resolved: unknown) => void
+  /** reject 且非过期 */
+  onRejected: (error: unknown) => void
+  /** 过期(被新代取代/已清理):迟到结果交此清理;缺省静默丢弃 */
+  onSuperseded?: (resolved: unknown) => void
+}
+
+/**
+ * Suspend 的 promise 收集(flow.ts 与 hydrate.ts 共用,语义与客户端路径一致):
+ * children 为单个 promise 或「含 promise 的数组」时挂起,全部 settle 后以
+ * 最新值回调;非过期才回调 onRejected/onResolved。数组子项先解包惰性组件
+ * (async 组件的 Lazy)再做 promise 检测。
+ */
+export function settleChildren(value: unknown, h: SettleHandlers): void {
+  let v = value
+  if (Array.isArray(v)) v = v.map(item => (isLazy(item) ? realizeLazy(item) : item))
+  if (isPromiseLike(v)) {
+    h.onPending()
+    Promise.resolve(v).then(
+      r => (h.isStale() ? h.onSuperseded?.(r) : h.onResolved(r)),
+      e => {
+        if (!h.isStale()) h.onRejected(e)
+      },
+    )
+    return
+  }
+  if (Array.isArray(v) && v.some(isPromiseLike)) {
+    h.onPending()
+    Promise.all(v).then(
+      r => (h.isStale() ? h.onSuperseded?.(r) : h.onResolved(r)),
+      e => {
+        if (!h.isStale()) h.onRejected(e)
+      },
+    )
+    return
+  }
+  h.onResolved(v)
 }

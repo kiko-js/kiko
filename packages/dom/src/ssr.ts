@@ -1,3 +1,14 @@
+import {
+  FOR_MARKER,
+  SHOW_MARKER,
+  SIGNAL_MARKER_HTML,
+  SUSPEND_END_MARKER,
+  SUSPEND_MARKER,
+  ERROR_BOUNDARY_MARKER,
+  SCOPE_MARKER_PREFIX,
+  SCOPE_MARKER_SUFFIX,
+  markerHtml,
+} from "./markers"
 import { isSignal, reportError } from "./signal"
 import type { WatchableSignal } from "./signal"
 import { createScopeAttr, rewriteScopedCss } from "./style"
@@ -71,7 +82,7 @@ export function toSSRString(value: unknown): SSRValue {
   if (value == null || value === false || value === true) return ""
   if (value instanceof SSRElement) return value
   if (isSignal(value)) {
-    return withMarker("<!---->", toSSRString((value as WatchableSignal<unknown>).get()))
+    return withMarker(SIGNAL_MARKER_HTML, toSSRString((value as WatchableSignal<unknown>).get()))
   }
   if (isPromiseLike(value)) {
     return Promise.resolve(value).then(resolved => toSSRString(resolved))
@@ -94,9 +105,6 @@ export function toSSRString(value: unknown): SSRValue {
 // scope 会错误地落到兄弟元素上。改为：ssrStyle 在输出中内嵌唯一标记
 // `<!--kiko-scope:attr-->`，每个元素序列化完 children 后提取自己 children 里的
 // 标记挂到自身 attrs；最内层包含元素消费后，标记不再外泄。
-
-const SCOPE_MARKER_PREFIX = "<!--kiko-scope:"
-const SCOPE_MARKER_SUFFIX = "-->"
 
 function extractScopeMarkers(html: string): { cleaned: string; attrs: string[] } {
   const attrs: string[] = []
@@ -137,7 +145,7 @@ export function ssrStyle(props: StyleProps): SSRValue {
   const attr = createScopeAttr()
   // 标记由最近的序列化祖先元素（即包含该 style 的元素）提取并挂载
   return new SSRElement(
-    `<!--kiko-scope:${attr}--><style${nonceAttr}>${rewriteScopedCss(css, attr)}</style>`,
+    `${SCOPE_MARKER_PREFIX}${attr}${SCOPE_MARKER_SUFFIX}<style${nonceAttr}>${rewriteScopedCss(css, attr)}</style>`,
   )
 }
 
@@ -293,9 +301,9 @@ export function ssrShow(props: {
       typeof props.children === "function"
         ? (props.children as (value: unknown) => unknown)(cond)
         : props.children
-    return withMarker("<!--show-->", toSSRString(value))
+    return withMarker(markerHtml(SHOW_MARKER), toSSRString(value))
   }
-  return withMarker("<!--show-->", toSSRString(props.fallback))
+  return withMarker(markerHtml(SHOW_MARKER), toSSRString(props.fallback))
 }
 
 export function ssrFor(props: {
@@ -310,7 +318,7 @@ export function ssrFor(props: {
     const arg = props.getKey ? () => item : item
     return props.children(arg, index)
   })
-  return withMarker("<!--for-->", toSSRString(content))
+  return withMarker(markerHtml(FOR_MARKER), toSSRString(content))
 }
 
 export function ssrErrorBoundary(props: {
@@ -319,7 +327,7 @@ export function ssrErrorBoundary(props: {
   children: () => unknown
 }): SSRValue {
   try {
-    return withMarker("<!--error-boundary-->", toSSRString(props.children()))
+    return withMarker(markerHtml(ERROR_BOUNDARY_MARKER), toSSRString(props.children()))
   } catch (e) {
     try {
       props.onError?.(e)
@@ -330,24 +338,24 @@ export function ssrErrorBoundary(props: {
       typeof props.fallback === "function"
         ? (props.fallback as (error: unknown) => unknown)(e)
         : props.fallback
-    return withMarker("<!--error-boundary-->", toSSRString(fb))
+    return withMarker(markerHtml(ERROR_BOUNDARY_MARKER), toSSRString(fb))
   }
 }
 
 export function ssrSuspend(props: { fallback?: unknown; children: unknown }): SSRValue {
   const wrap = (content: SSRValue): SSRValue => {
+    const framed = (html: string) =>
+      new SSRElement(`${markerHtml(SUSPEND_MARKER)}${html}${markerHtml(SUSPEND_END_MARKER)}`)
     if (isPromiseLike(content)) {
       return Promise.resolve(content).then(
-        c => new SSRElement(`<!--suspend-->${raw(c)}<!--/suspend-->`),
+        c => framed(raw(c)),
         rejected => {
           reportError(rejected)
-          return Promise.resolve(toSSRString(props.fallback)).then(
-            c => new SSRElement(`<!--suspend-->${raw(c)}<!--/suspend-->`),
-          )
+          return Promise.resolve(toSSRString(props.fallback)).then(c => framed(raw(c)))
         },
       )
     }
-    return new SSRElement(`<!--suspend-->${raw(content)}<!--/suspend-->`)
+    return framed(raw(content))
   }
 
   const children = unwrap(props.children)

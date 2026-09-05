@@ -4,7 +4,6 @@ import { createWatcher, isSignal, reportError, watchSignal } from "./signal"
 import type { WatchableSignal } from "./signal"
 import { restoreSignals, stopSignalRestore } from "./signal-serialize"
 import {
-  applyScopeRoots,
   attachDelegationRoot,
   cleanupWatchers,
   detachDelegationRoot,
@@ -18,7 +17,9 @@ import {
   trackCleanup,
   trackWatcher,
 } from "./jsx-runtime"
-import { isPromiseLike, isTruthy, unwrap, defaultForKey } from "./shared"
+import { isPromiseLike, isTruthy, unwrap, defaultForKey, settleChildren } from "./shared"
+import { createForCore, type ForKeyEntry } from "./for-engine"
+import { SUSPEND_END_MARKER } from "./markers"
 import type { AsyncComponent, Component, Props, StyleProps } from "./jsx-runtime"
 
 /**
@@ -349,14 +350,6 @@ export function hydrateShow(props: {
     return [marker, ...current]
   })
 }
-
-interface HydratedForEntry {
-  nodes: Node[]
-  state: Signal.State<unknown>
-  accessor: Signal.Computed<unknown>
-  idx: Signal.State<number>
-}
-
 export function hydrateFor(props: {
   each: unknown
   getKey?: (item: unknown, index: number) => unknown
@@ -369,13 +362,11 @@ export function hydrateFor(props: {
       return []
     }
     const getKey = props.getKey
-    let current: Node[] = []
-    let entries: Map<unknown, HydratedForEntry> = new Map()
-    let plain: Map<unknown, Node[]> = new Map()
+    // 更新路径与 flow.ts 完全共用同一引擎(ForCore);水合特有的是初次采纳:
+    // 逐游标消费现有节点,不能整表重建。keyed 每项建 state/accessor/idx——
+    // 与 flow.ts 相同的条目模型,保证水合后的首次更新就走 keyed 重排。
+    const core = createForCore({ marker, children: props.children })
 
-    // 初次：水合采纳。keyed 模式每项建 state/accessor/idx——与 flow.ts
-    // 相同的条目模型，保证水合后的首次更新就走 keyed 重排（存活 key
-    // 保留 DOM 与 watcher，children 不重跑）。
     const adopt = (): void => {
       const out: Node[] = []
       const list = unwrap(props.each) as readonly unknown[]
@@ -383,126 +374,37 @@ export function hydrateFor(props: {
         const item = list[i]
         const index = (): number => i
         if (getKey) {
-          const key = getKey(item, i)
           const state = new Signal.State<unknown>(item)
           const accessor = new Signal.Computed<unknown>(() => state.get())
-          const entry: HydratedForEntry = { nodes: [], state, accessor, idx: new Signal.State(i) }
+          const entry: ForKeyEntry<unknown> = {
+            nodes: [],
+            state,
+            accessor,
+            idx: new Signal.State(i),
+          }
           entry.nodes = hydrateValue(
             props.children(
               () => accessor.get(),
               () => entry.idx.get(),
             ),
           )
-          entries.set(key, entry)
+          core.entries.set(getKey(item, i), entry)
           out.push(...entry.nodes)
         } else {
           const nodes = hydrateValue(props.children(item, index))
-          // 重复 key(原始值重复)只保留首个条目;后续更新遇重复会回退全量
-          if (!plain.has(defaultForKey(item))) plain.set(defaultForKey(item), nodes)
+          // 重复身份只登记首个条目(游标必须逐项消费,无法回退整表重建);
+          // 后续更新遇重复身份会回退全量重建
+          if (!core.plain.has(defaultForKey(item))) core.plain.set(defaultForKey(item), nodes)
           out.push(...nodes)
         }
       }
-      current = out
+      core.current = out
     }
 
-    // 更新：keyed 与 flow.ts 的 renderKeyed 相同；无 getKey 时按条目身份
-    // （SameValueZero）复用水合采纳的节点（与 flow.ts 的 renderDefaultKeyed 同语义）
     const render = (): void => {
       const list = unwrap(props.each) as readonly unknown[]
-      if (!getKey) {
-        const parent = marker.parentNode
-        const next: Node[] = []
-        const nextPlain = new Map<unknown, Node[]>()
-        let fallback = false
-        const seen = new Set<unknown>()
-        for (let i = 0; i < list.length; i++) {
-          const item = list[i]
-          const key = defaultForKey(item)
-          if (seen.has(key)) {
-            fallback = true
-            break
-          }
-          seen.add(key)
-          const existing = plain.get(key)
-          if (existing) {
-            nextPlain.set(key, existing)
-            next.push(...existing)
-          } else {
-            const nodes = toNodes(props.children(item, () => i))
-            nextPlain.set(key, nodes)
-            next.push(...nodes)
-          }
-        }
-        if (fallback) {
-          const regenerated: Node[] = []
-          for (let i = 0; i < list.length; i++) {
-            regenerated.push(...toNodes(props.children(list[i], () => i)))
-          }
-          current = swapNodes(marker, current, regenerated)
-          plain = new Map()
-          return
-        }
-        const dropped: Node[][] = []
-        for (const [key, nodes] of plain) {
-          if (!nextPlain.has(key)) dropped.push(nodes)
-        }
-        for (const nodes of dropped) {
-          for (const n of nodes) cleanupWatchers(n)
-        }
-        if (parent) for (const n of current) parent.removeChild(n)
-        if (parent) {
-          const ref = marker.nextSibling
-          for (const n of next) {
-            applyScopeRoots(n, parent)
-            parent.insertBefore(n, ref)
-          }
-        }
-        current = next
-        plain = nextPlain
-        return
-      }
-      const parent = marker.parentNode
-      const next: Node[] = []
-      const nextEntries = new Map<unknown, HydratedForEntry>()
-      const childFn = props.children as (item: () => unknown, index: () => number) => unknown
-      for (let i = 0; i < list.length; i++) {
-        const item = list[i]
-        const key = getKey(item, i)
-        const existing = entries.get(key)
-        if (existing) {
-          existing.state.set(item)
-          existing.idx.set(i)
-          entries.delete(key)
-          nextEntries.set(key, existing)
-          next.push(...existing.nodes)
-        } else {
-          const state = new Signal.State<unknown>(item)
-          const accessor = new Signal.Computed<unknown>(() => state.get())
-          const entry: HydratedForEntry = { nodes: [], state, accessor, idx: new Signal.State(i) }
-          entry.nodes = toNodes(
-            childFn(
-              () => accessor.get(),
-              () => entry.idx.get(),
-            ),
-          )
-          nextEntries.set(key, entry)
-          next.push(...entry.nodes)
-        }
-      }
-      if (parent) for (const n of current) parent.removeChild(n)
-      for (const entry of entries.values()) {
-        for (const n of entry.nodes) cleanupWatchers(n)
-      }
-      if (parent) {
-        const ref = marker.nextSibling
-        for (const n of next) {
-          applyScopeRoots(n, parent)
-          parent.insertBefore(n, ref)
-        }
-      }
-      current = next
-      entries = nextEntries
-      plain = new Map()
+      if (getKey) core.keyed(list, getKey)
+      else core.identity(list)
     }
 
     adopt()
@@ -511,13 +413,8 @@ export function hydrateFor(props: {
       const watcher = watchSignal(signal, render)
       trackWatcher(marker, watcher)
     }
-    trackCleanup(marker, () => {
-      for (const n of current) cleanupWatchers(n)
-      current = []
-      entries = new Map()
-      plain = new Map()
-    })
-    return [marker, ...current]
+    trackCleanup(marker, () => core.dispose())
+    return [marker, ...core.current]
   })
 }
 
@@ -684,7 +581,11 @@ export function hydrateSuspend(props: { fallback?: unknown; children: unknown })
     const adopted: Node[] = []
     while (cursorPos < cursor.length) {
       const node = take()
-      if (node && node.nodeType === Node.COMMENT_NODE && (node as Comment).data === "/suspend") {
+      if (
+        node &&
+        node.nodeType === Node.COMMENT_NODE &&
+        (node as Comment).data === SUSPEND_END_MARKER
+      ) {
         break
       }
       if (node) adopted.push(node)
@@ -700,60 +601,31 @@ export function hydrateSuspend(props: { fallback?: unknown; children: unknown })
       for (const n of toNodes(value)) cleanupWatchers(n)
     }
 
-    const children = realizeLazy(unwrap(props.children))
-    if (isPromiseLike(children)) {
-      // 初始 promise：SSR 内容即当前状态（不闪 fallback），解析后对齐换入
-      Promise.resolve(children).then(
-        resolved => {
-          current = swapNodes(marker, current, hydrateResolvedContent(resolved, adopted))
-        },
-        rejected => {
-          reportError(rejected)
-        },
-      )
+    const swapIn = (value: unknown): void => {
+      current = swapNodes(marker, current, toNodes(value))
     }
+
+    const initialSeq = ++seq
+    settleChildren(realizeLazy(unwrap(props.children)), {
+      isStale: () => initialSeq !== seq,
+      onPending: () => {},
+      onResolved: resolved => {
+        current = swapNodes(marker, current, hydrateResolvedContent(resolved, adopted))
+      },
+      onRejected: reportError,
+    })
     if (isSignal(props.children)) {
       const signal = props.children as WatchableSignal<unknown>
       const watcher = watchSignal(signal, () => {
-        // 修复：水合后信号驱动的 Suspend 重渲染（此前完全没有订阅）
+        // 信号驱动的重渲染:挂起先 fallback,代际超车丢弃迟到结果
         const mySeq = ++seq
-        const value = realizeLazy(unwrap(signal))
-        const settle = (v: unknown): void => {
-          if (isPromiseLike(v)) {
-            renderFallback()
-            Promise.resolve(v).then(
-              resolved => {
-                if (mySeq !== seq) {
-                  discard(resolved)
-                  return
-                }
-                current = swapNodes(marker, current, toNodes(resolved))
-              },
-              rejected => {
-                if (mySeq === seq) reportError(rejected)
-              },
-            )
-            return
-          }
-          if (Array.isArray(v) && v.some(isPromiseLike)) {
-            renderFallback()
-            Promise.all(v).then(
-              resolved => {
-                if (mySeq !== seq) {
-                  discard(resolved)
-                  return
-                }
-                current = swapNodes(marker, current, toNodes(resolved))
-              },
-              rejected => {
-                if (mySeq === seq) reportError(rejected)
-              },
-            )
-            return
-          }
-          current = swapNodes(marker, current, toNodes(v))
-        }
-        settle(value)
+        settleChildren(realizeLazy(unwrap(signal)), {
+          isStale: () => mySeq !== seq,
+          onPending: renderFallback,
+          onResolved: swapIn,
+          onRejected: reportError,
+          onSuperseded: discard,
+        })
       })
       trackWatcher(marker, watcher)
     }

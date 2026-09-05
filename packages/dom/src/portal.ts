@@ -4,6 +4,7 @@ import {
   detachDelegationRoot,
   trackCleanup,
 } from "./jsx-runtime"
+import { PORTAL_MARKER } from "./markers"
 import { getSSRRuntime } from "./ssr-mode"
 import { isLazy, realizeLazy } from "./lazy-node"
 
@@ -22,7 +23,7 @@ export function createPortal(nodeArg: Node, container: Element): Comment {
     throw new Error("createPortal is client-only and cannot be used during SSR")
   }
   const node = isLazy(nodeArg) ? (realizeLazy(nodeArg) as Node) : nodeArg
-  const anchor = document.createComment("portal")
+  const anchor = document.createComment(PORTAL_MARKER)
   const nodes = node instanceof DocumentFragment ? Array.from(node.childNodes) : [node]
   for (const n of nodes) container.appendChild(n)
   // Portal 节点挂在宿主挂载容器之外：事件沿 container 的祖先链冒泡，

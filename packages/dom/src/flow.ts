@@ -1,18 +1,12 @@
 import { Signal } from "signal-polyfill"
-import { isLazy, realizeLazy } from "./lazy-node"
+import { realizeLazy } from "./lazy-node"
 import { createWatcher, isSignal, reportError, watchSignal } from "./signal"
 import type { WatchableSignal } from "./signal"
-import {
-  applyScopeRoots,
-  cleanupWatchers,
-  swapBranch,
-  swapNodes,
-  toNodes,
-  trackCleanup,
-  trackWatcher,
-} from "./jsx-runtime"
-import { isPromiseLike, isTruthy, unwrap, defaultForKey } from "./shared"
+import { cleanupWatchers, swapBranch, toNodes, trackCleanup, trackWatcher } from "./jsx-runtime"
+import { isTruthy, unwrap, settleChildren } from "./shared"
 import { getSSRRuntime } from "./ssr-mode"
+import { createForCore } from "./for-engine"
+import { SHOW_MARKER, FOR_MARKER, ERROR_BOUNDARY_MARKER, SUSPEND_MARKER } from "./markers"
 import {
   hydrateErrorBoundary,
   hydrateFor,
@@ -60,7 +54,7 @@ export function Show<T>(props: {
   const ssr = getSSRRuntime()
   if (ssr) return ssr.show(props as Record<string, unknown>) as unknown as DocumentFragment
   const frag = document.createDocumentFragment()
-  const marker = document.createComment("show")
+  const marker = document.createComment(SHOW_MARKER)
   frag.appendChild(marker)
   let current: Node[] = []
   // 静态分支的节点数组（惰性求值一次）；换出时保留，换回时复用
@@ -113,20 +107,12 @@ export function Show<T>(props: {
 
   return frag
 }
-
-interface KeyEntry<T> {
-  nodes: Node[]
-  state: Signal.State<T>
-  accessor: Signal.Computed<T>
-  idx: Signal.State<number>
-}
-
 /**
  * Render a list. `each` may be a plain array or a signal of an array.
  *
- * - Without `getKey`: the children function receives the item VALUE and an
- *   index accessor; the whole list re-renders on `each` change. Simple and
- *   correct for small/medium lists.
+ * - Without `getKey`: entries are keyed by identity (SameValueZero) — moving
+ *   an object reuses/moves its DOM nodes without re-running children; duplicate
+ *   entries fall back to a full re-render. children receives the item VALUE.
  * - With `getKey`: the children function receives an item ACCESSOR `() => T`
  *   (reading it tracks the entry's state, so in-place updates to a surviving
  *   entry update its bindings WITHOUT re-running the function) plus an index
@@ -160,139 +146,14 @@ export function For<T>(props: {
   const ssr = getSSRRuntime()
   if (ssr) return ssr.for(props as Record<string, unknown>) as unknown as DocumentFragment
   const frag = document.createDocumentFragment()
-  const marker = document.createComment("for")
+  const marker = document.createComment(FOR_MARKER)
   frag.appendChild(marker)
-  let current: Node[] = []
-  let entries: Map<unknown, KeyEntry<T>> = new Map()
-  let plain: Map<unknown, Node[]> = new Map()
-
-  const renderFull = (list: readonly T[]): void => {
-    const next: Node[] = []
-    for (let i = 0; i < list.length; i++) {
-      const item = list[i] as T
-      const index = (): number => i
-      next.push(
-        ...toNodes((props.children as (item: T, index: () => number) => unknown)(item, index)),
-      )
-    }
-    current = swapNodes(marker, current, next)
-    entries = new Map()
-    plain = new Map()
-  }
-
-  /**
-   * 最小移动重排（SolidJS-style）：丢弃 dropped 节点的 watcher（DOM 仍挂在
-   * `current` 里），移除不再存活的节点，存活节点按 `next` 顺序以单次后向
-   * 插入锚定到 marker。返回 `next`。
-   */
-  const reconcileList = (
-    parent: Node | null,
-    marker: Node,
-    currentNodes: Node[],
-    next: Node[],
-    droppedNodes: Node[][],
-  ): Node[] => {
-    for (const nodes of droppedNodes) {
-      for (const n of nodes) cleanupWatchers(n)
-    }
-    if (!parent) return next
-    const keep = new Set(next)
-    for (const n of currentNodes) {
-      if (!keep.has(n)) parent.removeChild(n)
-    }
-    let ref: Node = marker
-    for (let i = next.length - 1; i >= 0; i--) {
-      const node = next[i] as Node
-      if (node.nextSibling !== ref) parent.insertBefore(node, ref)
-      applyScopeRoots(node, parent)
-      ref = node
-    }
-    return next
-  }
-
-  /**
-   * 默认 keying（无 getKey）：key = 条目本身（SameValueZero）——对象/函数按
-   * 引用复用节点（移动不重建、children 不重跑），原始值按值复用。重复条目
-   * （同一引用出现两次，或重复的原始值）会坍缩 key → 回退整表重建。
-   */
-  const renderDefaultKeyed = (list: readonly T[]): void => {
-    const parent = marker.parentNode
-    const next: Node[] = []
-    const nextPlain = new Map<unknown, Node[]>()
-    const childFn = props.children as (item: T, index: () => number) => unknown
-    let fallback = false
-    const seen = new Set<unknown>()
-    for (let i = 0; i < list.length; i++) {
-      const item = list[i] as T
-      const key = defaultForKey(item)
-      if (seen.has(key)) {
-        fallback = true
-        break
-      }
-      seen.add(key)
-      const existing = plain.get(key)
-      if (existing) {
-        nextPlain.set(key, existing)
-        next.push(...existing)
-      } else {
-        const nodes = toNodes(childFn(item, () => i))
-        nextPlain.set(key, nodes)
-        next.push(...nodes)
-      }
-    }
-    if (fallback) {
-      renderFull(list)
-      return
-    }
-    const dropped: Node[][] = []
-    for (const [key, nodes] of plain) {
-      if (!nextPlain.has(key)) dropped.push(nodes)
-    }
-    current = reconcileList(parent, marker, current, next, dropped)
-    plain = nextPlain
-    entries = new Map()
-  }
-
-  const renderKeyed = (list: readonly T[]): void => {
-    const parent = marker.parentNode
-    const next: Node[] = []
-    const nextEntries = new Map<unknown, KeyEntry<T>>()
-    const childFn = props.children as (item: () => T, index: () => number) => unknown
-    for (let i = 0; i < list.length; i++) {
-      const item = list[i] as T
-      const key = props.getKey!(item, i)
-      const existing = entries.get(key)
-      if (existing) {
-        existing.state.set(item)
-        existing.idx.set(i)
-        entries.delete(key)
-        nextEntries.set(key, existing)
-        next.push(...existing.nodes)
-      } else {
-        const state = new Signal.State<T>(item)
-        const accessor = new Signal.Computed<T>(() => state.get())
-        const entry: KeyEntry<T> = { nodes: [], state, accessor, idx: new Signal.State(i) }
-        entry.nodes = toNodes(
-          childFn(
-            () => accessor.get(),
-            () => entry.idx.get(),
-          ),
-        )
-        nextEntries.set(key, entry)
-        next.push(...entry.nodes)
-      }
-    }
-    const dropped: Node[][] = []
-    for (const entry of entries.values()) dropped.push(entry.nodes)
-    current = reconcileList(parent, marker, current, next, dropped)
-    entries = nextEntries
-    plain = new Map()
-  }
+  const core = createForCore<T>({ marker, children: props.children })
 
   const render = (): void => {
     const list = unwrap(props.each) as readonly T[]
-    if (props.getKey) renderKeyed(list)
-    else renderDefaultKeyed(list)
+    if (props.getKey) core.keyed(list, props.getKey)
+    else core.identity(list)
   }
 
   render()
@@ -303,12 +164,7 @@ export function For<T>(props: {
     trackWatcher(marker, watcher)
   }
 
-  trackCleanup(marker, () => {
-    for (const n of current) cleanupWatchers(n)
-    current = []
-    entries = new Map()
-    plain = new Map()
-  })
+  trackCleanup(marker, () => core.dispose())
 
   return frag
 }
@@ -365,7 +221,7 @@ export function ErrorBoundary(props: {
   const ssr = getSSRRuntime()
   if (ssr) return ssr.errorBoundary(props as Record<string, unknown>) as unknown as DocumentFragment
   const frag = document.createDocumentFragment()
-  const marker = document.createComment("error-boundary")
+  const marker = document.createComment(ERROR_BOUNDARY_MARKER)
   frag.appendChild(marker)
   let current: Node[] = []
   // fallback 为 eager 值时是同一批节点：换出保留 watcher，换回后绑定存活
@@ -513,7 +369,7 @@ export function Suspend(props: { fallback?: unknown; children: unknown }): Docum
   const ssr = getSSRRuntime()
   if (ssr) return ssr.suspend(props as Record<string, unknown>) as unknown as DocumentFragment
   const frag = document.createDocumentFragment()
-  const marker = document.createComment("suspend")
+  const marker = document.createComment(SUSPEND_MARKER)
   frag.appendChild(marker)
   let current: Node[] = []
   // fallback 是 eager 值：同一批节点反复换入换出，保留 watcher（否则
@@ -543,48 +399,17 @@ export function Suspend(props: { fallback?: unknown; children: unknown }): Docum
     reportError(error)
   }
 
-  // 收集 children 中的 promise：挂起则先渲染 fallback，settle 后换入结果
-  const settle = (value: unknown, mySeq: number): void => {
-    // 数组子项可能是惰性组件（async 组件的 Lazy）：先解包再做 promise 检测
-    if (Array.isArray(value)) value = value.map(item => (isLazy(item) ? realizeLazy(item) : item))
-    if (isPromiseLike(value)) {
-      renderFallback()
-      value.then(
-        resolved => {
-          if (mySeq !== seq) {
-            discard(resolved)
-            return
-          }
-          render(resolved)
-        },
-        rejected => {
-          if (mySeq === seq) handleError(rejected)
-        },
-      )
-      return
-    }
-    if (Array.isArray(value) && value.some(isPromiseLike)) {
-      renderFallback()
-      Promise.all(value).then(
-        resolved => {
-          if (mySeq !== seq) {
-            discard(resolved)
-            return
-          }
-          render(resolved)
-        },
-        rejected => {
-          if (mySeq === seq) handleError(rejected)
-        },
-      )
-      return
-    }
-    render(value)
-  }
-
+  // 收集 children 中的 promise(单个/数组,见 settleChildren):挂起则先渲染
+  // fallback,settle 后换入结果;代际 seq 令迟到结果失效(supersede → discard)
   const renderValue = (value: unknown): void => {
     const mySeq = ++seq
-    settle(realizeLazy(value), mySeq)
+    settleChildren(realizeLazy(value), {
+      isStale: () => mySeq !== seq,
+      onPending: renderFallback,
+      onResolved: render,
+      onRejected: handleError,
+      onSuperseded: discard,
+    })
   }
 
   renderValue(unwrap(props.children))

@@ -1,3 +1,12 @@
+import {
+  ERROR_BOUNDARY_MARKER,
+  FOR_MARKER,
+  SHOW_MARKER,
+  SIGNAL_MARKER_HTML,
+  SUSPEND_END_MARKER,
+  SUSPEND_MARKER,
+  markerHtml,
+} from "./markers"
 /**
  * 流式 SSR：把组件树渲染为 `ReadableStream<string>`，同步骨架立即 flush，
  * 异步内容（`<Suspend>` 内的 promise）resolve 后再补发——降低 TTFB。
@@ -74,7 +83,7 @@ function streamValue(value: unknown): StreamChunk {
   if (isSignal(value)) {
     return {
       kind: "sequence",
-      chunks: [sync("<!---->"), streamValue((value as WatchableSignal<unknown>).get())],
+      chunks: [sync(SIGNAL_MARKER_HTML), streamValue((value as WatchableSignal<unknown>).get())],
     }
   }
   if (isPromiseLike(value)) {
@@ -165,9 +174,9 @@ function streamShow(props: {
       typeof props.children === "function"
         ? (props.children as (value: unknown) => unknown)(cond)
         : props.children
-    return { kind: "sequence", chunks: [sync("<!--show-->"), streamValue(value)] }
+    return { kind: "sequence", chunks: [sync(markerHtml(SHOW_MARKER)), streamValue(value)] }
   }
-  return { kind: "sequence", chunks: [sync("<!--show-->"), streamValue(props.fallback)] }
+  return { kind: "sequence", chunks: [sync(markerHtml(SHOW_MARKER)), streamValue(props.fallback)] }
 }
 
 function streamFor(props: {
@@ -176,7 +185,7 @@ function streamFor(props: {
   children: (item: unknown, index: () => number) => unknown
 }): StreamChunk {
   const list = unwrap(props.each) as readonly unknown[]
-  const chunks: StreamChunk[] = [sync("<!--for-->")]
+  const chunks: StreamChunk[] = [sync(markerHtml(FOR_MARKER))]
   for (let i = 0; i < list.length; i++) {
     const index = (): number => i
     const arg = props.getKey ? () => list[i] : list[i]
@@ -193,7 +202,7 @@ function streamErrorBoundary(props: {
   try {
     return {
       kind: "sequence",
-      chunks: [sync("<!--error-boundary-->"), streamValue(props.children())],
+      chunks: [sync(markerHtml(ERROR_BOUNDARY_MARKER)), streamValue(props.children())],
     }
   } catch (e) {
     try {
@@ -205,7 +214,7 @@ function streamErrorBoundary(props: {
       typeof props.fallback === "function"
         ? (props.fallback as (error: unknown) => unknown)(e)
         : props.fallback
-    return { kind: "sequence", chunks: [sync("<!--error-boundary-->"), streamValue(fb)] }
+    return { kind: "sequence", chunks: [sync(markerHtml(ERROR_BOUNDARY_MARKER)), streamValue(fb)] }
   }
 }
 
@@ -232,9 +241,9 @@ function streamSuspend(props: { fallback?: unknown; children: unknown }): Stream
     return {
       kind: "sequence",
       chunks: [
-        sync("<!--suspend-->"),
+        sync(markerHtml(SUSPEND_MARKER)),
         { kind: "async", promise: resolveAsync(children) },
-        sync("<!--/suspend-->"),
+        sync(markerHtml(SUSPEND_END_MARKER)),
       ],
     }
   }
@@ -243,17 +252,20 @@ function streamSuspend(props: { fallback?: unknown; children: unknown }): Stream
     return {
       kind: "sequence",
       chunks: [
-        sync("<!--suspend-->"),
+        sync(markerHtml(SUSPEND_MARKER)),
         { kind: "async", promise: Promise.all(children).then(resolved => chunkify(resolved)) },
-        sync("<!--/suspend-->"),
+        sync(markerHtml(SUSPEND_END_MARKER)),
       ],
     }
   }
 
-  // 同步
   return {
     kind: "sequence",
-    chunks: [sync("<!--suspend-->"), streamValue(children), sync("<!--/suspend-->")],
+    chunks: [
+      sync(markerHtml(SUSPEND_MARKER)),
+      streamValue(children),
+      sync(markerHtml(SUSPEND_END_MARKER)),
+    ],
   }
 }
 
