@@ -45,7 +45,7 @@ export function Layout(props: LayoutProps) {
               </li>
             ))}
             <li>
-              <a href="https://github.com/FairyScript/kiko" target="_blank" rel="noopener">
+              <a href="https://github.com/kiko-js/kiko" target="_blank" rel="noopener">
                 GitHub
               </a>
             </li>
