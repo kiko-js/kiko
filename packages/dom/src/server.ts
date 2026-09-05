@@ -1,9 +1,8 @@
 /**
  * SSR 入口（`@kikojs/dom/server`）。
  *
- * 导入本模块即注册 SSR 字符串运行时（`ssr.ts` 自注册）；组件代码仍从
- * `@kikojs/dom` 导入 `jsx` / 控制流组件，运行时路由会把它们切到字符串模式。
- * 客户端 bundle 不导入本模块，SSR 代码可被 tree-shake 剔除。
+ * 组件代码仍从 `@kikojs/dom` 导入 `jsx` / 控制流组件，运行时路由会把它们切到
+ * 字符串模式。客户端 bundle 不导入本模块，SSR 代码可被 tree-shake 剔除。
  *
  * 并发渲染(HTTP 服务每请求一段)必须把请求处理包进 `withSSRScope()`,
  * SSR 运行时与信号捕获/恢复状态才按请求隔离;串行使用无需包裹。
@@ -23,11 +22,9 @@ export {
   stopSignalCapture,
   serializeSignals,
   signalStateScript,
-  restoreSignals,
-  stopSignalRestore,
   setSignalStateCodec,
 } from "./signal-serialize"
-export type { SignalStateCodec, SerializedSignalState } from "./signal-serialize"
+export type { SignalStateCodec } from "./signal-serialize"
 export { createSignal, isSignal, createWatcher } from "./signal"
 export { lazy } from "./lazy"
 export type { WatchableSignal, Watcher } from "./signal"

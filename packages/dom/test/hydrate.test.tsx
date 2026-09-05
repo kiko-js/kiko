@@ -771,7 +771,7 @@ describe("hydrateWithState — 信号状态恢复", () => {
         return jsx("div", { children: client })
       },
       container,
-      [42],
+      { v: 1, s: [42] },
     )
     expect(holder.current?.get()).toBe(42)
     expect(container.textContent).toBe("42")
@@ -791,7 +791,7 @@ describe("hydrateWithState — 信号状态恢复", () => {
     const script = document.createElement("script")
     script.id = "kiko-state"
     script.type = "application/json"
-    script.textContent = "[7]"
+    script.textContent = '{"v":1,"s":[7]}'
     document.body.appendChild(script)
 
     const holder: { current: Signal.State<number> | null } = { current: null }
@@ -812,7 +812,10 @@ describe("hydrateWithState — 信号状态恢复", () => {
     const errors: string[] = []
     const orig = console.error
     console.error = (m: unknown) => errors.push(String(m))
-    const dispose = hydrateWithState(() => jsx("div", { children: "static" }), container, [1, 2])
+    const dispose = hydrateWithState(() => jsx("div", { children: "static" }), container, {
+      v: 1,
+      s: [1, 2],
+    })
     console.error = orig
     expect(errors.some(e => e.includes("signal state mismatch"))).toBe(true)
     expect(errors.some(e => e.includes("server serialized 2 signals, client created 0"))).toBe(true)
@@ -832,7 +835,7 @@ describe("hydrateWithState — 信号状态恢复", () => {
         return jsx("div", { children: "static" })
       },
       container,
-      [1],
+      { v: 1, s: [1] },
     )
     console.error = orig
     expect(errors.some(e => e.includes("server serialized 1 signals, client created 2"))).toBe(true)
@@ -847,11 +850,10 @@ describe("hydrateWithState — 信号状态恢复", () => {
     const errors: string[] = []
     const orig = console.error
     console.error = (m: unknown) => errors.push(String(m))
-    const dispose = hydrateWithState(
-      () => jsx("div", { children: createSignal(0) }),
-      container,
-      [9],
-    )
+    const dispose = hydrateWithState(() => jsx("div", { children: createSignal(0) }), container, {
+      v: 1,
+      s: [9],
+    })
     console.error = orig
     expect(container.textContent).toBe("9")
     expect(errors.some(e => e.includes("signal state mismatch"))).toBe(false)

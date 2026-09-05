@@ -1,12 +1,3 @@
-import {
-  ERROR_BOUNDARY_MARKER,
-  FOR_MARKER,
-  SHOW_MARKER,
-  SIGNAL_MARKER_HTML,
-  SUSPEND_END_MARKER,
-  SUSPEND_MARKER,
-  markerHtml,
-} from "./markers"
 /**
  * 流式 SSR：把组件树渲染为 `ReadableStream<string>`，同步骨架立即 flush，
  * 异步内容（`<Suspend>` 内的 promise）resolve 后再补发——降低 TTFB。
@@ -15,100 +6,27 @@ import {
  * - `renderToFragment` 等待整棵树 resolve 后返回完整字符串
  * - `renderToStream` 同步部分立即输出，异步边界处 await 后继续
  *
- * 实现策略：流式运行时构建一棵「块树」（`StreamChunk`），同步叶立即输出，
- * 异步叶（promise）挂起——`renderToStream` 按文档序遍历块树，遇到异步
- * 叶时先输出已缓冲的同步内容、再 await 解析后继续。
- *
- * 已知限制：
- * - scoped `<Style>`(非 `<Style global>`)在流式模式下被丢弃并告警——样式无效果,
- *   不降级为全局(避免 scoped css 泄漏到整页)。scope 属性需要把标记回溯到祖先
- *   opening tag,块树模式下 opening tag 与子树是兄弟节点、无法回溯。需要 scoped
- *   style 时请用 `renderToFragment`,或用 `<Style global>` 显式接受全局。
+ * 实现策略：控制流与叶序列化语义单源于 `ssr-engine.ts`（块树 IR）；本模块
+ * 只保留流式模式的元素序列化（`streamJsx` / `streamStyle`，scoped `<Style>`
+ * 的结构性限制见下）与增量 walker——`renderToStream` 按文档序遍历块树，
+ * 遇到异步叶时先输出已缓冲的同步内容、再 await 解析后继续。
  */
-
-import { isSignal, reportError } from "./signal"
-import type { WatchableSignal } from "./signal"
-import { extractCssText, isPromiseLike, isTruthy, unwrap } from "./shared"
+import { extractCssText, isPromiseLike } from "./shared"
 import { useSSRRuntime } from "./ssr-mode"
 import type { SSRRuntime } from "./ssr-mode"
 import {
-  escapeText,
+  controlErrorBoundary,
+  controlFor,
+  controlShow,
+  controlSuspend,
   escapeAttr,
-  serializeAttrs,
   escapeStyleText,
-  toRawText,
-  guardRawText,
-  SSRElement,
-  VOID_ELEMENTS,
-  RAW_TEXT_ELEMENTS,
-} from "./ssr"
+  streamValue,
+  sync,
+} from "./ssr-engine"
+import type { StreamChunk } from "./ssr-engine"
+import { RAW_TEXT_ELEMENTS, VOID_ELEMENTS, guardRawText, serializeAttrs, toRawText } from "./ssr"
 import type { AsyncComponent, Component, Props, StyleProps } from "./jsx-runtime"
-
-// ---------------------------------------------------------------------------
-// 块树：流式渲染的中间表示
-// ---------------------------------------------------------------------------
-
-/** 同步 HTML 片段（可立即输出） */
-type SyncChunk = { kind: "sync"; html: string }
-/** 异步块：promise resolve 后产出子块树 */
-type AsyncChunk = { kind: "async"; promise: Promise<StreamChunk[]> }
-/** 子块序列（保持文档序） */
-type SequenceChunk = { kind: "sequence"; chunks: StreamChunk[] }
-/** 空块（null/false/void 等） */
-type EmptyChunk = { kind: "empty" }
-
-export type StreamChunk = SyncChunk | AsyncChunk | SequenceChunk | EmptyChunk
-
-/** 同步块工厂 */
-function sync(html: string): SyncChunk {
-  return { kind: "sync", html }
-}
-
-/** 空块单例 */
-const EMPTY: EmptyChunk = { kind: "empty" }
-
-/** 类型守卫：值是否已是块树节点 */
-function isStreamChunk(value: unknown): value is StreamChunk {
-  return typeof value === "object" && value !== null && "kind" in value
-}
-
-// ---------------------------------------------------------------------------
-// 核心：值 → 块树
-// ---------------------------------------------------------------------------
-
-/** 把任意 SSR 值转换为块树（已 chunk 化的值直接透传） */
-function streamValue(value: unknown): StreamChunk {
-  if (value == null || value === false || value === true) return EMPTY
-  if (isStreamChunk(value)) return value
-  if (value instanceof SSRElement) return sync(value.html)
-  if (isSignal(value)) {
-    return {
-      kind: "sequence",
-      chunks: [sync(SIGNAL_MARKER_HTML), streamValue((value as WatchableSignal<unknown>).get())],
-    }
-  }
-  if (isPromiseLike(value)) {
-    return { kind: "async", promise: Promise.resolve(value).then(resolved => chunkify(resolved)) }
-  }
-  if (typeof value === "string" || typeof value === "number") return sync(escapeText(String(value)))
-  if (Array.isArray(value)) {
-    const chunks: StreamChunk[] = []
-    for (const item of value) chunks.push(streamValue(item))
-    return { kind: "sequence", chunks }
-  }
-  return sync(escapeText(String(value)))
-}
-
-/** 把已解析的异步值转为块数组（用于 async chunk 的 promise） */
-function chunkify(value: unknown): StreamChunk[] {
-  if (value == null || value === false || value === true) return []
-  if (Array.isArray(value)) {
-    const chunks: StreamChunk[] = []
-    for (const item of value) chunks.push(streamValue(item))
-    return chunks
-  }
-  return [streamValue(value)]
-}
 
 // ---------------------------------------------------------------------------
 // 元素 / 组件 → 块树
@@ -175,135 +93,18 @@ function streamStyle(props: StyleProps): StreamChunk {
   return sync(`<style${nonceAttr}>${css}</style>`)
 }
 
-// ---------------------------------------------------------------------------
-// 控制流组件 → 块树
-// ---------------------------------------------------------------------------
-
-function streamShow(props: {
-  when: unknown
-  fallback?: unknown
-  children: unknown | ((value: unknown) => unknown)
-}): StreamChunk {
-  const cond = unwrap(props.when)
-  if (isTruthy(cond)) {
-    const value =
-      typeof props.children === "function"
-        ? (props.children as (value: unknown) => unknown)(cond)
-        : props.children
-    return { kind: "sequence", chunks: [sync(markerHtml(SHOW_MARKER)), streamValue(value)] }
-  }
-  return { kind: "sequence", chunks: [sync(markerHtml(SHOW_MARKER)), streamValue(props.fallback)] }
-}
-
-function streamFor(props: {
-  each: unknown
-  getKey?: (item: unknown, index: number) => unknown
-  children: (item: unknown, index: () => number) => unknown
-}): StreamChunk {
-  const list = unwrap(props.each) as readonly unknown[]
-  const chunks: StreamChunk[] = [sync(markerHtml(FOR_MARKER))]
-  for (let i = 0; i < list.length; i++) {
-    const index = (): number => i
-    const arg = props.getKey ? () => list[i] : list[i]
-    chunks.push(streamValue(props.children(arg, index)))
-  }
-  return { kind: "sequence", chunks }
-}
-
-function streamErrorBoundary(props: {
-  fallback?: unknown | ((error: unknown) => unknown)
-  onError?: (error: unknown) => void
-  children: () => unknown
-}): StreamChunk {
-  try {
-    return {
-      kind: "sequence",
-      chunks: [sync(markerHtml(ERROR_BOUNDARY_MARKER)), streamValue(props.children())],
-    }
-  } catch (e) {
-    try {
-      props.onError?.(e)
-    } catch {
-      // onError 是用户代码，不能破坏错误边界
-    }
-    const fb =
-      typeof props.fallback === "function"
-        ? (props.fallback as (error: unknown) => unknown)(e)
-        : props.fallback
-    return { kind: "sequence", chunks: [sync(markerHtml(ERROR_BOUNDARY_MARKER)), streamValue(fb)] }
-  }
-}
-
-/**
- * 流式 Suspend：同步内容直接输出；异步内容产出 async chunk——
- * `renderToStream` 遍历到此时先 flush 已缓冲的同步骨架、再 await 解析后
- * 继续输出真实内容。reject 时上报错误并渲染 `fallback`（与字符串模式
- * ssrSuspend 的 reject 分支对齐），不再让整条流出错。
- */
-function streamSuspend(props: { fallback?: unknown; children: unknown }): StreamChunk {
-  const children = unwrap(props.children)
-
-  // 异步内容 resolve 时，需要重新切回流式运行时，让 JSX 求值产出块树而非 DOM 节点
-  const resolveAsync = (value: unknown): Promise<StreamChunk[]> =>
-    Promise.resolve(value).then(resolved => {
-      const restore = useSSRRuntime(ssrStreamRuntime)
-      try {
-        return chunkify(resolved)
-      } finally {
-        restore()
-      }
-    })
-  // reject 时上报错误并渲染 fallback（与字符串模式 ssrSuspend 的 reject 分支对齐）
-  const resolveWithFallback = (value: unknown): Promise<StreamChunk[]> =>
-    resolveAsync(value).catch(rejected => {
-      reportError(rejected)
-      return resolveAsync(props.fallback)
-    })
-  if (isPromiseLike(children)) {
-    return {
-      kind: "sequence",
-      chunks: [
-        sync(markerHtml(SUSPEND_MARKER)),
-        { kind: "async", promise: resolveWithFallback(children) },
-        sync(markerHtml(SUSPEND_END_MARKER)),
-      ],
-    }
-  }
-
-  if (Array.isArray(children) && children.some(isPromiseLike)) {
-    return {
-      kind: "sequence",
-      chunks: [
-        sync(markerHtml(SUSPEND_MARKER)),
-        { kind: "async", promise: resolveWithFallback(Promise.all(children)) },
-        sync(markerHtml(SUSPEND_END_MARKER)),
-      ],
-    }
-  }
-
-  return {
-    kind: "sequence",
-    chunks: [
-      sync(markerHtml(SUSPEND_MARKER)),
-      streamValue(children),
-      sync(markerHtml(SUSPEND_END_MARKER)),
-    ],
-  }
-}
-
-// ---------------------------------------------------------------------------
-// 运行时
-// ---------------------------------------------------------------------------
-
 export const ssrStreamRuntime: SSRRuntime = {
   jsx: (tag, props) => streamJsx(tag as string | Component<any>, props as Props | null) as unknown,
   fragment: children => streamValue(children) as unknown,
   style: props => streamStyle(props as StyleProps) as unknown,
-  show: props => streamShow(props as Parameters<typeof streamShow>[0]) as unknown,
-  for: props => streamFor(props as Parameters<typeof streamFor>[0]) as unknown,
+  show: props => controlShow(props as Parameters<typeof controlShow>[0]) as unknown,
+  for: props => controlFor(props as Parameters<typeof controlFor>[0]) as unknown,
   errorBoundary: props =>
-    streamErrorBoundary(props as Parameters<typeof streamErrorBoundary>[0]) as unknown,
-  suspend: props => streamSuspend(props as Parameters<typeof streamSuspend>[0]) as unknown,
+    controlErrorBoundary(props as Parameters<typeof controlErrorBoundary>[0]) as unknown,
+  suspend: props =>
+    controlSuspend(props as Parameters<typeof controlSuspend>[0], {
+      reenterRuntime: () => useSSRRuntime(ssrStreamRuntime),
+    }) as unknown,
 }
 
 // ---------------------------------------------------------------------------

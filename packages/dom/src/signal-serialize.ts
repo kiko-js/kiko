@@ -299,10 +299,10 @@ export function signalStateScript(): string {
 /**
  * 准备恢复信号（客户端，水合前调用）。
  * 接受 `signalStateScript()` / `serializeSignals()` 产出的 envelope JSON
- * （或已解析的 envelope 对象）；也接受旧格式的裸值数组。后续 `createSignal`
- * 将按顺序消费这些值作为初始值，并做类型指纹诊断。
+ * （或已解析的 envelope 对象）。后续 `createSignal` 将按顺序消费这些值
+ * 作为初始值，并做类型指纹诊断。
  */
-export function restoreSignals(state: string | unknown[] | SerializedSignalState): void {
+export function restoreSignals(state: string | SerializedSignalState): void {
   const s = slot()
   if (s.restoring) {
     console.warn(
@@ -323,9 +323,7 @@ export function restoreSignals(state: string | unknown[] | SerializedSignalState
   }
   let values: unknown[]
   let lossy: number[] = []
-  if (Array.isArray(parsed)) {
-    values = parsed
-  } else if (typeof parsed === "object" && parsed !== null && "v" in parsed && "s" in parsed) {
+  if (typeof parsed === "object" && parsed !== null && "v" in parsed && "s" in parsed) {
     const envelope = parsed as SerializedSignalState
     if (envelope.v !== SIGNAL_STATE_VERSION) {
       throw new Error(
@@ -340,8 +338,7 @@ export function restoreSignals(state: string | unknown[] | SerializedSignalState
     lossy = envelope.l ?? []
   } else {
     throw new Error(
-      '[kiko hydrate] unrecognized signal state payload — expected {"v":1,"s":[...]} envelope ' +
-        "or a bare value array",
+      '[kiko hydrate] unrecognized signal state payload — expected {"v":1,"s":[...]} envelope',
     )
   }
   // 若注册了 codec,把每个解析值 decode 成类型化形式作为 createSignal 初始值。
@@ -469,12 +466,12 @@ export function noteRestoreType(restored: unknown, initial: unknown): void {
   }
 }
 
-/** 是否正在捕获（测试用） */
+/** 是否正在捕获。@internal 仅供包内（hydrate / 测试）使用，不属于公共 API */
 export function isCapturing(): boolean {
   return slot().capturing
 }
 
-/** 是否正在恢复（测试用） */
+/** 是否正在恢复。@internal 仅供包内（hydrate / 测试）使用，不属于公共 API */
 export function isRestoring(): boolean {
   return slot().restoring
 }

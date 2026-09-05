@@ -49,7 +49,7 @@ return new Response(stream, { headers: { "content-type": "text/html" } })
 ```
 
 - 必须传**函数（惰性求值）**：JSX 若在 SSR 模式开启前被急切求值会拿到错误结果。
-- `renderToStream` 的 TTFB 低于 `renderToFragment`（同步内容立即输出），但 scoped `<Style>` 在流式模式下输出为全局样式（scope 属性无法回溯）。
+- `renderToStream` 的 TTFB 低于 `renderToFragment`（同步内容立即输出），但 scoped `<Style>` 在流式模式下被丢弃并告警（scope 属性无法回溯；不降级为全局以免泄漏）——需要 scoped css 请用 `renderToFragment` 或 `<Style global>`。
 
 ## 信号序列化（SSR → 水合状态传递）
 
@@ -71,13 +71,13 @@ hydrateWithState(() => <App />, document.getElementById("app")!)
 // 自动读取 <script id="kiko-state"> 并恢复信号初始值
 ```
 
-API：
+API（按端拆分：捕获/序列化在 `@kikojs/dom/server`，恢复在 `@kikojs/dom`）：
 
-- `startSignalCapture()` / `stopSignalCapture()` — 渲染前后调用，按 createSignal 顺序记录信号
-- `serializeSignals()` — 返回 JSON 字符串 `[value0, value1, ...]`
-- `hydrateWithState(root, container, state?)` — 恢复 + 水合一体化；`state` 可选（已解析数组或 JSON 字符串），省略时从容器内 `<script id="kiko-state">` 读取
+- `startSignalCapture()` / `stopSignalCapture()` — 渲染前后调用，按 createSignal 顺序记录信号（server 入口）
+- `serializeSignals()` — 返回 envelope JSON `{"v":1,"s":[value0, value1, ...]}`（`v` 为格式版本）；`signalStateScript()` 直接产出可嵌入的 `<script>` 块（server 入口）
+- `hydrateWithState(root, container, state?)` — 恢复 + 水合一体化；`state` 可选（envelope 对象或 JSON 字符串），省略时从容器内 `<script id="kiko-state">` 读取（主入口）
 
-限制：仅捕获 `@kikojs/dom` 的 `createSignal`；JSON 不支持 undefined/Date/Map/Set/循环引用；非并发安全。
+限制：仅捕获 `@kikojs/dom` 的 `createSignal`；JSON 不支持 undefined/Date/Map/Set/循环引用（类型保真可用 `setSignalStateCodec`，两端各注册 encode/decode 一半）；非并发安全。
 
 ## 作用域样式（Style）在 SSR 端
 

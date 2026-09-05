@@ -1,14 +1,7 @@
 export { createSignal, isSignal, createWatcher } from "./signal"
 export type { WatchableSignal, Watcher } from "./signal"
 export { getSSRRuntime, setSSRRuntime } from "./ssr-mode"
-export {
-  restoreSignals,
-  stopSignalRestore,
-  startSignalCapture,
-  stopSignalCapture,
-  serializeSignals,
-  setSignalStateCodec,
-} from "./signal-serialize"
+export { restoreSignals, stopSignalRestore, setSignalStateCodec } from "./signal-serialize"
 export type { SignalStateCodec, SerializedSignalState } from "./signal-serialize"
 export {
   jsx,

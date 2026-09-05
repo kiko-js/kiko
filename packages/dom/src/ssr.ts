@@ -1,27 +1,30 @@
-import {
-  FOR_MARKER,
-  SHOW_MARKER,
-  SIGNAL_MARKER_HTML,
-  SUSPEND_END_MARKER,
-  SUSPEND_MARKER,
-  ERROR_BOUNDARY_MARKER,
-  SCOPE_MARKER_PREFIX,
-  SCOPE_MARKER_SUFFIX,
-  markerHtml,
-} from "./markers"
-import { isSignal, reportError } from "./signal"
+import { SCOPE_MARKER_PREFIX, SCOPE_MARKER_SUFFIX } from "./markers"
+import { isSignal } from "./signal"
 import type { WatchableSignal } from "./signal"
 import { createScopeAttr, rewriteScopedCss } from "./style"
-import { extractCssText, isPromiseLike, isTruthy, unwrap } from "./shared"
+import { extractCssText, isPromiseLike } from "./shared"
+import {
+  SSRElement,
+  camelToKebab,
+  chunksToSSRValue,
+  controlErrorBoundary,
+  controlFor,
+  controlShow,
+  controlSuspend,
+  escapeAttr,
+  escapeStyleText,
+  streamValue,
+} from "./ssr-engine"
 import type { SSRRuntime } from "./ssr-mode"
 import type { AsyncComponent, Component, Props, StyleProps } from "./jsx-runtime"
 
 /**
  * SSR 字符串渲染器（服务端侧）。
  *
- * kiko 的组件函数是唯一事实来源（无 vdom），因此 SSR 不做第二套渲染管线：本模块
- * 实现字符串模式的 jsx / 控制流组件，并在模块加载时通过 `ssr-mode` 自注册——
- * `jsx-runtime` / `flow` 检测到已注册的运行时即切换为字符串产出。
+ * kiko 的组件函数是唯一事实来源（无 vdom），因此 SSR 不做第二套渲染管线：
+ * 控制流与叶序列化语义单源于 `ssr-engine.ts`（块树 IR），本模块是字符串
+ * 模式的元素序列化（含 scoped `<Style>` 的 opening tag 回溯）与全量 join
+ * walker，并通过 `ssrRuntime` 供 `server.ts` 注册到 `ssr-mode`。
  *
  * 该模块只被 `@kikojs/dom/server` 入口引用；客户端 bundle 从不导入它，
  * 因此可被 tree-shake 完全剔除。
@@ -31,71 +34,19 @@ import type { AsyncComponent, Component, Props, StyleProps } from "./jsx-runtime
  * （`<!--show-->`、`<!---->` 等）是水合对齐标记，不影响渲染。
  */
 
-/**
- * 已序列化的 HTML 标记（区别于需要转义的纯文本字符串）。
- * ssrJsx / 控制流组件返回它；toSSRString 直接透出 `.html` 不再转义，
- * 而普通字符串仍按文本转义——避免嵌套组件的结果被二次转义。
- */
-/** 已序列化的 HTML 标记（区别于需要转义的纯文本字符串） */
-export class SSRElement {
-  constructor(readonly html: string) {}
-}
-
 /** SSR 渲染值：文本（转义）或已序列化标记（透出），可含 promise */
 export type SSRValue = SSRElement | string | Promise<SSRElement | string>
-
-/** @internal exported for ssr-stream */
-export function escapeText(value: string): string {
-  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-}
-
-/** @internal exported for ssr-stream */
-export function escapeAttr(value: string): string {
-  return escapeText(value).replace(/"/g, "&quot;").replace(/'/g, "&#39;")
-}
 
 function raw(value: SSRElement | string): string {
   return value instanceof SSRElement ? value.html : value
 }
 
-/** @internal exported for ssr-stream */
-export function camelToKebab(key: string): string {
-  return /[A-Z]/.test(key) ? key.replace(/[A-Z]/g, m => "-" + m.toLowerCase()) : key
-}
-
-/** 序列化结果前置水合标记（如 <!--show-->），包装为 SSRElement 避免上游二次转义 */
-function withMarker(marker: string, content: SSRValue): SSRValue {
-  if (isPromiseLike(content)) {
-    return content.then(c => new SSRElement(`${marker}${raw(c)}`))
-  }
-  return new SSRElement(`${marker}${raw(content)}`)
-}
-
 /**
- * 把任意内容序列化为 HTML 字符串：
- * - 信号 → 输出水合标记 `<!---->` + 当前快照（SSR 无响应式）
- * - promise → 异步，resolve 后继续序列化
- * - 数组 → 逐项拼接；含 promise 时整体异步
- * - 文本转义 & < >
+ * 把任意内容序列化为 HTML 字符串：信号 → 水合标记 + 快照；promise → 异步；
+ * 数组 → 逐项拼接。委托共享引擎的叶序列化（`streamValue`）后全量 join。
  */
 export function toSSRString(value: unknown): SSRValue {
-  if (value == null || value === false || value === true) return ""
-  if (value instanceof SSRElement) return value
-  if (isSignal(value)) {
-    return withMarker(SIGNAL_MARKER_HTML, toSSRString((value as WatchableSignal<unknown>).get()))
-  }
-  if (isPromiseLike(value)) {
-    return Promise.resolve(value).then(resolved => toSSRString(resolved))
-  }
-  if (typeof value === "string" || typeof value === "number") return escapeText(String(value))
-  if (Array.isArray(value)) {
-    const parts = value.map(item => toSSRString(item))
-    if (parts.some(isPromiseLike)) {
-      return Promise.all(parts).then(joined => new SSRElement(joined.map(raw).join("")))
-    }
-    return new SSRElement((parts as (SSRElement | string)[]).map(raw).join(""))
-  }
-  return escapeText(String(value))
+  return chunksToSSRValue(streamValue(value))
 }
 
 // ---------------------------------------------------------------------------
@@ -126,14 +77,6 @@ function extractScopeMarkers(html: string): { cleaned: string; attrs: string[] }
     pos = end + SCOPE_MARKER_SUFFIX.length
   }
   return { cleaned: parts.join(""), attrs }
-}
-
-/** @internal exported for ssr-stream */
-export function escapeStyleText(css: string): string {
-  // Prevent `</style>` in CSS from closing the element early and enabling
-  // markup injection. The backslash keeps the HTML parser from seeing a tag
-  // while remaining valid CSS text for the common breaking sequence.
-  return css.replace(/<\/style/gi, "<\\/style")
 }
 
 export function ssrStyle(props: StyleProps): SSRValue {
@@ -296,84 +239,22 @@ export function ssrJsx(
 }
 
 // ---------------------------------------------------------------------------
-// 控制流组件（与 flow.ts 客户端路径共享同一 props 语义）
+// 控制流组件（语义单源于 ssr-engine.ts；这里只是字符串模式的出口包装）
 
-export function ssrShow(props: {
-  when: unknown
-  fallback?: unknown
-  children: unknown | ((value: unknown) => unknown)
-}): SSRValue {
-  const cond = unwrap(props.when)
-  if (isTruthy(cond)) {
-    const value =
-      typeof props.children === "function"
-        ? (props.children as (value: unknown) => unknown)(cond)
-        : props.children
-    return withMarker(markerHtml(SHOW_MARKER), toSSRString(value))
-  }
-  return withMarker(markerHtml(SHOW_MARKER), toSSRString(props.fallback))
+export function ssrShow(props: Parameters<typeof controlShow>[0]): SSRValue {
+  return chunksToSSRValue(controlShow(props))
 }
 
-export function ssrFor(props: {
-  each: unknown
-  getKey?: (item: unknown, index: number) => unknown
-  children: (item: unknown, index: () => number) => unknown
-}): SSRValue {
-  const list = unwrap(props.each) as readonly unknown[]
-  // SSR 无响应式：keyed 与 non-keyed 等价；keyed 的 children 期望 accessor，保持一致
-  const content = list.map((item, i) => {
-    const index = (): number => i
-    const arg = props.getKey ? () => item : item
-    return props.children(arg, index)
-  })
-  return withMarker(markerHtml(FOR_MARKER), toSSRString(content))
+export function ssrFor(props: Parameters<typeof controlFor>[0]): SSRValue {
+  return chunksToSSRValue(controlFor(props))
 }
 
-export function ssrErrorBoundary(props: {
-  fallback?: unknown | ((error: unknown) => unknown)
-  onError?: (error: unknown) => void
-  children: () => unknown
-}): SSRValue {
-  try {
-    return withMarker(markerHtml(ERROR_BOUNDARY_MARKER), toSSRString(props.children()))
-  } catch (e) {
-    try {
-      props.onError?.(e)
-    } catch {
-      // onError 是用户代码，不能破坏错误边界
-    }
-    const fb =
-      typeof props.fallback === "function"
-        ? (props.fallback as (error: unknown) => unknown)(e)
-        : props.fallback
-    return withMarker(markerHtml(ERROR_BOUNDARY_MARKER), toSSRString(fb))
-  }
+export function ssrErrorBoundary(props: Parameters<typeof controlErrorBoundary>[0]): SSRValue {
+  return chunksToSSRValue(controlErrorBoundary(props))
 }
 
-export function ssrSuspend(props: { fallback?: unknown; children: unknown }): SSRValue {
-  const wrap = (content: SSRValue): SSRValue => {
-    const framed = (html: string) =>
-      new SSRElement(`${markerHtml(SUSPEND_MARKER)}${html}${markerHtml(SUSPEND_END_MARKER)}`)
-    if (isPromiseLike(content)) {
-      return Promise.resolve(content).then(
-        c => framed(raw(c)),
-        rejected => {
-          reportError(rejected)
-          return Promise.resolve(toSSRString(props.fallback)).then(c => framed(raw(c)))
-        },
-      )
-    }
-    return framed(raw(content))
-  }
-
-  const children = unwrap(props.children)
-  if (isPromiseLike(children)) {
-    return wrap(Promise.resolve(children).then(resolved => toSSRString(resolved)))
-  }
-  if (Array.isArray(children) && children.some(isPromiseLike)) {
-    return wrap(Promise.all(children).then(resolved => toSSRString(resolved)))
-  }
-  return wrap(toSSRString(children))
+export function ssrSuspend(props: Parameters<typeof controlSuspend>[0]): SSRValue {
+  return chunksToSSRValue(controlSuspend(props))
 }
 
 // ---------------------------------------------------------------------------

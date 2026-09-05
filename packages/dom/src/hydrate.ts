@@ -675,13 +675,13 @@ export function hydrateSuspend(props: { fallback?: unknown; children: unknown })
  *
  * 服务端配合：`startSignalCapture()` → `renderToFragment()` →
  * `signalStateScript()`（输出 `{"v":1,"s":[...]}` envelope，`<` 已转义防
- * `</script>` 破防）。也可直接传 `state` 参数（JSON 字符串 / envelope 对象 /
- * 旧格式裸值数组），此时不依赖脚本标签。
+ * `</script>` 破防）。也可直接传 `state` 参数（JSON 字符串 / envelope 对象），
+ * 此时不依赖脚本标签。
  */
 export function hydrateWithState(
   root: () => unknown,
   container: Element,
-  state?: string | unknown[] | SerializedSignalState,
+  state?: string | SerializedSignalState,
 ): () => void {
   if (state) {
     restoreSignals(state)

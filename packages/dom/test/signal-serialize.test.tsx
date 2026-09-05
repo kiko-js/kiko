@@ -89,7 +89,7 @@ describe("信号序列化 — 捕获与序列化", () => {
 
 describe("信号序列化 — 恢复", () => {
   it("恢复模式替换 createSignal 初始值", () => {
-    restoreSignals([42, "restored"])
+    restoreSignals({ v: 1, s: [42, "restored"] })
     expect(isRestoring()).toBe(true)
     const a = createSignal(0)
     const b = createSignal("default")
@@ -102,7 +102,7 @@ describe("信号序列化 — 恢复", () => {
   })
 
   it("从 JSON 字符串恢复", () => {
-    restoreSignals('[10, "hello"]')
+    restoreSignals('{"v":1,"s":[10,"hello"]}')
     const a = createSignal(0)
     const b = createSignal("default")
     stopSignalRestore()
@@ -111,7 +111,7 @@ describe("信号序列化 — 恢复", () => {
   })
 
   it("恢复后停止，后续 createSignal 用原初始值", () => {
-    restoreSignals([99])
+    restoreSignals({ v: 1, s: [99] })
     const a = createSignal(0)
     stopSignalRestore()
     const b = createSignal(1)
@@ -289,19 +289,12 @@ describe("信号序列化 — envelope 解析", () => {
     expect(() => restoreSignals('{"nope":true}')).toThrow(/unrecognized/)
     expect(() => restoreSignals("{oops")).toThrow(/not valid JSON/)
   })
-
-  it("旧格式裸值数组仍可恢复（持久化兼容）", () => {
-    restoreSignals("[3,4]")
-    expect(createSignal(0).get()).toBe(3)
-    expect(createSignal(0).get()).toBe(4)
-    stopSignalRestore()
-  })
 })
 
 describe("信号序列化 — 类型指纹诊断", () => {
   it("数量一致但顺序漂移时按类型指纹报错", () => {
     // 服务端序：number, string；客户端创建序漂移：string, number
-    restoreSignals([1, "x"])
+    restoreSignals({ v: 1, s: [1, "x"] })
     createSignal("a") // 消费 #0: number vs string → 错位
     createSignal(2) // 消费 #1: string vs number → 错位
     const errors: string[] = []
@@ -318,7 +311,7 @@ describe("信号序列化 — 类型指纹诊断", () => {
   })
 
   it("顺序一致时不报", () => {
-    restoreSignals([1, "x"])
+    restoreSignals({ v: 1, s: [1, "x"] })
     createSignal(0)
     createSignal("")
     const errors: string[] = []
@@ -412,7 +405,7 @@ describe("信号序列化 — 加固回归（#2 重入 / #5 有损补全 / #1 �
       }
     }
     // 服务端把 User 序列化为纯对象 {name}；客户端默认仍是类实例 → 方法会丢
-    restoreSignals([{ name: "a" }])
+    restoreSignals({ v: 1, s: [{ name: "a" }] })
     createSignal(new User("b"))
     const errors: string[] = []
     const orig = console.error
@@ -428,7 +421,7 @@ describe("信号序列化 — 加固回归（#2 重入 / #5 有损补全 / #1 �
   })
 
   it("#1: 纯对象之间仅 key 多少不同不误报（恢复本意）", () => {
-    restoreSignals([{ a: 1, b: 2 }])
+    restoreSignals({ v: 1, s: [{ a: 1, b: 2 }] })
     createSignal({ a: 0 }) // 客户端默认少字段，属合法恢复，不得误报
     const errors: string[] = []
     const orig = console.error
