@@ -112,7 +112,9 @@ hydrate 需要 SSR 端输出可对齐。已处理的边界：
 
 - **相邻文本合并**：SSR 端如 `["count = ", count, "…"]` 产生的相邻文本节点会被 HTML 解析合并为一个文本节点。水合端在文本分支做**前缀匹配 + `splitText`**，保证「一个值 = 一个节点」对齐。
 - **Show 分支切换**：水合后的 `children`/`fallback` 是 `PendingNode`，信号驱动切换时用 `rebuild`（`() => jsx(tag, props)`）重建，避免序列化占位串。
-- **For**：children 是函数，每次渲染按 cursor 重建。
+- **For**：初次按游标采纳现有节点；此后的信号更新与客户端共用同一
+  ForCore 引擎（显式 keyed 或默认条目身份复用），水合采纳的节点照常复用。
 - **ErrorBoundary**：静态采用；出错时客户端侧接管。
-- **Suspend / 未决 lazy**：先静态采用既有节点，直到模块 settle 后替换为真实内容。
+- **Suspend / 未决 lazy**：先静态采用既有节点，直到模块 settle 后替换为真实内容；
+  迟到的过期结果（已被新内容取代或已清理）直接丢弃，不会消费水合游标。
 - **信号值失配**：水合期若文本值与期望值不一致，以客户端值回填并 `console.error("[kiko hydrate] text mismatch: ...")` 告警。

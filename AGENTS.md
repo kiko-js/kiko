@@ -18,6 +18,8 @@ Monorepo: `@kikojs/signal` (signal toolkit), `@kikojs/dom` (DOM + SSR), `@kikojs
 - **No re-render cycle**: Component functions run once. Signals in children/props create watchers; signal children resolving to `Node`/array trigger marker-anchored subtree swaps.
 - **Cleanup is recursive**: `WeakMap<Node, Set<Watcher>>`-based. Uses `Signal.subtle.introspectSources` (not `watcher.unwatch()` with no args — that's a no-op in signal-polyfill v0.2).
 - **SSR ↔ Client alignment**: Hydration relies on `PendingNode` lazy alignment (adoption order == document order). Signal creation order must match between server and client.
+- **Marker protocol is centralized**: all comment-marker spellings (control-flow anchors, `/suspend` end marker, signal `<!---->`, scope prefixes) live in `packages/dom/src/markers.ts` — never hardcode them elsewhere; hydration alignment breaks silently on mismatch.
+- **Shared engines, no forks**: `For` updates reconcile through `for-engine.ts` (`createForCore`) on both client and hydration paths; `Suspend` promise collection goes through `shared.ts` `settleChildren`. Hydration-specific work is adoption only (cursor consumption) — do not reimplement update/reconcile logic per renderer.
 
 ### TypeScript
 
