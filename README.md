@@ -56,7 +56,6 @@ const dispose = render(<App />, document.getElementById("app")!)
 | `examples/basic`        | 计数器，Bun bundler + 开发服务器           |
 | `examples/htm`          | `dom` / `htm` 标签模板运行时（无构建 JSX） |
 | `examples/react-portal` | ReactPortal 桥接 React 组件                |
-| `examples/tailwind`     | Tailwind + kiko                            |
 | `examples/ssr`          | 全栈 Bun 服务端渲染 + 客户端水合           |
 
 ## 文档

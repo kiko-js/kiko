@@ -1,9 +1,0 @@
-{
-  "extends": "../../tsconfig.json",
-  "compilerOptions": {
-    "jsx": "react-jsx",
-    "jsxImportSource": "@kikojs/dom",
-    "lib": ["ESNext", "DOM"]
-  },
-  "include": ["src", "server.ts"]
-}

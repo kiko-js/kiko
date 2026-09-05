@@ -305,9 +305,6 @@ render(
           <li>
             <code>examples/react-portal</code> — React 桥接
           </li>
-          <li>
-            <code>examples/tailwind</code> — Tailwind + kiko
-          </li>
         </ul>
       </section>
 

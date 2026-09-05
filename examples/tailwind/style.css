@@ -1,8 +1,0 @@
-@import "tailwindcss";
-
-body {
-  font-family: system-ui, sans-serif;
-  max-width: 480px;
-  margin: 2rem auto;
-  padding: 0 1rem;
-}

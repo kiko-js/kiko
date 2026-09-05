@@ -56,7 +56,6 @@ const dispose = render(<App />, document.getElementById("app")!)
 | `examples/basic`        | Counter, Bun bundler + dev server                     |
 | `examples/htm`          | `dom` / `htm` tagged-template runtime (buildless JSX) |
 | `examples/react-portal` | ReactPortal bridge for React components               |
-| `examples/tailwind`     | Tailwind + kiko                                       |
 | `examples/ssr`          | Full-stack Bun SSR + client hydration                 |
 
 ## Documentation

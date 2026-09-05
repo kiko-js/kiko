@@ -112,15 +112,6 @@ render(
               <code>bun run dev</code>
             </td>
           </tr>
-          <tr>
-            <td>
-              <code>examples/tailwind</code>
-            </td>
-            <td>Tailwind + kiko</td>
-            <td>
-              <code>bun run dev</code>
-            </td>
-          </tr>
         </tbody>
       </table>
     </section>
