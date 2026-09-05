@@ -3,7 +3,7 @@
  *
  * `withSSRRouter` 用 AsyncLocalStorage 把 router 绑定到当前请求的异步渲染
  * 作用域：并发渲染多条请求互不串扰，await 交错下依然按请求解析。注册
- * `setSSRRouterScope` 后，组件/hook 的 SSR 分支通过 `getActiveRouter()` 的
+ * `setSSRRouterScope` 后，组件/hook 的 SSR 分支通过 `currentRouter()` 的
  * 请求作用域兜底拿到 router，不再需要（也不应再使用）模块级
  * `setActiveRouter` 预置——那个信号是模块级单例，只能串行使用。
  *

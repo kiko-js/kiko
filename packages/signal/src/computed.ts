@@ -62,14 +62,6 @@ export function computed<T>(fn: () => T): Signal.Computed<T> {
   return computedSignal
 }
 
-/**
- * @deprecated `derived` 是 `computed` 的别名，已弃用——请直接使用 `computed`。
- * 仅为兼容保留，未来版本可能移除。
- */
-export function derived<T>(fn: () => T): Signal.Computed<T> {
-  return computed(fn)
-}
-
 /** Unwrap a value that may be a signal; plain values pass through. */
 export function toSignalValue<T>(value: T | Signal.State<T> | Signal.Computed<T>): T {
   if (isSignal(value)) return value.get() as T

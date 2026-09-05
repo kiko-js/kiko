@@ -1,5 +1,5 @@
 export { createSignal, isSignal } from "./signal"
-export { computed, derived, toSignalValue, watchValue } from "./computed"
+export { computed, toSignalValue, watchValue } from "./computed"
 export { effect, type EffectCleanup, type EffectFn } from "./effect"
 export { createEmitter, Emitter, type EventMap, type Listener } from "./emit"
 export { onCleanup, type CleanupFn } from "./scope"

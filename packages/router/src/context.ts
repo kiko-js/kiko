@@ -95,11 +95,6 @@ export function currentRouter(): Router | null {
   return currentFrame()?.router ?? getSSRScopeRouter?.() ?? activeRouter.get()
 }
 
-/** 兼容别名：信号语义的历史名称（effect 内读取会建立响应式依赖） */
-export function getActiveRouter(): Router | null {
-  return currentRouter()
-}
-
 /** 获取当前 router，若不存在则抛出（hooks 在 Router 渲染范围内调用） */
 export function useRouter(): Router {
   const router = currentRouter()

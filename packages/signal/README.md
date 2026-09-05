@@ -28,7 +28,7 @@ count.set(1) // count = 1, doubled = 2
 ## API
 
 - **信号**：`createSignal`、`isSignal`、`createWatcher`
-- **派生**：`computed`（`derived` 是其别名，已弃用）、`toSignalValue`、`watchValue`
+- **派生**：`computed`、`toSignalValue`、`watchValue`
 - **副作用**：`effect`（批处理、错误隔离、清理作用域）、`onCleanup`、`on`（显式依赖）
 - **调度**：`batch`（合并写入）、`untrack`（不订阅读取）
 - **Store**：`createStore`（代理式细粒度状态）、`ref` / `isRef` / `REF`

@@ -1,5 +1,5 @@
-import { describe, it, expect } from "bun:test"
-import { computed, derived, toSignalValue, watchValue } from "../src/computed"
+import { describe, expect, it } from "bun:test"
+import { computed, toSignalValue, watchValue } from "../src/computed"
 import { createSignal } from "../src/signal"
 
 function waitForMicrotask(): Promise<void> {
@@ -36,14 +36,6 @@ describe("computed", () => {
     expect(() => c.get()).toThrow(/Signal writes are not allowed inside a computed/)
     // 写入被拒绝后，computed 不应留下半个更新结果
     expect(s.get()).toBe(1)
-  })
-})
-
-describe("derived", () => {
-  it("is an alias for computed", () => {
-    const a = createSignal(1)
-    const b = derived(() => a.get() + 1)
-    expect(b.get()).toBe(2)
   })
 })
 
