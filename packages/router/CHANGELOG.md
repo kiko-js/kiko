@@ -1,5 +1,28 @@
 # @kikojs/router
 
+## 0.2.0
+
+### Minor Changes
+
+- ### @kikojs/dom (minor)
+  - **dom**: share For reconcile engine, Suspend settle, and marker spellings (be450b8)
+  - refresh stale comments after lazy materialization (c3af34e)
+  - **dom**: lazy component materialization as default, For defaults to identity keying (8633aae)
+  - **router**: support hydration, add router.ready, fix unmount cleanup (0db678a)
+  - **dom**: remove createContext/useContext (c27fae8)
+
+  ### @kikojs/router (minor)
+  - refresh stale comments after lazy materialization (c3af34e)
+  - **dom**: lazy component materialization as default, For defaults to identity keying (8633aae)
+  - **router**: scope implicit router injection with render frames (79eab02)
+  - **router**: support hydration, add router.ready, fix unmount cleanup (0db678a)
+  - **router**: isolate SSR router resolution per request with withSSRRouter (e2e3ff3)
+
+### Patch Changes
+
+- Updated dependencies
+  - @kikojs/dom@0.2.0
+
 ## 0.1.1
 
 ### Patch Changes
