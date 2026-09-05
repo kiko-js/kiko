@@ -22,6 +22,7 @@ export {
   startSignalCapture,
   stopSignalCapture,
   serializeSignals,
+  signalStateScript,
   restoreSignals,
   stopSignalRestore,
 } from "./signal-serialize"

@@ -1,5 +1,5 @@
 import { Signal } from "signal-polyfill"
-import { trackSignal, nextRestoreValue } from "./signal-serialize"
+import { trackSignal, nextRestoreValue, noteRestoreType } from "./signal-serialize"
 
 /**
  * A watchable signal — either `Signal.State` (writable) or `Signal.Computed`
@@ -36,6 +36,7 @@ export function createSignal<T>(initial: T): Signal.State<T> {
   // 恢复模式：用序列化值替代初始值（客户端水合前恢复服务端状态）
   const restored = nextRestoreValue()
   const value = restored !== undefined ? (restored as T) : initial
+  if (restored !== undefined) noteRestoreType(restored, initial)
   const sig = new Signal.State(value)
   // 捕获模式：记录信号供序列化（服务端渲染后嵌入 HTML）
   trackSignal(sig)

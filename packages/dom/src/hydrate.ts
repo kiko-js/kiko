@@ -3,6 +3,7 @@ import { KikoLazy, isLazy, realizeLazy } from "./lazy-node"
 import { createWatcher, isSignal, reportError, watchSignal } from "./signal"
 import type { WatchableSignal } from "./signal"
 import { isRestoring, restoreSignals, stopSignalRestore } from "./signal-serialize"
+import type { SerializedSignalState } from "./signal-serialize"
 import {
   attachDelegationRoot,
   cleanupWatchers,
@@ -672,15 +673,15 @@ export function hydrateSuspend(props: { fallback?: unknown; children: unknown })
  * 带状态恢复的水合：从容器内的 `<script id="kiko-state" type="application/json">`
  * 读取服务端序列化的信号状态，恢复后水合，使客户端信号初始值与服务端快照一致。
  *
- * 服务端配合：`startSignalCapture()` → `renderToFragment()` → `serializeSignals()`
- * 把 JSON 嵌入 `<script id="kiko-state" type="application/json">${json}</script>`。
- *
- * 也可直接传 `state` 参数（已解析的数组或 JSON 字符串），此时不依赖脚本标签。
+ * 服务端配合：`startSignalCapture()` → `renderToFragment()` →
+ * `signalStateScript()`（输出 `{"v":1,"s":[...]}` envelope，`<` 已转义防
+ * `</script>` 破防）。也可直接传 `state` 参数（JSON 字符串 / envelope 对象 /
+ * 旧格式裸值数组），此时不依赖脚本标签。
  */
 export function hydrateWithState(
   root: () => unknown,
   container: Element,
-  state?: string | unknown[],
+  state?: string | unknown[] | SerializedSignalState,
 ): () => void {
   if (state) {
     restoreSignals(state)
