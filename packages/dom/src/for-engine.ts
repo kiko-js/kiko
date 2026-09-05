@@ -62,6 +62,9 @@ function createKeyedEntry<T>(item: T, index: number): ForKeyEntry<T> {
  * 最小移动重排(SolidJS-style):先拆除 dropped 节点,移除不再存活的节点,
  * 存活节点按 `next` 顺序以单次后向插入锚定到 marker。
  */
+/** reconcileForList 的存活检查集合(模块级复用,见函数内注释) */
+const keepSet = new Set<Node>()
+
 function reconcileForList(
   parent: Node | null,
   marker: Node,
@@ -69,14 +72,19 @@ function reconcileForList(
   next: Node[],
   droppedNodes: Node[][],
 ): Node[] {
+  // 稳态热路径:复用模块级 Set 避免 per-update 分配(千级列表每次更新
+  // 一个 Set 是主要 GC churn 之一)。构建到消费之间无用户代码运行,
+  // 用完即清,无重入风险。
   for (const nodes of droppedNodes) {
     for (const n of nodes) cleanupWatchers(n)
   }
   if (!parent) return next
-  const keep = new Set(next)
+  keepSet.clear()
+  for (const n of next) keepSet.add(n)
   for (const n of currentNodes) {
-    if (!keep.has(n)) parent.removeChild(n)
+    if (!keepSet.has(n)) parent.removeChild(n)
   }
+  keepSet.clear()
   let ref: Node = marker
   for (let i = next.length - 1; i >= 0; i--) {
     const node = next[i] as Node
@@ -109,7 +117,7 @@ export function createForCore<T>(opts: ForCoreOptions<T>): ForCore<T> {
           existing.idx.set(i)
           core.entries.delete(key)
           nextEntries.set(key, existing)
-          next.push(...existing.nodes)
+          for (const n of existing.nodes) next.push(n)
         } else {
           const entry = createKeyedEntry(item, i)
           entry.nodes = toNodes(
@@ -119,7 +127,7 @@ export function createForCore<T>(opts: ForCoreOptions<T>): ForCore<T> {
             ),
           )
           nextEntries.set(key, entry)
-          next.push(...entry.nodes)
+          for (const n of entry.nodes) next.push(n)
         }
       }
       const dropped: Node[][] = []
@@ -152,11 +160,11 @@ export function createForCore<T>(opts: ForCoreOptions<T>): ForCore<T> {
         const existing = core.plain.get(key)
         if (existing) {
           nextPlain.set(key, existing)
-          next.push(...existing)
+          for (const n of existing) next.push(n)
         } else {
           const nodes = toNodes(childFn(item, () => i))
           nextPlain.set(key, nodes)
-          next.push(...nodes)
+          for (const n of nodes) next.push(n)
         }
       }
       const dropped: Node[][] = []
@@ -172,7 +180,7 @@ export function createForCore<T>(opts: ForCoreOptions<T>): ForCore<T> {
       const next: Node[] = []
       const childFn = children as (item: T, index: () => number) => unknown
       for (let i = 0; i < list.length; i++) {
-        next.push(...toNodes(childFn(list[i] as T, () => i)))
+        for (const n of toNodes(childFn(list[i] as T, () => i))) next.push(n)
       }
       core.current = reconcileForList(marker.parentNode, marker, core.current, next, [core.current])
       core.entries = new Map()
@@ -192,7 +200,7 @@ export function createForCore<T>(opts: ForCoreOptions<T>): ForCore<T> {
           ),
         )
         core.entries.set(getKey(item, i), entry)
-        out.push(...entry.nodes)
+        for (const n of entry.nodes) out.push(n)
       }
       core.current = out
     },
@@ -206,7 +214,7 @@ export function createForCore<T>(opts: ForCoreOptions<T>): ForCore<T> {
         // 重复身份只登记首个条目(游标必须逐项消费,无法回退整表重建);
         // 后续更新遇重复身份会回退全量重建
         if (!core.plain.has(defaultForKey(item))) core.plain.set(defaultForKey(item), nodes)
-        out.push(...nodes)
+        for (const n of nodes) out.push(n)
       }
       core.current = out
     },

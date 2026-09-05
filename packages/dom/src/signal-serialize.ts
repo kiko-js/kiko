@@ -80,6 +80,14 @@ function slot(): SerializeSlot {
  */
 export function startSignalCapture(): void {
   const s = slot()
+  if (s.capturing) {
+    console.warn(
+      "[kiko ssr] startSignalCapture() called while another capture is still active — " +
+        "either a session was never stopped with stopSignalCapture(), or concurrent " +
+        "renders are not wrapped in withSSRScope() (@kikojs/dom/server); captured " +
+        "signal data may leak across requests",
+    )
+  }
   s.capturing = true
   s.capturedSignals.length = 0
 }
@@ -105,6 +113,12 @@ export function serializeSignals(): string {
  */
 export function restoreSignals(json: string | unknown[]): void {
   const s = slot()
+  if (s.restoring) {
+    console.warn(
+      "[kiko hydrate] restoreSignals() called while another restore is still active — " +
+        "the previous session was never stopped with stopSignalRestore()",
+    )
+  }
   s.restoreValues = Array.isArray(json) ? json : JSON.parse(json)
   s.restoreIndex = 0
   s.restoring = true

@@ -54,6 +54,22 @@ describe("信号序列化 — 捕获与序列化", () => {
     // 序列化取当前值（渲染后的快照）
     expect(serializeSignals()).toBe("[5]")
   })
+
+  it("对未停止的二次捕获发出并发误用警告", () => {
+    startSignalCapture()
+    const warns: string[] = []
+    const orig = console.warn
+    console.warn = (m: unknown) => warns.push(String(m))
+    try {
+      startSignalCapture()
+    } finally {
+      console.warn = orig
+      stopSignalCapture()
+    }
+    expect(warns.length).toBe(1)
+    expect(warns[0]).toContain("withSSRScope")
+    expect(isCapturing()).toBe(false)
+  })
 })
 
 describe("信号序列化 — 恢复", () => {

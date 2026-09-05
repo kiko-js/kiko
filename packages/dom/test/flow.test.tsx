@@ -166,6 +166,33 @@ describe("Show", () => {
     await flush()
     expect(el.textContent).toBe("v2")
   })
+
+  it("skips DOM churn when truthiness is unchanged (static children)", async () => {
+    const container = document.createElement("div")
+    const when = createSignal(1)
+    const el = jsx("div", {
+      children: Show({ when, fallback: "off", children: "on" }),
+    }) as HTMLElement
+    container.appendChild(el)
+    // 计数换出操作:真值不变(1→2)时静态分支是同批缓存节点,不应重插
+    let removed = 0
+    const orig = el.removeChild.bind(el)
+    // 无害替换:仅计数后转调原实现(类型上需要显式收窄)
+    el.removeChild = ((n: Node) => {
+      removed++
+      return orig(n)
+    }) as typeof el.removeChild
+    when.set(2)
+    await flush()
+    expect(removed).toBe(0)
+    expect(el.textContent).toBe("on")
+    // 真值变化(1→0,falsy)仍正常切换(sanity:计数探针有效)
+    when.set(0)
+    await flush()
+    expect(removed).toBeGreaterThan(0)
+    expect(el.textContent).toBe("off")
+    cleanupWatchers(container)
+  })
 })
 
 describe("For", () => {

@@ -258,6 +258,55 @@ describe("hydrate", () => {
     dispose()
   })
 
+  it("strict mode throws on mismatch instead of warn", async () => {
+    const container = document.createElement("div")
+    // SSR:真分支 <b>on</b>;客户端初始 when=false → fallback 文本错位
+    container.innerHTML = "<!--show--><b>on</b>"
+    const on = createSignal(false)
+    expect(() =>
+      hydrate(
+        () => Show({ when: on, fallback: "off", children: jsx("b", { children: "on" }) }),
+        container,
+        { strict: true },
+      ),
+    ).toThrow(/expected text node/)
+  })
+
+  it("mismatch warnings carry position and element context", async () => {
+    const container = document.createElement("div")
+    const errors: string[] = []
+    const orig = console.error
+    console.error = (m: unknown) => errors.push(String(m))
+    try {
+      // SSR: <b>42</b>;客户端渲染 <b>43</b> → b 内文本错位
+      container.innerHTML = "<div><b>42</b></div>"
+      const dispose = hydrate(() => jsx("div", { children: jsx("b", { children: 43 }) }), container)
+      dispose()
+    } finally {
+      console.error = orig
+    }
+    const msg = errors.join("\n")
+    expect(msg).toContain("text mismatch")
+    expect(msg).toContain("inside <div><b>")
+    expect(msg).toContain("at node")
+  })
+
+  it("warns when the container embeds signal state but hydrate() is used", async () => {
+    const container = document.createElement("div")
+    container.innerHTML =
+      '<div><!---->42</div><script id="kiko-state" type="application/json">[42]</script>'
+    const errors: string[] = []
+    const orig = console.error
+    console.error = (m: unknown) => errors.push(String(m))
+    try {
+      const dispose = hydrate(() => jsx("div", { children: createSignal(0) }), container)
+      dispose()
+    } finally {
+      console.error = orig
+    }
+    expect(errors.join("\n")).toContain("use hydrateWithState")
+  })
+
   it("hydrates keyed For passing item accessors", async () => {
     const container = document.createElement("div")
     const list = createSignal([

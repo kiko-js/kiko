@@ -66,6 +66,15 @@ render(<Card ref={node => console.log(node)} />, container)
 - `hydrate`：服务端 HTML 水合（配合 `@kikojs/dom/server` 的 `renderToFragment`）
 - `createPortal`：渲染到其他容器
 
+## 行为语义与前提
+
+- **真值判定（SolidJS 风格）**：`false`、`null`、`undefined`、`""`、`0` 均为 falsy——`<Show when={0}>` 走 fallback。
+- **`For` 的条目复用**：无 `getKey` 时按条目引用（SameValueZero）复用——对象/函数按引用、原始值按值，移动不重建、children 不重跑；重复条目（同一引用或相同原始值出现两次）回退整表重建（children 全部重跑）。`getKey` 模式下 children 收到 accessor：存活的 key 原地更新绑定，children 函数每个 key 生命周期内至多跑一次。
+- **`Show` 的 children**：函数 children 在每次 `when` 变化且为真时重跑；静态 children 是同一批节点，切换分支时保留内部绑定，换回时复用，真值不变时不重插 DOM。
+- **`Suspend` 的 SSR 产物结构**：`<!--suspend-->…<!--/suspend-->`，未决 promise 时中间是 fallback 内容，settle 后换入真实内容（流式模式结构相同）。
+- **`hydrate()` 的前提**：两端组件树一致、`createSignal` 创建顺序一致（数量失配会 `console.error` 报出两端计数）。服务端嵌入了信号状态（`script#kiko-state`）必须用 `hydrateWithState()`——裸 `hydrate()` 会忽略该状态并告警。错位默认 `console.error`（带采纳位置与所在元素），测试/CI 可用 `hydrate(root, el, { strict: true })` 升级为 throw。
+- **dispose 必须调用**：`render` / `hydrate` 返回的 disposer 负责拆除 watcher 与委托根；不调用则根级 cleanup（如 Router dispose）与节点 watcher 永久驻留。
+
 ## 事件委托与挂载点
 
 冒泡事件（click、input、change、keydown 等）通过**挂载点级委托**分发：`render` / `hydrate` 的容器和 `createPortal` 的目标各自持有一组监听器，document 上没有 kiko 监听器。这意味着：

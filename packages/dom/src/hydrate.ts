@@ -2,7 +2,7 @@ import { Signal } from "signal-polyfill"
 import { KikoLazy, isLazy, realizeLazy } from "./lazy-node"
 import { createWatcher, isSignal, reportError, watchSignal } from "./signal"
 import type { WatchableSignal } from "./signal"
-import { restoreSignals, stopSignalRestore } from "./signal-serialize"
+import { isRestoring, restoreSignals, stopSignalRestore } from "./signal-serialize"
 import {
   attachDelegationRoot,
   cleanupWatchers,
@@ -60,8 +60,16 @@ function take(): Node | undefined {
   return cursor[cursorPos++]
 }
 
+// 采纳中的元素 tag 栈(外层在前):warn 用于定位出错位置
+const adoptPath: string[] = []
+// strict 模式:水合错位从 warn 升级为 throw(测试/CI 用)
+let strictMode = false
+
 function warn(message: string): void {
-  console.error(`[kiko hydrate] ${message}`)
+  const where = adoptPath.length > 0 ? ` inside <${adoptPath.join("><")}>` : ""
+  const at = cursor.length > 0 ? `, at node ${cursorPos}/${cursor.length}` : ""
+  if (strictMode) throw new Error(`[kiko hydrate] ${message}${where}${at}`)
+  console.error(`[kiko hydrate] ${message}${where}${at}`)
 }
 
 /**
@@ -202,14 +210,18 @@ function hydrateElement(el: Node, tag: string, props: Props): void {
   const savedPos = cursorPos
   cursor = Array.from(el.childNodes)
   cursorPos = 0
-  hydrateValue(props.children)
-  if (cursorPos < cursor.length) {
-    warn(`unmatched children remain in <${tag}> (${cursor.length - cursorPos})`)
+  adoptPath.push(tag)
+  try {
+    hydrateValue(props.children)
+    if (cursorPos < cursor.length) {
+      warn(`unmatched children remain in <${tag}> (${cursor.length - cursorPos})`)
+    }
+  } finally {
+    adoptPath.pop()
+    cursor = savedCursor
+    cursorPos = savedPos
   }
-  cursor = savedCursor
-  cursorPos = savedPos
 }
-
 export function hydrateJsx(
   tag: string | Component<any> | AsyncComponent<any>,
   props: Props | null,
@@ -356,8 +368,15 @@ export function hydrateShow(props: {
     branches.adopt(hydrateValue(initial))
     let currentRetained = retainable(initial)
     if (currentRetained) staticCache.set(initial, branches.current)
+    let lastValue: unknown
+    let hasLast = false
     const render = (): void => {
       const value = branch()
+      // 同值且命中缓存分支时跳过换入(同批缓存节点的重插是纯浪费);
+      // 函数值(非 retainable)契约是每次 when 变化重跑,不短路
+      if (hasLast && retainable(value) && Object.is(value, lastValue)) return
+      hasLast = true
+      lastValue = value
       branches.swap(toRetainedNodes(value), currentRetained)
       currentRetained = retainable(value)
     }
@@ -685,8 +704,24 @@ export function hydrateWithState(
  *
  * 假设：客户端初始状态与 SSR 一致（信号快照、分支选择、列表内容）。
  * 若服务端嵌入了信号状态，请用 `hydrateWithState()` 替代。
+ *
+ * `options.strict`:错位(游标耗尽/tag 不匹配/残留节点)从 console.error
+ * 升级为 throw——测试与 CI 用,正常路径零成本。
  */
-export function hydrate(root: () => unknown, container: Element): () => void {
+export function hydrate(
+  root: () => unknown,
+  container: Element,
+  options?: { strict?: boolean },
+): () => void {
+  // 容器嵌入了序列化信号状态但走了裸 hydrate():信号全按客户端初始值,
+  // 服务端状态被静默丢弃——几乎总是误用
+  if (container.querySelector('script[id="kiko-state"]')?.textContent && !isRestoring()) {
+    console.error(
+      "[kiko hydrate] container embeds serialized signal state but hydrate() was called — use hydrateWithState() to restore it",
+    )
+  }
+  const prevStrict = strictMode
+  strictMode = options?.strict === true
   beginHydrate()
   try {
     const savedCursor = cursor
@@ -706,6 +741,7 @@ export function hydrate(root: () => unknown, container: Element): () => void {
     }
   } finally {
     endHydrate()
+    strictMode = prevStrict
   }
   attachDelegationRoot(container)
   return () => {

@@ -63,10 +63,15 @@ export function Show<T>(props: {
   let fallbackNodes: Node[] | null = null
   // 当前可见分支是否来自静态来源(决定换出时是否保留 watcher)
   let currentRetained = false
-
+  let lastCond: boolean | null = null
   const render = (): void => {
     const cond = unwrap(props.when)
     const truthy = isTruthy(cond)
+    // 真值不变且命中缓存分支时,换入只是同批缓存节点的重插,直接跳过。
+    // 函数 children 的契约是每次 when 变化重跑(见文件头注释),不在此列。
+    const skippable = truthy ? typeof props.children !== "function" : true
+    if (truthy === lastCond && skippable) return
+    lastCond = truthy
     if (truthy) {
       if (typeof props.children === "function") {
         const value = (props.children as (item: T) => unknown)(cond as T)
