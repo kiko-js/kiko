@@ -9,8 +9,5 @@
   "dependencies": {
     "@kikojs/signal": "workspace:*",
     "immer": "^11.1.15"
-  },
-  "devDependencies": {
-    "@types/bun": "latest"
   }
 }

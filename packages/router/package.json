@@ -35,10 +35,6 @@
     "@kikojs/signal": "workspace:*",
     "signal-polyfill": "^0.2.0"
   },
-  "devDependencies": {
-    "@types/bun": "^1.3.14",
-    "happy-dom": "^20.14.0"
-  },
   "engines": {
     "bun": ">=1.0"
   }
