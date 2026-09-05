@@ -12,7 +12,6 @@ import {
   restoreSignals,
   stopSignalRestore,
   setSignalStateCodec,
-  setSignalStateDebug,
   isCapturing,
   isRestoring,
 } from "../src/signal-serialize"
@@ -21,6 +20,20 @@ beforeAll(async () => {
   await import("./setup")
   setSSRRuntime(ssrRuntime)
 })
+
+/**
+ * 调试开关由服务端 `NODE_ENV` 驱动（isDevMode）。测试需在"开发模式"下验证
+ * 无损 gate / `l` 标记产出，因此临时把 NODE_ENV 置为 development，结束还原。
+ */
+function withDevMode(run: () => void): void {
+  const prev = process.env.NODE_ENV
+  try {
+    process.env.NODE_ENV = "development"
+    run()
+  } finally {
+    process.env.NODE_ENV = prev
+  }
+}
 
 describe("信号序列化 — 捕获与序列化", () => {
   it("捕获渲染期创建的信号", async () => {
@@ -152,23 +165,19 @@ describe("信号序列化 — envelope 与安全", () => {
     expect(script).toBe('<script id="kiko-state" type="application/json">{"v":1,"s":[42]}</script>')
   })
 
-  it("循环引用 throw 且带信号序号（调试模式）", () => {
-    setSignalStateDebug(true)
-    try {
+  it("循环引用 throw 且带信号序号（开发模式）", () => {
+    withDevMode(() => {
       startSignalCapture()
       const cyc: Record<string, unknown> = {}
       cyc.self = cyc
       createSignal(cyc)
       expect(() => serializeSignals()).toThrow(/signal #0.*cyclic/)
       stopSignalCapture()
-    } finally {
-      setSignalStateDebug(false)
-    }
+    })
   })
 
-  it("bigint / 函数 throw 且带值描述（调试模式）", () => {
-    setSignalStateDebug(true)
-    try {
+  it("bigint / 函数 throw 且带值描述（开发模式）", () => {
+    withDevMode(() => {
       startSignalCapture()
       createSignal(1n)
       expect(() => serializeSignals()).toThrow(/signal #0.*bigint/)
@@ -177,30 +186,24 @@ describe("信号序列化 — envelope 与安全", () => {
       createSignal(() => 1)
       expect(() => serializeSignals()).toThrow(/signal #0.*Function/)
       stopSignalCapture()
-    } finally {
-      setSignalStateDebug(false)
-    }
+    })
   })
 
-  it("嵌套在对象里的不可序列化值同样 throw（调试模式）", () => {
-    setSignalStateDebug(true)
-    try {
+  it("嵌套在对象里的不可序列化值同样 throw（开发模式）", () => {
+    withDevMode(() => {
       startSignalCapture()
       const outer: Record<string, unknown> = { deep: { fn: () => 1 } }
       createSignal(outer)
       expect(() => serializeSignals()).toThrow(/signal #0.*\.deep\.fn/)
       stopSignalCapture()
-    } finally {
-      setSignalStateDebug(false)
-    }
+    })
   })
 
-  it("调试模式:无法完美 JSON 化的值在序列化端标记 + 记录", () => {
+  it("开发模式:无法完美 JSON 化的值在序列化端标记 + 记录", () => {
     class Point {
       x = 1
     }
-    setSignalStateDebug(true)
-    try {
+    withDevMode(() => {
       startSignalCapture()
       createSignal(undefined)
       createSignal(NaN)
@@ -222,14 +225,11 @@ describe("信号序列化 — envelope 与安全", () => {
       expect(errors).toHaveLength(1)
       expect(errors[0]).toContain("cannot be perfectly converted to JSON")
       expect(errors[0]).toContain("#4 Point instance")
-    } finally {
-      setSignalStateDebug(false)
-    }
+    })
   })
 
-  it("调试模式:纯 JSON 数据（有限数/string/boolean/null/纯对象/数组）不被标记", () => {
-    setSignalStateDebug(true)
-    try {
+  it("开发模式:纯 JSON 数据（有限数/string/boolean/null/纯对象/数组）不被标记", () => {
+    withDevMode(() => {
       startSignalCapture()
       createSignal(0)
       createSignal("x")
@@ -247,12 +247,10 @@ describe("信号序列化 — envelope 与安全", () => {
       }
       expect(payload.l).toBeUndefined()
       expect(errors).toHaveLength(0)
-    } finally {
-      setSignalStateDebug(false)
-    }
+    })
   })
 
-  it("非调试模式:默认只做纯 JSON,不校验不标记不报错", () => {
+  it("非调试模式（非开发 env）:默认只做纯 JSON,不校验不标记不报错", () => {
     startSignalCapture()
     createSignal(new Date(0))
     createSignal(undefined)
@@ -358,31 +356,20 @@ describe("信号序列化 — 加固回归（#2 重入 / #5 有损补全 / #1 �
     }
   })
 
-  it("非调试模式:客户端忽略服务端的 l 标记(照常降级恢复,不报错不 throw)", () => {
-    const errors: string[] = []
-    const orig = console.error
-    console.error = (m: unknown) => errors.push(String(m))
-    try {
-      // 服务端以调试模式产出了 l,但本端非调试 → 不校验不报错
-      restoreSignals({ v: 1, s: ["2026-01-01", "ok"], l: [0] })
-      expect(createSignal<unknown>(new Date(0)).get()).toBe("2026-01-01")
-      createSignal("")
-      stopSignalRestore()
-    } finally {
-      console.error = orig
-    }
-    expect(errors.some(e => /degraded/.test(String(e)))).toBe(false)
+  it("客户端常驻:命中 envelope 的 l 标记即 throw(fail-fast),无需开发 env", () => {
+    // 客户端无自己的开关、不读 env——只要信封带 l(由开发模式服务端产出),
+    // 恢复逻辑常驻兑现并 throw。
+    restoreSignals({ v: 1, s: ["2026-01-01"], l: [0] })
+    expect(() => createSignal(new Date(0))).toThrow(/degraded/)
+    stopSignalRestore()
   })
 
-  it("调试模式下降级位置恢复时 throw（fail-fast）", () => {
-    setSignalStateDebug(true)
-    try {
-      restoreSignals({ v: 1, s: ["2026-01-01"], l: [0] })
-      expect(() => createSignal(new Date(0))).toThrow(/degraded/)
-    } finally {
-      stopSignalRestore()
-      setSignalStateDebug(false)
-    }
+  it("envelope 无 l(生产服务端不产出)则照常降级恢复,不 throw", () => {
+    // 生产服务端不跑无损 gate、不产出 l → 客户端常驻逻辑无从触发。
+    restoreSignals({ v: 1, s: ["2026-01-01", "ok"] })
+    expect(createSignal<unknown>(new Date(0)).get()).toBe("2026-01-01")
+    createSignal("")
+    stopSignalRestore()
   })
 
   it("codec encode 使类型化值不被标记;decode 在客户端还原类型", () => {
@@ -392,26 +379,26 @@ describe("信号序列化 — 加固回归（#2 重入 / #5 有损补全 / #1 �
       v !== null && typeof v === "object" && "$date" in v
         ? new Date((v as { $date: string }).$date)
         : v
-    // 调试模式下跑,证明 encode 让类型化值通过无损 gate(否则 Date 会被标 l)
-    setSignalStateDebug(true)
-    setSignalStateCodec({ encode, decode })
-    try {
-      startSignalCapture()
-      createSignal(new Date(0)) // 经 encode → {$date:"…"} 纯 JSON,不再判有损
-      const payload = JSON.parse(serializeSignals()) as { s: unknown[]; l?: number[] }
-      expect(payload.l).toBeUndefined()
-      expect(payload.s[0]).toEqual({ $date: "1970-01-01T00:00:00.000Z" })
-      stopSignalCapture()
-      // 客户端:decode 把 tag 还原成 Date 作为 createSignal 初始值
-      restoreSignals(JSON.stringify(payload))
-      const d = createSignal(new Date(0)).get()
-      expect(d).toBeInstanceOf(Date)
-      expect((d as Date).getTime()).toBe(0)
-      stopSignalRestore()
-    } finally {
-      setSignalStateCodec(null)
-      setSignalStateDebug(false)
-    }
+    // 开发模式下跑服务端,证明 encode 让类型化值通过无损 gate(否则 Date 会被标 l)
+    withDevMode(() => {
+      setSignalStateCodec({ encode, decode })
+      try {
+        startSignalCapture()
+        createSignal(new Date(0)) // 经 encode → {$date:"…"} 纯 JSON,不再判有损
+        const payload = JSON.parse(serializeSignals()) as { s: unknown[]; l?: number[] }
+        expect(payload.l).toBeUndefined()
+        expect(payload.s[0]).toEqual({ $date: "1970-01-01T00:00:00.000Z" })
+        stopSignalCapture()
+        // 客户端:decode 把 tag 还原成 Date 作为 createSignal 初始值(常驻,无需 env)
+        restoreSignals(JSON.stringify(payload))
+        const d = createSignal(new Date(0)).get()
+        expect(d).toBeInstanceOf(Date)
+        expect((d as Date).getTime()).toBe(0)
+        stopSignalRestore()
+      } finally {
+        setSignalStateCodec(null)
+      }
+    })
   })
 
   it("#1: 服务端纯对象顶替客户端类实例时报结构错位", () => {

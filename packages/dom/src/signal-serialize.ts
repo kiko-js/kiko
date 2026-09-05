@@ -25,12 +25,13 @@
  *   encode/decode）往返，零逐值校验、零报错——只承诺 **JSON 语义等价**的数据
  *   （有限数 / string / boolean / null / 纯对象 / 数组），其余类型由 JSON 降级
  *   （Date→string、Map/Set/类实例→纯对象、undefined/NaN→null…）。需要排查类型
- *   降级时开**调试模式**（`setSignalStateDebug(true)`，两端各自开启）：服务端跑
- *   无损 gate，无法完美转换的值记录错误并在 envelope `l` 字段标记，客户端恢复
- *   到该位置时直接 throw（fail-fast）。循环 / bigint / 函数 / symbol 在 gate 下
- *   throw；纯 JSON 路径下由原生 `JSON.stringify` throw（bigint/循环）。
- *   需要类型保真请用 `SignalStateCodec`，或 `@kikojs/signal` 的 `createStore` /
- *   自序列化。
+ *   降级时让服务端以开发模式运行（`NODE_ENV=development`）：服务端跑无损 gate，
+ *   无法完美转换的值记录错误并在 envelope `l` 字段标记；客户端恢复逻辑常驻
+ *   （不读环境变量、无独立开关），无条件兑现 `l` 标记并在命中处 throw
+ *   （fail-fast）。生产无 `l` 产出 → 客户端自然静默。循环 / bigint / 函数 /
+ *   symbol 在 gate 下 throw；纯 JSON 路径下由原生 `JSON.stringify` throw
+ *   （bigint/循环）。需要类型保真请用 `SignalStateCodec`，或 `@kikojs/signal`
+ *   的 `createStore` / 自序列化。
  * - 序列化输出把 `<` 转义为 `\u003c`（JSON 语义等价）：信号值里含 `</script>`
  *   时直接嵌入 `<script>` 不会破防。
  * - 非并发安全：同进程多次渲染会共享捕获状态（与 hydrate 游标相同的约束）。
@@ -81,21 +82,20 @@ export function setSerializeStateScope(read: SerializeScope | null): void {
 }
 
 /**
- * 调试模式（主开关，默认关）：为 true 时才运行无损 gate 校验并报错——
- * 服务端 `serializeSignals()` 对每个快照做 JSON 无损判定，无法完美转换的值
- * 记入 envelope 的 `l` 字段并 `console.error`；客户端恢复到 `l` 标记位置时
- * 直接 throw（fail-fast 便于排查）。非调试模式零扫描零告警，信号状态仅经
- * `JSON.stringify` / `JSON.parse`（或注册的 codec）往返。
- * 调试需两端各自开启（服务端产 l、客户端消费 l 并 throw）。
+ * 调试开关只存在于**服务端**（由 Node 自身的 `NODE_ENV` 判定），无独立 API。
+ * 是否开发模式决定 `serializeSignals()` 是否运行无损 gate 校验并报错：
+ * - `NODE_ENV === 'development'`：对每个快照做 JSON 无损判定，无法完美转换的
+ *   值 `console.error` 记录并在 envelope `l` 字段标记（客户端据此 fail-fast）。
+ * - 其余（production / 未设置 / test…）：零扫描零告警，信号状态仅经
+ *   `JSON.stringify` / `JSON.parse`（或注册的 codec）往返，不产出 `l`。
+ *
+ * 客户端恢复路径**不读环境变量、无自己的开关**——它常驻且纯数据驱动：恢复时
+ * 无条件兑现 envelope 携带的 `l` 标记（命中即 throw）。生产不报错的原因不是
+ * 客户端忽略，而是生产服务端根本不产出 `l`。开发模式因此只需服务端置
+ * `NODE_ENV=development`（前端构建工具/框架的 dev 模式默认即设）。
  */
-let debug = false
-
-/**
- * 开启 / 关闭信号状态的调试模式。开启后启用无损 gate 校验与错误上报；关闭
- * （默认）时序列化/恢复只做纯 JSON（或 codec）往返，不做逐值校验。
- */
-export function setSignalStateDebug(enabled: boolean): void {
-  debug = enabled
+function isDevMode(): boolean {
+  return typeof process !== "undefined" && process.env?.NODE_ENV === "development"
 }
 
 /** @internal 供 server 侧装置创建每请求状态 */
@@ -124,9 +124,9 @@ function slot(): SerializeSlot {
 /**
  * 信号状态编解码器（依赖注入）：类型化数据需要跨 SSR 边界保真时的扩展点。
  *
- * 默认（不注册 codec）只做 JSON 往返，非调试模式零校验——信号值如非 JSON 语义
- * 等价会被 JSON 静默降级。调试模式（`setSignalStateDebug(true)`）下这些降级会
- * 被无损 gate 标记并报错。需要类型保真的用户自行提供一对对称函数：
+ * 默认（不注册 codec）只做 JSON 往返，非开发模式零校验——信号值如非 JSON
+ * 语义等价会被 JSON 静默降级。开发模式（服务端 `NODE_ENV=development`）下这些
+ * 降级会被无损 gate 标记并报错。需要类型保真的用户自行提供一对对称函数：
  * - `encode`（服务端）：把捕获的信号快照转成可完美往返的形式（可带类型 tag，
  *   如 `Date → { $date: iso }`），随后该值即通过无损判定，不再被标记降级；
  * - `decode`（客户端）：把 `JSON.parse` 后的值还原为类型化形式，作为
@@ -189,11 +189,11 @@ export function stopSignalCapture(): void {
  * 输出 `{"v":1,"s":[...]}` envelope，数组下标 = 信号创建顺序 ID，值 =
  * `signal.get()` 的快照。输出中的 `<` 转义为 `\u003c`（JSON 语义等价）。
  *
- * 默认（非调试）只做 `JSON.stringify`（或注册 codec 的 `encode`）往返，零逐值
- * 校验。**调试模式**（`setSignalStateDebug(true)`）下才对每个快照做无损 gate：
- * 无法被**完美**转换为 JSON 的值（undefined / NaN / ±Infinity / Date / Map /
- * Set / 类实例 / 嵌套被丢弃的键）`console.error` 记录，并在 envelope 的 `l`
- * 字段标记位置，供客户端恢复时定位/throw。循环 / bigint / 函数 / symbol 由
+ * 非开发模式只做 `JSON.stringify`（或注册 codec 的 `encode`）往返，零逐值
+ * 校验。**开发模式**（服务端 `NODE_ENV=development`）下才对每个快照做无损
+ * gate：无法被**完美**转换为 JSON 的值（undefined / NaN / ±Infinity / Date /
+ * Map / Set / 类实例 / 嵌套被丢弃的键）`console.error` 记录，并在 envelope 的
+ * `l` 字段标记位置，供客户端恢复时定位/throw。循环 / bigint / 函数 / symbol 由
  * `JSON.stringify` 本身 throw（fail-fast，任何模式一致）。
  */
 export function serializeSignals(): string {
@@ -204,7 +204,7 @@ export function serializeSignals(): string {
     return encode ? encode(v) : v
   })
   const payload: SerializedSignalState = { v: SIGNAL_STATE_VERSION, s: values }
-  if (debug) {
+  if (isDevMode()) {
     const lossy: number[] = []
     for (let i = 0; i < values.length; i++) {
       if (!isLosslessJson(values[i], new Set(), `signal #${i}`)) lossy.push(i)
@@ -351,8 +351,10 @@ export function restoreSignals(state: string | unknown[] | SerializedSignalState
     values = values.map(v => decode(v))
   }
   s.restoreValues = values
-  // 仅调试模式下才兑现服务端标记的降级位置(非调试不校验不报错)
-  s.restoreLossy = debug ? lossy : []
+  // 客户端常驻且纯数据驱动：无条件兑现 envelope 携带的降级位置标记。生产
+  // 不报错是因为生产服务端从不产出 `l`；开发模式下服务端产出 `l`，此处
+  // 照单消费并在 nextRestoreValue 命中时 throw（fail-fast）。
+  s.restoreLossy = lossy
   s.restoreIndex = 0
   s.restoreTypeMismatchCount = 0
   s.restoreTypeMismatchSample = null
@@ -412,7 +414,8 @@ export function nextRestoreValue(): unknown | undefined {
   }
   const i = s.restoreIndex++
   if (s.restoreLossy.includes(i)) {
-    // 仅调试模式会把 restoreLossy 填上;此处命中即调试态,直接 throw(fail-fast)
+    // 命中服务端标记的降级位置:客户端常驻逻辑直接 throw(fail-fast)。
+    // 生产无 l 标记,此处不命中;开发模式才由服务端产出 l。
     throw new Error(
       `[kiko hydrate] signal #${i} could not be perfectly serialized to JSON on the server and ` +
         `hydrates in degraded form — keep signal state JSON-plain or register a SignalStateCodec`,

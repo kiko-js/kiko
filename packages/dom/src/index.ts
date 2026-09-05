@@ -8,7 +8,6 @@ export {
   stopSignalCapture,
   serializeSignals,
   setSignalStateCodec,
-  setSignalStateDebug,
 } from "./signal-serialize"
 export type { SignalStateCodec, SerializedSignalState } from "./signal-serialize"
 export {

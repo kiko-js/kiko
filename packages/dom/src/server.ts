@@ -26,7 +26,6 @@ export {
   restoreSignals,
   stopSignalRestore,
   setSignalStateCodec,
-  setSignalStateDebug,
 } from "./signal-serialize"
 export type { SignalStateCodec, SerializedSignalState } from "./signal-serialize"
 export { createSignal, isSignal, createWatcher } from "./signal"
