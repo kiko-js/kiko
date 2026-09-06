@@ -1,5 +1,12 @@
 /** @jsxImportSource @kikojs/dom */
-import { renderToFragment } from "@kikojs/dom/server"
+import {
+  renderToFragment,
+  renderToStream,
+  signalStateScript,
+  startSignalCapture,
+  stopSignalCapture,
+  withSSRScope,
+} from "@kikojs/dom/server"
 import { App } from "./src/App"
 
 const PORT = Number(process.env.PORT || "3000")
@@ -7,9 +14,29 @@ const PORT = Number(process.env.PORT || "3000")
 // @kikojs/dom/server 入口在模块加载时注册 SSR 运行时；此后组件树的 jsx/
 // Show/For/Suspend 全部产出字符串。客户端 bundle 不引用该入口，保持纯净。
 //
-// 页面骨架（html/head/body）由 server 组装，组件树用 renderToFragment 渲染进
-// #root——便于注入水合脚本。
-// 服务常驻运行；句柄不变量化，避免 unused 警告
+// Bun.serve 的 fetch 是并发的，每个请求必须包进 withSSRScope()：SSR 运行时
+// 槽与信号捕获/恢复状态都按请求隔离（AsyncLocalStorage），否则并发请求互相
+// 污染。串行脚本可以省略这一层。
+function pageHead(): string {
+  return `<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>kiko SSR + 水合</title>
+  </head>
+  <body>
+    <div id="root">`
+}
+
+function pageTail(stateScript = ""): string {
+  return `</div>
+    ${stateScript}
+    <script type="module" src="/client.js"></script>
+  </body>
+</html>`
+}
+
 Bun.serve({
   port: PORT,
   async fetch(req) {
@@ -22,22 +49,53 @@ Bun.serve({
       })
     }
 
+    // 字符串模式：全量渲染后返回。渲染期间 createSignal 被按创建顺序捕获，
+    // signalStateScript() 生成 <script id="kiko-state" type="application/json">
+    // 状态块；客户端 hydrateWithState() 恢复后初始值与服务端快照一致。
     if (url.pathname === "/") {
-      const content = await renderToFragment(() => <App />)
-      const html = `<!DOCTYPE html>
-<html lang="zh-CN">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>kiko SSR + 水合</title>
-  </head>
-  <body>
-    <div id="root">${content}</div>
-    <script type="module" src="/client.js"></script>
-  </body>
-</html>`
-      return new Response(html, {
-        headers: { "content-type": "text/html; charset=utf-8" },
+      return withSSRScope(async () => {
+        startSignalCapture()
+        const content = await renderToFragment(() => <App />)
+        const state = signalStateScript()
+        stopSignalCapture()
+        return new Response(pageHead() + content + pageTail(state), {
+          headers: { "content-type": "text/html; charset=utf-8" },
+        })
+      })
+    }
+
+    // 流式模式：同步骨架立即输出（低 TTFB），Suspend 的异步内容 resolve 后
+    // 按文档序补发。AbortSignal 透传给渲染器，客户端断开即停止渲染。
+    // 流式不嵌入信号状态：hydrateWithState() 找不到 kiko-state 脚本块时
+    // 自动按客户端初始值水合。
+    if (url.pathname === "/stream") {
+      return withSSRScope(() => {
+        const content = renderToStream(() => <App />, { signal: req.signal })
+        // 流式只能追加、无法回溯：骨架 head 立即 flush（低 TTFB），组件树流
+        // 接在其后，收尾补 tail。断开时 cancel 透传给渲染器停止渲染。
+        const shell = new ReadableStream<string>({
+          async start(controller) {
+            controller.enqueue(pageHead())
+            try {
+              const reader = content.getReader()
+              for (;;) {
+                const { done, value } = await reader.read()
+                if (done) break
+                controller.enqueue(value)
+              }
+              controller.enqueue(pageTail())
+              controller.close()
+            } catch (e) {
+              controller.error(e)
+            }
+          },
+          cancel(reason) {
+            content.cancel(reason)
+          },
+        })
+        return new Response(shell, {
+          headers: { "content-type": "text/html; charset=utf-8" },
+        })
       })
     }
 
@@ -46,3 +104,5 @@ Bun.serve({
 })
 
 console.log(`SSR demo running at http://localhost:${PORT}`)
+console.log("  /       字符串模式：全量渲染 + 信号状态嵌入（kiko-state）")
+console.log("  /stream 流式模式：同步骨架先发，Suspend 内容 resolve 后补发")

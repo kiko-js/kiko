@@ -15,6 +15,10 @@ export function App() {
     { id: 2, text: "水合后可增删" },
     { id: 3, text: "keyed For 就地更新" },
   ])
+  // 服务端生成的时间：字符串模式（/）随信号状态嵌入页面，hydrateWithState
+  // 恢复后显示的仍是服务端快照；流式模式（/stream）不嵌状态，水合后被客户端
+  // 初始值替换——两条路由的可见差异，演示状态序列化的作用。
+  const renderedAt = createSignal(new Date().toLocaleTimeString("zh-CN"))
   const doubled = computed(() => count.get() * 2)
 
   const addTodo = (): void => {
@@ -30,7 +34,10 @@ export function App() {
 
   return (
     <main>
-      <Style>{`
+      {/* global：scoped <Style> 需要回溯改写祖先 opening tag，流式模式下
+          opening tag 已 flush 无法回溯（会被省略并告警），示例页统一用全局样式 */}
+      <Style global>{`
+        body { font-family: system-ui, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem }
         h1 { color: #2563eb }
         .card { border: 1px solid #e5e7eb; border-radius: 8px; padding: 1rem; margin: 1rem 0 }
         button { padding: 0.4rem 0.8rem; margin-right: 0.4rem; cursor: pointer }
@@ -74,6 +81,17 @@ export function App() {
         <Suspend fallback={<p class="muted">加载中…</p>}>
           <ClockCard />
         </Suspend>
+      </section>
+
+      <section class="card">
+        <h2>信号状态序列化</h2>
+        <p>
+          服务端渲染时间：<strong>{renderedAt}</strong>
+        </p>
+        <p class="muted">
+          字符串路由嵌入了 kiko-state
+          快照，水合后仍显示服务端时间；流式路由不嵌状态，水合后变为客户端时间。
+        </p>
       </section>
     </main>
   )
