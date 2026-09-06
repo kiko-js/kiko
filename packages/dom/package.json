@@ -19,6 +19,10 @@
       "types": "./dist/server.d.ts",
       "default": "./dist/server.js"
     },
+    "./hmr": {
+      "types": "./dist/hmr.d.ts",
+      "default": "./dist/hmr.js"
+    },
     "./hydrate": {
       "types": "./dist/hydrate.d.ts",
       "default": "./dist/hydrate.js"

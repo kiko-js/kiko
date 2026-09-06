@@ -1,0 +1,35 @@
+{
+  "name": "@kikojs/bun",
+  "version": "0.0.1",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kiko-js/kiko.git"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "scripts": {
+    "build": "bun build.ts",
+    "test": "bun test",
+    "prepublishOnly": "bun run build && bun test",
+    "prepack": "bun run build"
+  },
+  "dependencies": {
+    "@kikojs/dom": "workspace:*",
+    "oxc-parser": "^0.148.0"
+  },
+  "engines": {
+    "bun": ">=1.2.4"
+  }
+}

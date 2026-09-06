@@ -31,8 +31,24 @@ export function isLazy(value: unknown): value is KikoLazy {
   )
 }
 
-/** 解包到非 Lazy 为止(组件体内部可能再产出 Lazy)。 */
+const realized = new WeakMap<KikoLazy, unknown>()
+
+/**
+ * 解包到非 Lazy 为止(组件体内部可能再产出 Lazy)。
+ *
+ * 结果按 Lazy 对象缓存:组件函数必须恰好执行一次,重复 realize(如 HMR 重渲染
+ * 复用 props.children 时)返回同一批节点,而不是把组件体跑第二遍产出重复 DOM。
+ */
 export function realizeLazy(value: unknown): unknown {
-  while (isLazy(value)) value = (value as KikoLazy).build()
+  while (isLazy(value)) {
+    const cached = realized.get(value)
+    if (cached !== undefined) {
+      value = cached
+      continue
+    }
+    const next = (value as KikoLazy).build()
+    realized.set(value, next)
+    value = next
+  }
   return value
 }

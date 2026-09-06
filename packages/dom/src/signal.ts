@@ -1,6 +1,6 @@
 import { Signal } from "signal-polyfill"
 import { trackSignal, nextRestoreValue, noteRestoreType } from "./signal-serialize"
-
+import { getHmrRegistry } from "./hmr-contract"
 /**
  * A watchable signal — either `Signal.State` (writable) or `Signal.Computed`
  * (read-only derived).  Both expose `.get()` and are accepted by
@@ -33,6 +33,10 @@ export function isSignal(value: unknown): value is WatchableSignal<unknown> {
 
 /** Convenience: create a `Signal.State<T>` (standard TC39 Signals interface). */
 export function createSignal<T>(initial: T): Signal.State<T> {
+  // HMR 热替换模式：实例/模块作用域内复用旧信号对象（身份与值保留）。
+  // 注册表缺失（生产、SSR、测试未安装）时是单次属性查找，零开销路径。
+  const hmr = getHmrRegistry()?.takeSignal(initial)
+  if (hmr) return hmr as Signal.State<T>
   // 恢复模式：用序列化值替代初始值（客户端水合前恢复服务端状态）
   const restored = nextRestoreValue()
   const value = restored !== undefined ? (restored as T) : initial

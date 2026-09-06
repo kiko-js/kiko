@@ -15,6 +15,7 @@ A fine-grained reactive DOM library built on [signal-polyfill](https://github.co
 - **Scoped CSS** — the `<style>` inline element is a scoped-style component, giving Vue-style scoped css without a template compiler.
 - **Control-flow components** — `Show` / `For` / `ErrorBoundary` / `Suspend` / `lazy`.
 - **React bridge** — `ReactPortal` embeds React components into kiko trees.
+- **HMR** — React Fast Refresh semantics: components hot-swap in place while component-internal and module-level signal state is preserved (`@kikojs/bun` plugin).
 
 ## Packages
 
@@ -23,6 +24,7 @@ A fine-grained reactive DOM library built on [signal-polyfill](https://github.co
 | `@kikojs/signal` | `@kikojs/signal`                                               | `createSignal` / `computed` / `effect` / `batch` / `untrack` / `on` / `createStore` / `createResource` / `createEmitter` |
 | `@kikojs/dom`    | `@kikojs/dom`, `@kikojs/dom/jsx-runtime`, `@kikojs/dom/server` | JSX factory, `render` / `hydrate`, control-flow components, `lazy`, `Style`, `createPortal`, SSR entry                   |
 | `@kikojs/router` | `@kikojs/router`                                               | `createRouter`, `Router` / `Link` / `Outlet` / `Navigate`, hooks, guards                                                 |
+| `@kikojs/bun`    | `@kikojs/bun`                                                  | HMR plugin for Bun's dev server (`bunfig.toml` `[serve.static]`), paired with the `@kikojs/dom/hmr` runtime              |
 
 `@kikojs/dom` does **not** depend on `@kikojs/signal` — it carries its own thin signal-polyfill wrapper to stay self-contained.
 
@@ -49,6 +51,17 @@ const dispose = render(<App />, document.getElementById("app")!)
 
 `{count}` drops a `Signal.State` straight into the children — kiko creates a watcher for that binding, so clicking updates only that text node.
 
+### Hot Module Replacement
+
+With Bun's full-stack dev server (`Bun.serve` + `development: { hmr: true }`), enable the plugin in `bunfig.toml`:
+
+```toml
+[serve.static]
+plugins = ["@kikojs/bun"]
+```
+
+The plugin rewrites top-level components into registry-backed wrappers and injects `import.meta.hot` glue (eliminated in production builds). Editing a component file re-runs it with the new implementation and swaps the DOM in place; component-internal signals restore their previous values by creation order and module-level signals reuse the previous signal objects — state survives. See `examples/hmr` (`bun run dev`) for a full demo.
+
 ## Examples
 
 | Example                 | Description                                           |
@@ -57,6 +70,7 @@ const dispose = render(<App />, document.getElementById("app")!)
 | `examples/htm`          | `dom` / `htm` tagged-template runtime (buildless JSX) |
 | `examples/react-portal` | ReactPortal bridge for React components               |
 | `examples/ssr`          | Full-stack Bun SSR + client hydration                 |
+| `examples/hmr`          | HMR demo (state preservation), `bun run dev`          |
 
 ## Documentation
 
