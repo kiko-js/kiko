@@ -1,6 +1,6 @@
 import { describe, it, expect } from "bun:test"
 import { parseSync } from "oxc-parser"
-import { transformForHmr } from "../src/transform"
+import { transformForHmr } from "../src/bun/transform"
 
 const RUNTIME = "@kikojs/dom/hmr"
 const MOD = "src/app.tsx"

@@ -9,7 +9,7 @@ await buildPackage({
     "src/hydrate.ts",
     "src/hmr.ts",
   ],
-  external: ["react", "react-dom", "signal-polyfill", "node:async_hooks"],
+  external: ["@kikojs/hmr", "react", "react-dom", "signal-polyfill", "node:async_hooks"],
   // Code-split so `@kikojs/dom` and `@kikojs/dom/jsx-runtime` share ONE core
   // chunk (single runtime instance — no duplicated delegation/watcher state).
   splitting: true,

@@ -3,13 +3,13 @@ import type { BunPlugin, OnLoadArgs } from "bun"
 import { transformForHmr } from "./transform"
 
 /**
- * `@kikojs/bun` — kiko 的 Bun HMR 插件（React Fast Refresh 语义）。
+ * `@kikojs/hmr/bun` — kiko 的 Bun HMR 插件（React Fast Refresh 语义）。
  *
  * bunfig.toml（Bun 全栈 dev server 的打包插件走 `[serve.static]`）：
  *
  * ```toml
  * [serve.static]
- * plugins = ["@kikojs/bun"]
+ * plugins = ["@kikojs/hmr/bun"]
  * ```
  *
  * 配合 `Bun.serve({ development: { hmr: true } })` 使用；`import.meta.hot`

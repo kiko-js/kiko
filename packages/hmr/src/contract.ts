@@ -3,7 +3,7 @@ import type { Signal } from "signal-polyfill"
 /**
  * HMR 运行时契约。插件注入的代码与 `createSignal`（任何一份 @kikojs/dom
  * 副本）都通过 `globalThis[KIKO_HMR]` 找到唯一的注册表实例——Symbol.for
- * 保证双包加载（测试里 src 与包名并存）时也指向同一个对象。
+ * 保证双包加载（测试里源码与包名并存）时也指向同一个对象。
  */
 export const KIKO_HMR: unique symbol = Symbol.for("kiko:hmr")
 

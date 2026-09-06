@@ -6,8 +6,8 @@
     "dev": "bun run server.ts"
   },
   "dependencies": {
-    "@kikojs/bun": "workspace:*",
     "@kikojs/dom": "workspace:*",
+    "@kikojs/hmr": "workspace:*",
     "@kikojs/signal": "workspace:*"
   }
 }

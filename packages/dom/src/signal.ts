@@ -1,6 +1,6 @@
 import { Signal } from "signal-polyfill"
 import { trackSignal, nextRestoreValue, noteRestoreType } from "./signal-serialize"
-import { getHmrRegistry } from "./hmr-contract"
+import { getHmrRegistry } from "@kikojs/hmr"
 /**
  * A watchable signal — either `Signal.State` (writable) or `Signal.Computed`
  * (read-only derived).  Both expose `.get()` and are accepted by

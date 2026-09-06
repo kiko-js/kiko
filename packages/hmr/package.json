@@ -1,5 +1,5 @@
 {
-  "name": "@kikojs/bun",
+  "name": "@kikojs/hmr",
   "version": "0.0.1",
   "repository": {
     "type": "git",
@@ -9,11 +9,17 @@
     "dist"
   ],
   "type": "module",
+  "sideEffects": false,
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
-    }
+    },
+    "./bun": {
+      "types": "./dist/bun/index.d.ts",
+      "default": "./dist/bun/index.js"
+    },
+    "./package.json": "./package.json"
   },
   "publishConfig": {
     "access": "public",
@@ -26,8 +32,11 @@
     "prepack": "bun run build"
   },
   "dependencies": {
-    "@kikojs/dom": "workspace:*",
-    "oxc-parser": "^0.148.0"
+    "oxc-parser": "^0.148.0",
+    "signal-polyfill": "^0.2.0"
+  },
+  "devDependencies": {
+    "@kikojs/dom": "workspace:*"
   },
   "engines": {
     "bun": ">=1.2.4"

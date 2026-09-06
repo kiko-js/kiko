@@ -37,8 +37,8 @@
     "examples/hmr": {
       "name": "hmr",
       "dependencies": {
-        "@kikojs/bun": "workspace:*",
         "@kikojs/dom": "workspace:*",
+        "@kikojs/hmr": "workspace:*",
         "@kikojs/signal": "workspace:*",
       },
     },
@@ -77,18 +77,11 @@
         "immer": "^11.1.15",
       },
     },
-    "packages/bun": {
-      "name": "@kikojs/bun",
-      "version": "0.0.1",
-      "dependencies": {
-        "@kikojs/dom": "workspace:*",
-        "oxc-parser": "^0.148.0",
-      },
-    },
     "packages/dom": {
       "name": "@kikojs/dom",
       "version": "0.2.0",
       "dependencies": {
+        "@kikojs/hmr": "workspace:*",
         "signal-polyfill": "^0.2.0",
       },
       "devDependencies": {
@@ -103,6 +96,17 @@
         "react",
         "react-dom",
       ],
+    },
+    "packages/hmr": {
+      "name": "@kikojs/hmr",
+      "version": "0.0.1",
+      "dependencies": {
+        "oxc-parser": "^0.148.0",
+        "signal-polyfill": "^0.2.0",
+      },
+      "devDependencies": {
+        "@kikojs/dom": "workspace:*",
+      },
     },
     "packages/router": {
       "name": "@kikojs/router",
@@ -214,9 +218,9 @@
 
     "@kikojs/benchmark": ["@kikojs/benchmark@workspace:packages/benchmark"],
 
-    "@kikojs/bun": ["@kikojs/bun@workspace:packages/bun"],
-
     "@kikojs/dom": ["@kikojs/dom@workspace:packages/dom"],
+
+    "@kikojs/hmr": ["@kikojs/hmr@workspace:packages/hmr"],
 
     "@kikojs/router": ["@kikojs/router@workspace:packages/router"],
 

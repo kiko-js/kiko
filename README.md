@@ -15,7 +15,7 @@
 - **作用域 CSS**——`<style>` 内联元素即作用域样式组件，Vue 风格 scoped css 而无需模板编译器。
 - **控制流组件**——`Show` / `For` / `ErrorBoundary` / `Suspend` / `lazy`。
 - **React 桥接**——`ReactPortal` 把 React 组件嵌进 kiko 树。
-- **HMR 热更新**——React Fast Refresh 语义：组件原位热替换，组件内部与模块级信号状态保留（`@kikojs/bun` 插件）。
+- **HMR 热更新**——React Fast Refresh 语义：组件原位热替换，组件内部与模块级信号状态保留（`@kikojs/hmr/bun` 插件）。
 
 ## 包
 
@@ -24,7 +24,7 @@
 | `@kikojs/signal` | `@kikojs/signal`                                               | `createSignal` / `computed` / `effect` / `batch` / `untrack` / `on` / `createStore` / `createResource` / `createEmitter` |
 | `@kikojs/dom`    | `@kikojs/dom`、`@kikojs/dom/jsx-runtime`、`@kikojs/dom/server` | JSX 工厂、`render` / `hydrate`、控制流组件、`lazy`、`Style`、`createPortal`、SSR 入口                                    |
 | `@kikojs/router` | `@kikojs/router`                                               | `createRouter`、`Router` / `Link` / `Outlet` / `Navigate`、hooks、守卫                                                   |
-| `@kikojs/bun`    | `@kikojs/bun`                                                  | Bun dev server 的 HMR 插件（`bunfig.toml` `[serve.static]`），配合 `@kikojs/dom/hmr` 运行时                              |
+| `@kikojs/hmr`    | `@kikojs/hmr`、`@kikojs/hmr/bun`                               | HMR 运行时 + Bun dev server 插件（`bunfig.toml` `[serve.static]`），`@kikojs/dom/hmr` 为 DOM 接线层                      |
 
 `@kikojs/dom` **不依赖** `@kikojs/signal`——它自带一份薄薄的 signal-polyfill 封装，保持自包含。
 
@@ -57,7 +57,7 @@ Bun 全栈 dev server（`Bun.serve` + `development: { hmr: true }`）下，在 `
 
 ```toml
 [serve.static]
-plugins = ["@kikojs/bun"]
+plugins = ["@kikojs/hmr/bun"]
 ```
 
 插件把顶层组件改写为注册表包装并注入 `import.meta.hot` 粘合代码（生产构建自动消除）。编辑组件文件：组件用新实现重跑、DOM 原位换入；组件内部信号按创建序恢复旧值，模块级信号直接复用旧信号对象——状态不丢。完整演示见 `examples/hmr`（`bun run dev`）。

@@ -5,7 +5,7 @@ import {
   cleanupWatchers,
   detachDelegationRoot,
 } from "./jsx-runtime"
-import { beginRenderScope, endRenderScope } from "./hmr"
+import { beginRenderScope, endRenderScope } from "@kikojs/hmr"
 
 export function render(rootNode: Node, container: Element): () => void {
   // HMR：物化前声明渲染容器，让实例认领只作用于同一容器内的旧实例

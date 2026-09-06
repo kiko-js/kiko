@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeAll } from "bun:test"
-import { installHmr } from "../src/hmr"
-import { getHmrRegistry } from "../src/hmr-contract"
-import { createSignal } from "../src/signal"
-import { render } from "../src/render"
-import { jsx } from "../src/jsx-runtime"
-import type { KikoHmrRegistry } from "../src/hmr-contract"
+// 接线后的运行时（`@kikojs/dom/hmr` 把 DOM 适配器注入 `@kikojs/hmr` 并安装）；
+// 刻意走包名导入，覆盖发布后的真实解析路径（dist 接线 + 单例共享）。
+import { installHmr } from "@kikojs/dom/hmr"
+import { getHmrRegistry, type KikoHmrRegistry } from "@kikojs/hmr"
+import { createSignal } from "@kikojs/dom"
+import { render } from "@kikojs/dom"
+import { jsx } from "@kikojs/dom/jsx-runtime"
 
 beforeAll(async () => {
   await import("./setup")

@@ -1,2 +1,2 @@
 [serve.static]
-plugins = ["@kikojs/bun"]
+plugins = ["@kikojs/hmr/bun"]
