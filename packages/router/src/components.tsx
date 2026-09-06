@@ -423,12 +423,26 @@ function attachOutletLoop(
       pushFrame({ router, depth: depth + 1 })
       try {
         const node = snap.component(routeProps)
+        if (
+          node !== null &&
+          (typeof node === "object" || typeof node === "function") &&
+          typeof (node as unknown as { then?: unknown }).then === "function"
+        ) {
+          throw new Error(
+            `[kiko router] async route component for "${snap.key}" returned a Promise — ` +
+              `wrap it in <Suspend> or make it synchronous`,
+          )
+        }
         next.push(node)
       } finally {
         popFrame()
       }
     } catch (err) {
-      reportError(err)
+      // 带上路由 path：裸 reportError 在多路由应用里无法定位是哪个组件挂的。
+      // 原错误挂 cause 保留堆栈，页面仍以空文本占位避免整树崩坏。
+      const wrapped = new Error(`[kiko router] component for route "${snap.key}" failed to render`)
+      ;(wrapped as { cause?: unknown }).cause = err
+      reportError(wrapped)
       next.push(document.createTextNode(""))
     }
     currentNodes = swapNodes(marker, currentNodes, next)

@@ -2,7 +2,7 @@ import { SCOPE_MARKER_PREFIX, SCOPE_MARKER_SUFFIX } from "./markers"
 import { isSignal } from "./signal"
 import type { WatchableSignal } from "./signal"
 import { createScopeAttr, rewriteScopedCss } from "./style"
-import { extractCssText, isPromiseLike } from "./shared"
+import { extractCssText, isPromiseLike, normalizeAttrKey } from "./shared"
 import {
   SSRElement,
   camelToKebab,
@@ -158,6 +158,7 @@ export function guardRawText(text: string, tag: string): string {
 const ATTR_NAME_PATTERN = /^[a-zA-Z_:@][a-zA-Z0-9_:.-]*$/
 
 function serializeAttr(key: string, value: unknown): string {
+  key = normalizeAttrKey(key)
   if (value == null || value === false) return ""
   if (!ATTR_NAME_PATTERN.test(key)) {
     console.warn(`[kiko ssr] dropped invalid attribute name ${JSON.stringify(key)}`)

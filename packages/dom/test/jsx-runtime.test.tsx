@@ -180,6 +180,15 @@ describe("jsx", () => {
     const el = jsx("div", { className: "foo" }) as HTMLElement
     expect(el.getAttribute("class")).toBe("foo")
   })
+  it("normalizes React-style camelCase attrs with lowercase IDL (autoFocus/htmlFor)", () => {
+    // `autoFocus` must not become a bogus `auto-focus` attribute (browsers ignore it).
+    const input = jsx("input", { autoFocus: true }) as HTMLInputElement
+    expect(input.hasAttribute("autofocus")).toBe(true)
+    expect(input.hasAttribute("auto-focus")).toBe(false)
+    const label = jsx("label", { htmlFor: "name" }) as HTMLLabelElement
+    expect(label.getAttribute("for")).toBe("name")
+    expect(label.hasAttribute("html-for")).toBe(false)
+  })
 
   it("applies style object via CSSStyleDeclaration", () => {
     const el = jsx("div", { style: { color: "red", "font-weight": "bold" } }) as HTMLElement

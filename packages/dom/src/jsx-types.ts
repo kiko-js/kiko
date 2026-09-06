@@ -40,6 +40,7 @@ export interface DOMEventHandlers {
   onChange?: MaybeSignal<(event: Event) => void>
   onFocus?: MaybeSignal<(event: FocusEvent) => void>
   onBlur?: MaybeSignal<(event: FocusEvent) => void>
+  /** 表单提交：kiko 不自动 preventDefault。如需 SPA 内处理，首行手写 `e.preventDefault()`，否则浏览器原生提交并跳页。 */
   onSubmit?: MaybeSignal<(event: SubmitEvent) => void>
   onReset?: MaybeSignal<(event: Event) => void>
   onScroll?: MaybeSignal<(event: Event) => void>
@@ -96,6 +97,8 @@ export interface HTMLAttributes<T extends HTMLElement> {
   spellcheck?: MaybeSignal<boolean>
   contentEditable?: MaybeSignal<boolean | "true" | "false">
   dataset?: MaybeSignal<Record<string, string>>
+  /** `<label for>` 的 JSX 写法（`for` 是保留字）；运行时归一化为 `for` 属性。 */
+  htmlFor?: MaybeSignal<string>
   [data: `data-${string}`]: unknown
   [aria: `aria-${string}`]: unknown
 }
@@ -118,6 +121,8 @@ export interface FormProps extends HTMLProps<HTMLInputElement> {
   multiple?: MaybeSignal<boolean>
   min?: MaybeSignal<number | string>
   max?: MaybeSignal<number | string>
+  minLength?: MaybeSignal<number>
+  maxLength?: MaybeSignal<number>
   step?: MaybeSignal<number | string>
   pattern?: MaybeSignal<string>
   autocomplete?: MaybeSignal<string>

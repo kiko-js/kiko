@@ -125,6 +125,77 @@ describe("Router components", () => {
     cleanupWatchers(tree)
   })
 
+  it("Outlet reports a throwing route component with its path (not a silent blank)", () => {
+    const reports: unknown[] = []
+    const prev = (globalThis as { reportError?: unknown }).reportError
+    ;(globalThis as { reportError?: unknown }).reportError = (err: unknown) => {
+      reports.push(err)
+    }
+    try {
+      window.history.replaceState(null, "", "/boom")
+      const router = createRouter({
+        mode: "path",
+        routes: [
+          {
+            path: "/boom",
+            component: () => {
+              throw new Error("page bug")
+            },
+          },
+        ],
+      })
+      const tree = realize(
+        <Router router={router}>
+          <Outlet />
+        </Router>,
+      ) as DocumentFragment
+      // 渲染失败占位空文本、不抛到调用方，但必须上报带路由 path 的错误。
+      expect(tree.textContent).toBe("")
+      expect(reports.length).toBe(1)
+      const err = reports[0] as Error
+      expect(String(err.message)).toContain("/boom")
+      expect((err as { cause?: unknown }).cause).toMatchObject({ message: "page bug" })
+      cleanupWatchers(tree)
+      router.dispose()
+    } finally {
+      ;(globalThis as { reportError?: unknown }).reportError = prev
+    }
+  })
+  it("Outlet rejects an async route component with a Suspend hint", () => {
+    const reports: unknown[] = []
+    const prev = (globalThis as { reportError?: unknown }).reportError
+    ;(globalThis as { reportError?: unknown }).reportError = (err: unknown) => {
+      reports.push(err)
+    }
+    try {
+      window.history.replaceState(null, "", "/slow")
+      const router = createRouter({
+        mode: "path",
+        routes: [
+          {
+            path: "/slow",
+            component: (() =>
+              Promise.resolve(
+                jsx("div", { children: "slow" }),
+              )) as unknown as RouteRecord["component"],
+          },
+        ],
+      })
+      const tree = realize(
+        <Router router={router}>
+          <Outlet />
+        </Router>,
+      ) as DocumentFragment
+      expect(tree.textContent).toBe("")
+      expect(reports.length).toBe(1)
+      const wrapped = reports[0] as Error
+      expect(String(wrapped.message)).toContain("/slow")
+      expect(String((wrapped as { cause?: unknown }).cause)).toContain("Suspend")
+    } finally {
+      ;(globalThis as { reportError?: unknown }).reportError = prev
+    }
+  })
+
   it("Outlet renders nothing (does not throw) when no router is available", () => {
     // Router 渲染范围外创建的 Outlet 捕获不到 router：渲染空，不抛错。
     // （该形态只出现在手工构造，JSX 组合下组件总在 Router 帧内创建。）

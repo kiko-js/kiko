@@ -3,6 +3,7 @@ import { describe, it, expect, beforeAll } from "bun:test"
 import { jsx, Fragment, type Component, type JSX } from "../src/jsx-runtime"
 import { realizeLazy as realize } from "../src/lazy-node"
 import { createSignal } from "../src/signal"
+import { Show } from "../src/flow"
 
 beforeAll(async () => {
   await import("./setup")
@@ -70,5 +71,15 @@ describe("JSX types", () => {
     const count = createSignal(0)
     const el = jsx("span", { children: count }) as HTMLElement
     expect(el.textContent).toBe("0")
+  })
+
+  it("infers Show children param from a signal `when` (no annotation needed)", () => {
+    interface SessionUser {
+      name: string
+    }
+    const user = createSignal<SessionUser | null>({ name: "Ada" })
+    // `u` must infer as SessionUser: an implicit-any here fails typecheck (TS7006).
+    const frag = Show({ when: user, children: u => jsx("span", { children: u.name }) })
+    expect(frag.textContent).toBe("Ada")
   })
 })

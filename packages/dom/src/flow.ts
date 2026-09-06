@@ -45,6 +45,20 @@ type MaybeSignal<T> = T | WatchableSignal<T>
 export function Show<T>(props: {
   when: MaybeSignal<T | false | null | undefined>
   fallback?: unknown
+  children: (item: NoInfer<T>) => unknown
+}): DocumentFragment
+export function Show<T>(props: {
+  when: MaybeSignal<T | false | null | undefined>
+  fallback?: unknown
+  children: unknown
+}): DocumentFragment
+// Implementation signature is loose on the children arg type; the two public
+// overloads above keep function-children out of a `unknown` union so the
+// call-site arrow param gets contextual typing and `T` infers from `when`
+// (mirrors the `For` overloads below).
+export function Show<T>(props: {
+  when: MaybeSignal<T | false | null | undefined>
+  fallback?: unknown
   children: unknown | ((item: T) => unknown)
 }): DocumentFragment {
   if (isHydrating()) {

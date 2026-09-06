@@ -52,6 +52,13 @@ Bun.serve({
     // 字符串模式：全量渲染后返回。渲染期间 createSignal 被按创建顺序捕获，
     // signalStateScript() 生成 <script id="kiko-state" type="application/json">
     // 状态块；客户端 hydrateWithState() 恢复后初始值与服务端快照一致。
+    // 请求态（cookie / 登录）recipe：渲染器本身是匿名的，拿不到 cookie——
+    // 在 withSSRScope 内先读 req.headers，以 props 传进组件树；渲染期间创建的
+    // createSignal(会话派生初值) 会被信号捕获一并序列化，客户端水合后首帧即
+    // 登录态、无闪烁。请求相关状态不要放模块级 signal（跨请求污染，且创建于
+    // 捕获窗口之外、不会被序列化）。如：
+    //   const session = parseSession(req.headers.get("cookie"))
+    //   const content = await renderToFragment(() => <App session={session} />)
     if (url.pathname === "/") {
       return withSSRScope(async () => {
         startSignalCapture()

@@ -47,7 +47,7 @@
   "scripts": {
     "build": "bun build.ts",
     "demo": "bun run examples/demo.tsx",
-    "prepublishOnly": "bun run build && bun test",
+    "prepublishOnly": "bun ../../scripts/check-publish.ts && bun run build && bun test",
     "prepack": "bun run build"
   },
   "dependencies": {

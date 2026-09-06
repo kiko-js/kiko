@@ -21,6 +21,21 @@ export function isTruthy(cond: unknown): boolean {
 export function unwrap<T>(value: T | WatchableSignal<T>): T {
   return isSignal(value) ? (value as WatchableSignal<T>).get() : (value as T)
 }
+/**
+ * React 风格的 camelCase prop 名 → HTML 属性名。只收录「写错即静默失效」的项：
+ * 对应的 IDL 属性/HTML 属性是全小写的，`key in el` 查不到、kebab 转换又产出
+ * 废属性名（如 `autoFocus` → `auto-focus`，浏览器直接忽略）。
+ * 客户端 `applyProp` 与 SSR `serializeAttr` 共用，保证两端输出一致。
+ */
+const ATTR_ALIASES: Record<string, string> = {
+  autoFocus: "autofocus",
+  htmlFor: "for",
+}
+
+/** 规范化 prop 名：别名表命中则替换，否则原样返回。 */
+export function normalizeAttrKey(key: string): string {
+  return ATTR_ALIASES[key] ?? key
+}
 
 /**
  * For 无 getKey 时的默认 key:item 本身(Map 按 SameValueZero——对象/函数

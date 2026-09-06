@@ -10,7 +10,7 @@ import {
   adoptSheet,
   unadoptSheet,
 } from "./style"
-import { extractCssText, isPromiseLike } from "./shared"
+import { extractCssText, isPromiseLike, normalizeAttrKey } from "./shared"
 import { SCOPE_ANCHOR_PREFIX, STYLE_ANCHOR_TEXT } from "./markers"
 import { getSSRRuntime } from "./ssr-mode"
 import {
@@ -468,6 +468,7 @@ function applyStyle(el: StyledElement, value: unknown): void {
 
 // Apply a concrete (non-signal) value for one prop key.
 function applyProp(el: StyledElement, key: string, value: unknown): void {
+  key = normalizeAttrKey(key)
   if (key === "style") {
     applyStyle(el, value)
     return

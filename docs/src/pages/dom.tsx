@@ -638,6 +638,13 @@ render(<Card ref={node => console.log(node)} />, container)`}
             <strong>并发安全：</strong>SSR 运行时在服务端 bundle 中永久生效、无开关翻转，
             多个并发渲染天然互不干扰。
           </li>
+          <li>
+            <strong>请求态（cookie / 登录）：</strong>渲染器是匿名的——在 <code>withSSRScope</code>{" "}
+            内先读 <code>req.headers</code>（cookie / token）， 以 props 或 context
+            传进组件树；渲染期间创建的 <code>createSignal(会话派生初值)</code>{" "}
+            会被信号捕获一并序列化，客户端水合后首帧即登录态、无闪烁。请求相关状态不要放模块级
+            signal（跨请求污染，且创建于捕获窗口之外、不会被序列化）。
+          </li>
         </ul>
         <CodeBlock src="./assets/snippets/dom-ssr.tsx" lang="tsx" />
 
