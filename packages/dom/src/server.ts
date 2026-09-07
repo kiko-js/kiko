@@ -17,6 +17,8 @@ export { withSSRScope } from "./ssr-scope"
 
 export { renderToFragment } from "./ssr"
 export { renderToStream } from "./ssr-stream"
+export { renderToPage } from "./ssr-page"
+export type { RenderedPage } from "./ssr-page"
 export {
   startSignalCapture,
   stopSignalCapture,

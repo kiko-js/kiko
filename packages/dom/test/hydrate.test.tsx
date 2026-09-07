@@ -6,7 +6,7 @@ import { Show, For, ErrorBoundary, Suspend } from "../src/flow"
 import { lazy } from "../src/lazy"
 import { renderToFragment, ssrRuntime } from "../src/ssr"
 import { setSSRRuntime } from "../src/ssr-mode"
-import { hydrate, hydrateWithState } from "../src/hydrate"
+import { hydrate } from "../src/hydrate"
 import { createSignal } from "../src/signal"
 import type { Component } from "../src/jsx-runtime"
 
@@ -291,20 +291,28 @@ describe("hydrate", () => {
     expect(msg).toContain("at node")
   })
 
-  it("warns when the container embeds signal state but hydrate() is used", async () => {
+  it("restores embedded signal state with bare hydrate() (no separate API)", async () => {
     const container = document.createElement("div")
     container.innerHTML =
-      '<div><!---->42</div><script id="kiko-state" type="application/json">[42]</script>'
+      '<div><!---->42</div><script id="kiko-state" type="application/json">{"v":1,"s":[42]}</script>'
     const errors: string[] = []
     const orig = console.error
     console.error = (m: unknown) => errors.push(String(m))
+    const holder: { current: Signal.State<number> | null } = { current: null }
     try {
-      const dispose = hydrate(() => jsx("div", { children: createSignal(0) }), container)
+      const dispose = hydrate(() => {
+        const client = createSignal(0)
+        holder.current = client
+        return jsx("div", { children: client })
+      }, container)
+      expect(holder.current?.get()).toBe(42)
+      // 状态脚本留在容器内（真实页面结构）：只断言水合的 div 内容
+      expect(container.querySelector("div")?.textContent).toBe("42")
       dispose()
     } finally {
       console.error = orig
     }
-    expect(errors.join("\n")).toContain("use hydrateWithState")
+    expect(errors.join("\n")).not.toContain("signal state")
   })
 
   it("hydrates keyed For passing item accessors", async () => {
@@ -752,7 +760,7 @@ describe("水合边界", () => {
   })
 })
 
-describe("hydrateWithState — 信号状态恢复", () => {
+describe("hydrate — 信号状态恢复", () => {
   it("从序列化状态恢复信号初始值后水合", async () => {
     const container = document.createElement("div")
     // 服务端渲染时信号值为 42
@@ -764,14 +772,14 @@ describe("hydrateWithState — 信号状态恢复", () => {
 
     // 客户端：信号在组件内创建，初始值 0；通过状态恢复应为 42
     const holder: { current: Signal.State<number> | null } = { current: null }
-    const dispose = hydrateWithState(
+    const dispose = hydrate(
       () => {
         const client = createSignal(0)
         holder.current = client
         return jsx("div", { children: client })
       },
       container,
-      { v: 1, s: [42] },
+      { state: { v: 1, s: [42] } },
     )
     expect(holder.current?.get()).toBe(42)
     expect(container.textContent).toBe("42")
@@ -795,7 +803,7 @@ describe("hydrateWithState — 信号状态恢复", () => {
     document.body.appendChild(script)
 
     const holder: { current: Signal.State<number> | null } = { current: null }
-    const dispose = hydrateWithState(() => {
+    const dispose = hydrate(() => {
       const client = createSignal(0)
       holder.current = client
       return jsx("div", { children: client })
@@ -812,9 +820,8 @@ describe("hydrateWithState — 信号状态恢复", () => {
     const errors: string[] = []
     const orig = console.error
     console.error = (m: unknown) => errors.push(String(m))
-    const dispose = hydrateWithState(() => jsx("div", { children: "static" }), container, {
-      v: 1,
-      s: [1, 2],
+    const dispose = hydrate(() => jsx("div", { children: "static" }), container, {
+      state: { v: 1, s: [1, 2] },
     })
     console.error = orig
     expect(errors.some(e => e.includes("signal state mismatch"))).toBe(true)
@@ -828,14 +835,14 @@ describe("hydrateWithState — 信号状态恢复", () => {
     const errors: string[] = []
     const orig = console.error
     console.error = (m: unknown) => errors.push(String(m))
-    const dispose = hydrateWithState(
+    const dispose = hydrate(
       () => {
         createSignal(0)
         createSignal(0)
         return jsx("div", { children: "static" })
       },
       container,
-      { v: 1, s: [1] },
+      { state: { v: 1, s: [1] } },
     )
     console.error = orig
     expect(errors.some(e => e.includes("server serialized 1 signals, client created 2"))).toBe(true)
@@ -850,9 +857,8 @@ describe("hydrateWithState — 信号状态恢复", () => {
     const errors: string[] = []
     const orig = console.error
     console.error = (m: unknown) => errors.push(String(m))
-    const dispose = hydrateWithState(() => jsx("div", { children: createSignal(0) }), container, {
-      v: 1,
-      s: [9],
+    const dispose = hydrate(() => jsx("div", { children: createSignal(0) }), container, {
+      state: { v: 1, s: [9] },
     })
     console.error = orig
     expect(container.textContent).toBe("9")

@@ -12,7 +12,7 @@ kiko 的 SSR 信号恢复是**位置化 + 同步窗口**：
 
 - 服务端在**一个同步渲染栈 + await 整体**后 `serializeSignals()`，快照含 async 子树
   （`<Suspend>` 内 lazy / async 组件）awaited 之后创建的信号，按其文档序 ID 排列。
-- 客户端 `hydrateWithState()` 是**单同步栈**：`hydrate()` 返回时（`finally` 里）
+- 客户端 `hydrate()` 是**单同步栈**：`hydrate()` 返回时（`finally` 里）
   `stopSignalRestore()` 立即关闭恢复窗口。
 
 于是出现不对称：

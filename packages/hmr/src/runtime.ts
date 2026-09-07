@@ -42,7 +42,7 @@ let adapters: HmrDomAdapters | null = null
 function dom(): HmrDomAdapters {
   if (!adapters) {
     throw new Error(
-      "[kiko hmr] 运行时尚未注入 DOM 适配器——请先导入宿主接线层（如 `@kikojs/dom/hmr`）",
+      "[kiko hmr] DOM adapters not installed — import the host wiring layer (e.g. `@kikojs/dom/hmr`) before using HMR",
     )
   }
   return adapters

@@ -209,29 +209,36 @@ export function ErrorBoundary(props: {
   onError?: (error: unknown) => void
   resetSignal?: Signal.State<unknown>
   errorSignal?: Signal.State<unknown>
-  children: () => unknown
+  children: unknown
 }): DocumentFragment
 export function ErrorBoundary(props: {
   fallback?: unknown
   onError?: (error: unknown) => void
   resetSignal?: Signal.State<unknown>
   errorSignal?: Signal.State<unknown>
-  children: () => unknown
+  children: unknown
 }): DocumentFragment
 export function ErrorBoundary(props: {
   fallback?: unknown
   onError?: (error: unknown) => void
   resetSignal?: Signal.State<unknown>
   errorSignal?: Signal.State<unknown>
-  children: () => unknown
+  children: unknown
 }): DocumentFragment {
+  // 裸 children（已求值的 JSX / 节点）直接包成 thunk 渲染；注意 JSX 是急切
+  // 求值的——裸形态下组件体在 boundary 创建前就已执行，初始挂载的 throw
+  // 捕获不到；要捕获初始错误仍用 thunk 形态 `children={() => <App />}`。
+  const thunk =
+    typeof props.children === "function" ? (props.children as () => unknown) : () => props.children
+  const normalized = { ...props, children: thunk }
   if (isHydrating()) {
     return hydrateErrorBoundary(
-      props as unknown as Parameters<typeof hydrateErrorBoundary>[0],
+      normalized as unknown as Parameters<typeof hydrateErrorBoundary>[0],
     ) as unknown as DocumentFragment
   }
   const ssr = getSSRRuntime()
-  if (ssr) return ssr.errorBoundary(props as Record<string, unknown>) as unknown as DocumentFragment
+  if (ssr)
+    return ssr.errorBoundary(normalized as Record<string, unknown>) as unknown as DocumentFragment
   const frag = document.createDocumentFragment()
   const marker = document.createComment(ERROR_BOUNDARY_MARKER)
   frag.appendChild(marker)
@@ -250,7 +257,7 @@ export function ErrorBoundary(props: {
   // `reset.set()` invalidate the computed even when nothing else changed.
   const childrenComputed = new Signal.Computed<unknown>(() => {
     reset.get()
-    return props.children()
+    return thunk()
   })
 
   // 静态 fallback 缓存复用;函数 fallback 每次按错误重建,换出时完整清理

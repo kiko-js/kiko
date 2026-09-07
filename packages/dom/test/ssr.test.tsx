@@ -380,3 +380,16 @@ describe("RAW TEXT 元素的 SSR", () => {
     expect(html).toBe('<noscript><iframe src="x">plain</iframe></noscript>')
   })
 })
+
+describe("renderToPage — 单调用 SSR", () => {
+  it("renders html and an embeddable state script in one call", async () => {
+    const { renderToPage } = await import("../src/ssr-page")
+    const { html, stateScript } = await renderToPage(() =>
+      jsx("div", { children: createSignal("hi") }),
+    )
+    expect(html).toBe("<div><!---->hi</div>")
+    expect(stateScript).toBe(
+      `<script id="kiko-state" type="application/json">{"v":1,"s":["hi"]}</script>`,
+    )
+  })
+})

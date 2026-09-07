@@ -27,6 +27,13 @@ describe("ErrorBoundary", () => {
     expect(el.textContent).toBe("ok")
   })
 
+  it("accepts already-evaluated (non-thunk) children and renders them", () => {
+    const el = jsx("div", {
+      children: ErrorBoundary({ children: jsx("span", { children: "bare" }) }),
+    }) as HTMLElement
+    expect(el.textContent).toBe("bare")
+  })
+
   it("catches initial render error and swaps to fallback", () => {
     const el = jsx("div", {
       children: ErrorBoundary({

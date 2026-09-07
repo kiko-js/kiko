@@ -15,7 +15,7 @@ export function App() {
     { id: 2, text: "水合后可增删" },
     { id: 3, text: "keyed For 就地更新" },
   ])
-  // 服务端生成的时间：字符串模式（/）随信号状态嵌入页面，hydrateWithState
+  // 服务端生成的时间：字符串模式（/）随信号状态嵌入页面，hydrate
   // 恢复后显示的仍是服务端快照；流式模式（/stream）不嵌状态，水合后被客户端
   // 初始值替换——两条路由的可见差异，演示状态序列化的作用。
   const renderedAt = createSignal(new Date().toLocaleTimeString("zh-CN"))

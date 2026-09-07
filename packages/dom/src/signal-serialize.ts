@@ -137,7 +137,7 @@ function slot(): SerializeSlot {
  *
  * encode/decode 必须对称，两端共享同一份实现；库对位置数组逐值应用（未处理
  * 的值应原样返回）。注册后所有入口自动生效：服务端 `serializeSignals()` /
- * `signalStateScript()`，客户端 `restoreSignals()` / `hydrateWithState()`。
+ * `signalStateScript()`，客户端 `restoreSignals()` / `hydrate()`。
  */
 export interface SignalStateCodec {
   encode?: (value: unknown) => unknown
@@ -294,7 +294,7 @@ function isLosslessJson(value: unknown, seen: Set<object>, label: string): boole
   return lossless
 }
 
-/** 把序列化状态包成可直接嵌入页面的水合状态脚本块（配合 `hydrateWithState()`）。 */
+/** 把序列化状态包成可直接嵌入页面的水合状态脚本块（`hydrate()` 自动恢复）。 */
 export function signalStateScript(): string {
   return `<script id="kiko-state" type="application/json">${serializeSignals()}</script>`
 }

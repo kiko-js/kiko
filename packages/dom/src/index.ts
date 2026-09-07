@@ -15,7 +15,8 @@ export {
   type StyleProps,
 } from "./jsx-runtime"
 export { render } from "./render"
-export { hydrate, hydrateWithState, isHydrating } from "./hydrate"
+export { hydrate, isHydrating } from "./hydrate"
+export type { HydrateOptions } from "./hydrate"
 export { createPortal } from "./portal"
 export { Show, For, ErrorBoundary, Suspend } from "./flow"
 export { lazy } from "./lazy"

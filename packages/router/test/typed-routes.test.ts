@@ -2,6 +2,8 @@ import { describe, it, expect } from "bun:test"
 import type { RouteComponentProps } from "../src/index"
 import {
   defineRoutes,
+  useIsActive,
+  useMatch,
   type NavPath,
   type PathParams,
   type RoutePaths,
@@ -53,6 +55,11 @@ describe("typed route paths", () => {
   it("NavPath degrades to string without module augmentation", () => {
     const target: NavPath = "/anything/at/all"
     expect(target).toBe("/anything/at/all")
+  })
+
+  it("re-exports useIsActive and useMatch from the barrel", () => {
+    expect(typeof useIsActive).toBe("function")
+    expect(typeof useMatch).toBe("function")
   })
 })
 

@@ -2,7 +2,7 @@ import { Signal } from "signal-polyfill"
 import { KikoLazy, isLazy, realizeLazy } from "./lazy-node"
 import { createWatcher, isSignal, reportError, watchSignal } from "./signal"
 import type { WatchableSignal } from "./signal"
-import { isRestoring, restoreSignals, stopSignalRestore } from "./signal-serialize"
+import { restoreSignals, stopSignalRestore } from "./signal-serialize"
 import type { SerializedSignalState } from "./signal-serialize"
 import {
   attachDelegationRoot,
@@ -663,40 +663,19 @@ export function hydrateSuspend(props: { fallback?: unknown; children: unknown })
   })
 }
 
-/**
- * 水合：把 `root()` 组件树对齐到 `container` 内由 SSR 产出的现有 DOM，
- * 挂上事件监听与信号绑定。返回 `dispose()` 用于卸载与清理。
- *
- * 假设：客户端初始状态与 SSR 一致（信号快照、分支选择、列表内容）。
- */
-/**
- * 带状态恢复的水合：从容器内的 `<script id="kiko-state" type="application/json">`
- * 读取服务端序列化的信号状态，恢复后水合，使客户端信号初始值与服务端快照一致。
- *
- * 服务端配合：`startSignalCapture()` → `renderToFragment()` →
- * `signalStateScript()`（输出 `{"v":1,"s":[...]}` envelope，`<` 已转义防
- * `</script>` 破防）。也可直接传 `state` 参数（JSON 字符串 / envelope 对象），
- * 此时不依赖脚本标签。
- */
-export function hydrateWithState(
-  root: () => unknown,
-  container: Element,
-  state?: string | SerializedSignalState,
-): () => void {
-  if (state) {
-    restoreSignals(state)
-  } else {
-    // 优先在容器内查找，否则在文档中查找（脚本可能在容器外）
-    const script =
-      container.querySelector('script[id="kiko-state"]') ??
-      (typeof document !== "undefined" ? document.querySelector('script[id="kiko-state"]') : null)
-    if (script?.textContent) restoreSignals(script.textContent)
-  }
-  try {
-    return hydrate(root, container)
-  } finally {
-    stopSignalRestore()
-  }
+/** `hydrate()` 的选项。 */
+export interface HydrateOptions {
+  /**
+   * 错位(游标耗尽/tag 不匹配/残留节点)从 console.error 升级为 throw——
+   * 测试与 CI 用，正常路径零成本。
+   */
+  strict?: boolean
+  /**
+   * 服务端序列化的信号状态（JSON 字符串 / envelope 对象）。
+   * 不传时自动查找容器内（或文档中）的 `<script id="kiko-state">` 并恢复；
+   * 找不到则按客户端初始值水合。
+   */
+  state?: string | SerializedSignalState
 }
 
 /**
@@ -704,22 +683,21 @@ export function hydrateWithState(
  * 挂上事件监听与信号绑定。返回 `dispose()` 用于卸载与清理。
  *
  * 假设：客户端初始状态与 SSR 一致（信号快照、分支选择、列表内容）。
- * 若服务端嵌入了信号状态，请用 `hydrateWithState()` 替代。
- *
- * `options.strict`:错位(游标耗尽/tag 不匹配/残留节点)从 console.error
- * 升级为 throw——测试与 CI 用,正常路径零成本。
+ * 服务端嵌入了信号状态（`renderToPage` 默认嵌入）时自动恢复，无需额外调用。
  */
 export function hydrate(
   root: () => unknown,
   container: Element,
-  options?: { strict?: boolean },
+  options?: HydrateOptions,
 ): () => void {
-  // 容器嵌入了序列化信号状态但走了裸 hydrate():信号全按客户端初始值,
-  // 服务端状态被静默丢弃——几乎总是误用
-  if (container.querySelector('script[id="kiko-state"]')?.textContent && !isRestoring()) {
-    console.error(
-      "[kiko hydrate] container embeds serialized signal state but hydrate() was called — use hydrateWithState() to restore it",
-    )
+  if (options?.state) {
+    restoreSignals(options.state)
+  } else {
+    // 优先在容器内查找，否则在文档中查找（脚本可能在容器外）
+    const script =
+      container.querySelector('script[id="kiko-state"]') ??
+      (typeof document !== "undefined" ? document.querySelector('script[id="kiko-state"]') : null)
+    if (script?.textContent) restoreSignals(script.textContent)
   }
   const prevStrict = strictMode
   strictMode = options?.strict === true
@@ -743,6 +721,7 @@ export function hydrate(
   } finally {
     endHydrate()
     strictMode = prevStrict
+    stopSignalRestore()
   }
   attachDelegationRoot(container)
   return () => {

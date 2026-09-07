@@ -8,6 +8,8 @@ export {
   useRoute,
   tryUseRouter,
   useNavigate,
+  useIsActive,
+  useMatch,
   setActiveRouter,
   type ReactiveSnapshot,
 } from "./hooks"

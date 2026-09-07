@@ -1,7 +1,7 @@
 /** @jsxImportSource @kikojs/dom */
 import { createSignal, For, Show, Suspend, lazy } from "@kikojs/dom"
 import { computed } from "@kikojs/signal"
-import { renderToFragment } from "@kikojs/dom/server"
+import { renderToPage } from "@kikojs/dom/server"
 
 const count = createSignal(3)
 // Show 的 when 为信号时订阅更新；SSR 取快照，hydrate 后按同一信号响应
@@ -11,8 +11,9 @@ const visible = computed(() => count.get() > 0)
 const Card = lazy(() => Promise.resolve(() => <div class="card">card</div>))
 
 async function render(): Promise<void> {
-  // 片段：任意子树，不带 doctype。信号取当前快照，Suspend 会等待 promise 后再输出
-  const fragment = await renderToFragment(() => (
+  // 整页一句话：渲染 HTML + 信号状态脚本块（直接拼进骨架）。
+  // renderToFragment 是底层原语（任意子树、不带状态），只需要片段时用它。
+  const { html, stateScript } = await renderToPage(() => (
     <main>
       <p>{count}</p>
       <Show when={visible} fallback="empty">
@@ -24,7 +25,5 @@ async function render(): Promise<void> {
     </main>
   ))
 
-  // 完整页面由服务端组装骨架（html/head/body + 水合脚本注入），
-  // 组件树统一用 renderToFragment 渲染进骨架。
-  console.log(fragment)
+  console.log(html, stateScript)
 }

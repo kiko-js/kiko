@@ -599,6 +599,17 @@ render(<Card ref={node => console.log(node)} />, container)`}
               </td>
               <td>片段 HTML：任意子树，不带 doctype。</td>
             </tr>
+            <tr>
+              <td>
+                <code>
+                  renderToPage(() =&gt; …): Promise&lt;&#123; html, stateScript &#125;&gt;
+                </code>
+              </td>
+              <td>
+                整页一句话：作用域 + 信号捕获 + 渲染 + 状态脚本块全包。默认走这个， 只需要片段时才用{" "}
+                <code>renderToFragment</code>。
+              </td>
+            </tr>
           </tbody>
         </table>
         <p class="note">
@@ -650,10 +661,12 @@ render(<Card ref={node => console.log(node)} />, container)`}
 
         <h3 id="hydrate">hydrate — 客户端水合</h3>
         <p>
-          <code>hydrate(root, container): () =&gt; void</code> 采纳 SSR 产出的现有 DOM： 组件树按
-          SSR 输出的注释标记（<code>&lt;!----&gt;</code>、<code>&lt;!--show--&gt;</code>{" "}
+          <code>hydrate(root, container, opts?): () =&gt; void</code> 采纳 SSR 产出的现有 DOM：
+          组件树按 SSR 输出的注释标记（<code>&lt;!----&gt;</code>、<code>&lt;!--show--&gt;</code>{" "}
           等）逐节点对齐，挂上事件监听与信号绑定， 不重建 DOM。假设客户端初始状态与 SSR
-          一致（信号快照、分支选择、列表内容）。 返回
+          一致（信号快照、分支选择、列表内容）。页面内嵌了信号状态脚本块 （<code>renderToPage</code>{" "}
+          默认嵌入）时自动恢复；也可以显式传 <code>opts.state</code>，测试/CI 用{" "}
+          <code>opts.strict</code> 把错位告警升级为 throw。返回
           <code>dispose()</code> 用于卸载与清理。
         </p>
         <ul style="color: var(--muted); margin-bottom: 22px">
