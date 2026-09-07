@@ -86,6 +86,8 @@ export interface HTMLAttributes<T extends HTMLElement> {
   id?: MaybeSignal<string>
   class?: MaybeSignal<string>
   className?: MaybeSignal<string>
+  /** SVG 字符串注入（iconify / lucide-static）：运行时走 `innerHTML` IDL 赋值，支持 signal 响应式更新。 */
+  innerHTML?: MaybeSignal<string>
   style?: MaybeSignal<string | Record<string, string>>
   title?: MaybeSignal<string>
   lang?: MaybeSignal<string>
