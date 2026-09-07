@@ -294,6 +294,13 @@ render(
           重渲染（<code>react</code> / <code>react-dom</code> 为可选 peer 依赖）：
         </p>
         <CodeBlock src="./assets/snippets/dom-react.tsx" lang="tsx" />
+        <h3>图标库</h3>
+        <p>
+          lucide / heroicons 的 SVG 可直接粘贴为 JSX（kiko 原生创建 SVG
+          命名空间元素），字符串形式（iconify / lucide-static）用 <code>innerHTML</code>{" "}
+          挂载，字体图标（Font Awesome / Material Symbols）只需引入样式：
+        </p>
+        <CodeBlock src="./assets/snippets/dom-icons.tsx" lang="tsx" />
         <h3>本地示例项目</h3>
         <ul style="color: var(--muted)">
           <li>

@@ -66,6 +66,15 @@ render(
     </section>
 
     <section>
+      <h2>图标库</h2>
+      <p>
+        lucide / heroicons 的 SVG 直接粘贴为 JSX（原生命名空间），iconify 等字符串形式用
+        <code>innerHTML</code> 挂载，字体图标只需样式 + 类名：
+      </p>
+      <CodeBlock src="./assets/snippets/dom-icons.tsx" lang="tsx" />
+    </section>
+
+    <section>
       <h2>/signal 组合使用</h2>
       <p>@kikojs/signal 的派生与批处理示例：</p>
       <CodeBlock src="./assets/snippets/signal-complete.ts" lang="ts" />
