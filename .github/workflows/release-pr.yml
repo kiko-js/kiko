@@ -1,0 +1,68 @@
+name: Release PR
+
+# 手动创建一个版本 PR（auto-changeset + changeset version）。
+# 质量门禁（lint / build / typecheck / test / site）只在 CI 里跑一次，
+# 这个 workflow 不重复；PR 本身会被 CI 检查，通过后再合并。
+# 合并后由 Publish workflow 自动发布到 npm。
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  version:
+    name: Create version PR
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # need full history for auto-changeset
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+          cache: true
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Auto-generate changeset from commits
+        run: bun run auto-changeset
+
+      - name: Bump versions from changesets
+        run: bun run version-packages
+
+      - name: Open or update version PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH="changeset-release/main"
+          git checkout -B "$BRANCH"
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "No versionable changes — nothing to do."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore: release"
+          git push -u origin "$BRANCH" --force-with-lease
+          if gh pr view "$BRANCH" --json number -q .number >/dev/null 2>&1; then
+            echo "Version PR already open — pushed an update."
+          else
+            gh pr create \
+              --base main \
+              --head "$BRANCH" \
+              --title "chore: release" \
+              --body "Version packages for release. CI 必须全绿后再合并；合并后 Publish workflow 会自动发布到 npm。"
+          fi

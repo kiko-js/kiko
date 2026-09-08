@@ -1,0 +1,67 @@
+name: Publish
+
+# 版本 PR 合并到 main 后自动发布到 npm。
+# 质量门禁由 CI 拥有（PR 上和 main push 时都跑），这里只做发布，不重复
+# lint / build / typecheck / test —— `bun run release` 自带的 build 除外，
+# 那是打包产物所需，不是门禁。
+#
+# npm 发布走 OIDC trusted publishing（无 NPM_TOKEN 明文 secret）：
+# setup-node 提供 npm >= 11.5，NPM_CONFIG_PROVENANCE 开启 provenance，
+# 需要 id-token: write + `npm_token` environment。
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+permissions:
+  contents: write # changesets/action creates tags + GitHub releases
+  id-token: write # OIDC trusted publishing to npm
+
+jobs:
+  publish:
+    # 只响应版本 PR 的合并；普通 PR 合并进来什么都不做。
+    if: >
+      github.event.pull_request.merged == true && (
+        startsWith(github.event.pull_request.title, 'chore: release') ||
+        startsWith(github.event.pull_request.head.ref, 'changeset-release/')
+      )
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    environment: npm_token
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main # pull_request.closed 默认检出的是 PR 上下文，显式取合并后的 main
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+          cache: true
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # `changeset publish` shells out to `npm publish`, which needs npm >= 11.5
+      # for OIDC trusted publishing (the runner's default npm is too old).
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org/
+
+      - name: Publish to npm
+        uses: changesets/action@v1
+        with:
+          publish: bun run release
+        env:
+          NPM_CONFIG_FETCH_TIMEOUT: "60000" # fail fast on stalled publish requests instead of hanging until the job timeout
+          NPM_CONFIG_FETCH_RETRIES: "3"
+          NPM_CONFIG_PROVENANCE: "true" # OIDC trusted publishing; no NPM_TOKEN secret needed

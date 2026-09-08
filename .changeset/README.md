@@ -32,9 +32,9 @@ Types:
 ## Releasing
 
 1. Push to `main` → CI runs quality gates (lint/typecheck/test) only
-2. When ready to release: manually trigger the "Release" workflow in GitHub Actions
-3. The workflow auto-generates a changeset and creates/updates a "Version Packages" PR
-4. Merge that PR → CI publishes to npm and creates a GitHub release
+2. When ready to release: manually dispatch the "Release PR" workflow in GitHub Actions
+3. The workflow auto-generates a changeset, bumps versions, and opens/updates the `chore: release` PR (CI gates it like any PR — merge only when green, squash-merge keeps the `chore: release` title so `auto-changeset` can anchor on it)
+4. Merge that PR → the "Publish" workflow auto-publishes to npm (OIDC trusted publishing) and creates a GitHub release
 
 ## Manual release (if needed)
 

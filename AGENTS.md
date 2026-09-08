@@ -54,6 +54,6 @@ Monorepo: `@kikojs/signal` (signal toolkit), `@kikojs/dom` (DOM + SSR), `@kikojs
 - Changesets auto-generated from conventional commits (`feat:` → minor, `fix:` → patch)
 - **v0 policy: `BREAKING CHANGE` is clamped to minor** (`scripts/auto-changeset.ts` bumpLevel) — 0.x releases never jump to 1.0.0; revert to major once packages reach 1.x
 - Push to main → CI runs quality gates only (no release)
-- Release: manually trigger "Release" workflow in GitHub Actions → auto-changeset → create release PR → merge to publish
+- Release: manually dispatch "Release PR" workflow → auto-changeset + `changeset version`, opens/updates the `chore: release` PR (gated by CI like any PR) → merge → "Publish" workflow auto-publishes to npm via OIDC trusted publishing (no NPM_TOKEN)
 
 - **NEVER hand-edit `bun.lock`** — all dependency changes via `bun install` / `bun add` / `bun remove` / `bun update`
