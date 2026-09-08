@@ -242,6 +242,24 @@ export function cleanupWatchers(root: Node): void {
   }
 }
 
+/**
+ * Hydration-era placeholder (hydrate.ts `PendingNode`): a node whose SSR
+ * output was never rendered, swapped into the live tree after hydration
+ * finished. It carries a `rebuild()` closure producing the real node —
+ * falling through to the text fallback would stringify it as
+ * "[object Object]". Duck-typed (not `instanceof`) to avoid a jsx-runtime
+ * → hydrate import cycle, mirroring `isSignal`'s cross-copy tolerance.
+ * Anything else reaching here with a `rebuild` function was already garbage
+ * as text, so treating it as a node is strictly an improvement.
+ */
+function takeRebuild(value: unknown): (() => unknown) | null {
+  if (value !== null && (typeof value === "object" || typeof value === "function")) {
+    const rebuild = (value as { rebuild?: unknown }).rebuild
+    if (typeof rebuild === "function") return rebuild as () => unknown
+  }
+  return null
+}
+
 export function toNodes(value: unknown): Node[] {
   if (isLazy(value)) return toNodes(realizeLazy(value))
   if (value == null || value === false || value === true) return []
@@ -261,6 +279,8 @@ export function toNodes(value: unknown): Node[] {
     }
     return out
   }
+  const rebuildValue = takeRebuild(value)
+  if (rebuildValue) return toNodes(rebuildValue())
   return [document.createTextNode(String(value))]
 }
 
@@ -355,6 +375,11 @@ function appendChild(parent: Node, child: unknown): void {
   if (child instanceof Node) {
     applyScopeRoots(child, parent)
     parent.appendChild(child)
+    return
+  }
+  const rebuildChild = takeRebuild(child)
+  if (rebuildChild) {
+    appendChild(parent, rebuildChild())
     return
   }
   parent.appendChild(document.createTextNode(String(child)))

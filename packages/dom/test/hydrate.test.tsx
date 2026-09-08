@@ -112,6 +112,94 @@ describe("hydrate", () => {
     expect(container.textContent).toBe("on")
     dispose()
   })
+  it("hydrated Show swaps in branches with nested elements", async () => {
+    // 回归：SSR 未渲染的分支是 hydration 期 PendingNode；水合后切入时必须
+    // 经 rebuild() 重建真实节点，不能掉进 toNodes 文本兜底变成 "[object Object]"。
+    const container = document.createElement("div")
+    const on = createSignal(false)
+    const dispose = await ssrThenHydrate(
+      () =>
+        Show({
+          when: on,
+          fallback: jsx("span", { children: "off" }),
+          children: jsx("svg", {
+            viewBox: "0 0 16 16",
+            children: [jsx("circle", { cx: "8", cy: "8", r: "3" }), jsx("path", { d: "M8 1v14" })],
+          }),
+        }),
+      container,
+    )
+    expect(container.textContent).toBe("off")
+    on.set(true)
+    await flush()
+    const svg = container.querySelector("svg")
+    expect(svg).not.toBeNull()
+    expect(svg?.querySelector("circle")).not.toBeNull()
+    expect(svg?.querySelector("path")).not.toBeNull()
+    expect(container.textContent).not.toContain("[object Object]")
+    on.set(false)
+    await flush()
+    expect(container.textContent).toBe("off")
+    on.set(true)
+    await flush()
+    expect(container.querySelector("svg circle")).not.toBeNull()
+    expect(container.textContent).not.toContain("[object Object]")
+    dispose()
+  })
+  it("hydrated Show with computed condition swaps svg branches", async () => {
+    // 复刻主题切换按钮：跨包 computed 驱动 Show，svg 分支水合后切入。
+    const { computed } = await import("../../signal/src/computed")
+    const { createSignal: createSignal2 } = await import("../../signal/src/signal")
+    const container = document.createElement("div")
+    const theme = createSignal2("light")
+    const dark = computed(() => theme.get() === "dark")
+    const dispose = await ssrThenHydrate(
+      () =>
+        Show({
+          when: dark,
+          fallback: jsx("svg", {
+            viewBox: "0 0 16 16",
+            children: jsx("path", { d: "M1 1" }),
+          }),
+          children: jsx("svg", {
+            viewBox: "0 0 16 16",
+            children: [jsx("circle", { cx: "8", cy: "8", r: "3" }), jsx("path", { d: "M8 1v14" })],
+          }),
+        }),
+      container,
+    )
+    expect(container.querySelector("svg circle")).toBeNull()
+    theme.set("dark")
+    await flush()
+    expect(container.querySelector("svg circle")).not.toBeNull()
+    expect(container.textContent).not.toContain("[object Object]")
+    dispose()
+  })
+  it("Show keeps swapping after a set during hydration", async () => {
+    // 复刻：ref 在水合期把信号同步成新值，之后 Show 仍必须随信号切换。
+    const container = document.createElement("div")
+    const on = createSignal(false)
+    const dispose = await ssrThenHydrate(
+      () =>
+        jsx("button", {
+          ref: () => on.set(true),
+          children: Show({
+            when: on,
+            fallback: "off",
+            children: "on",
+          }),
+        }),
+      container,
+    )
+    expect(container.textContent).toBe("on")
+    on.set(false)
+    await flush()
+    expect(container.textContent).toBe("off")
+    on.set(true)
+    await flush()
+    expect(container.textContent).toBe("on")
+    dispose()
+  })
 
   it("hydrates a signal interleaved with adjacent text", async () => {
     // 回归：SSR 输出 `<!---->0` 与紧随文本在 HTML 解析后合并为一个文本节点，
