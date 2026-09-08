@@ -12,8 +12,21 @@
     // Bundler mode
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
-    "verbatimModuleSyntax": true,
     "noEmit": true,
+    // Monorepo workspace resolution: typecheck against sources, not stale
+    // `dist` output (CI runs `typecheck` without a prior `build`; package
+    // `exports` point at `./dist/*.d.ts` which may not exist yet).
+    "paths": {
+      "@kikojs/dom": ["./packages/dom/src/index.ts"],
+      "@kikojs/dom/jsx-dev-runtime": ["./packages/dom/src/jsx-runtime.ts"],
+      "@kikojs/dom/*": ["./packages/dom/src/*"],
+      "@kikojs/hmr": ["./packages/hmr/src/index.ts"],
+      "@kikojs/hmr/*": ["./packages/hmr/src/*"],
+      "@kikojs/signal": ["./packages/signal/src/index.ts"],
+      "@kikojs/signal/*": ["./packages/signal/src/*"],
+      "@kikojs/router": ["./packages/router/src/index.ts"],
+      "@kikojs/router/*": ["./packages/router/src/*"]
+    },
 
     // Best practices
     "strict": true,
