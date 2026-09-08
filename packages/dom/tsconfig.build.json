@@ -5,7 +5,18 @@
     "emitDeclarationOnly": true,
     "declaration": true,
     "rootDir": "src",
-    "outDir": "dist"
+    "outDir": "dist",
+    // .d.ts emit keeps `rootDir: src`: cross-package imports must resolve to
+    // already-built declarations (exempt from rootDir), NOT to sources via
+    // the root `paths` (that would pull foreign src into the program).
+    // Root build order (signal → hmr → dom → router) guarantees hmr dist.
+    "paths": {
+      "@kikojs/dom": ["./src/index.ts"],
+      "@kikojs/dom/jsx-dev-runtime": ["./src/jsx-runtime.ts"],
+      "@kikojs/dom/*": ["./src/*"],
+      "@kikojs/hmr": ["../hmr/dist/index.d.ts"],
+      "@kikojs/hmr/*": ["../hmr/dist/*"]
+    }
   },
   "include": ["src"]
 }

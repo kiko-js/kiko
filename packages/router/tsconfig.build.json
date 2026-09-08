@@ -5,7 +5,18 @@
     "emitDeclarationOnly": true,
     "declaration": true,
     "rootDir": "src",
-    "outDir": "dist"
+    "outDir": "dist",
+    // Same rootDir constraint as dom: resolve workspace deps to built
+    // declarations. Root build order guarantees signal + dom dist exist.
+    "paths": {
+      "@kikojs/router": ["./src/index.ts"],
+      "@kikojs/router/*": ["./src/*"],
+      "@kikojs/signal": ["../signal/dist/index.d.ts"],
+      "@kikojs/signal/*": ["../signal/dist/*"],
+      "@kikojs/dom": ["../dom/dist/index.d.ts"],
+      "@kikojs/dom/jsx-dev-runtime": ["../dom/dist/jsx-runtime.d.ts"],
+      "@kikojs/dom/*": ["../dom/dist/*"]
+    }
   },
   "include": ["src"]
 }
