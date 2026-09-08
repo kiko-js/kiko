@@ -655,10 +655,10 @@ export function jsx(
     // `ref` 是 jsx 层的属性，不进入组件 props：realize 出根元素后触发
     // （与 intrinsic setRef 同一语义；转发型组件的根就是目标元素，行为等价）
     const ref = p.ref
-    if (ref == null) return new KikoLazy(() => tag(p)) as unknown as Node
+    if (ref == null) return new KikoLazy(() => tag(p), tag, p) as unknown as Node
     const rest = { ...p } as Props
     delete rest.ref
-    return new KikoLazy(() => fireComponentRef(tag(rest), ref)) as unknown as Node
+    return new KikoLazy(() => fireComponentRef(tag(rest), ref), tag, rest) as unknown as Node
   }
 
   // `<style>` is the intrinsic spelling of the Style component: scoped by

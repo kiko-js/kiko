@@ -265,9 +265,11 @@ render(
         <p>
           组件标签的 JSX 值是惰性占位，组件体在消费点执行（render / 父元素 children / 控制流分支 /
           水合采纳）。需要节点对象本身时用
-          <code>realize(value: unknown): unknown</code> 同步物化：立即执行组件体并返回节点，
-          节点身份稳定（物化一次后可反复挂载/移动同一棵树）。物化不缓存——同一占位物化两次
-          会得到两棵独立节点树。
+          <code>realize(value: unknown): unknown</code> 同步物化：组件体恰好执行一次，
+          同一占位反复物化返回同一批节点（节点身份稳定，可反复挂载/移动同一棵树）。
+          占位上同时记录构造点的组件与 props（检查用，不触发执行）——父组件可用
+          <code>childrenToArray / childTag / childProps</code>
+          在不执行子组件体的前提下筛选 children（如 Tabs 按类型选子）。
         </p>
         <Code
           lang="tsx"
@@ -690,14 +692,13 @@ render(<Card ref={node => console.log(node)} />, container)`}
 
         <h3 id="nossr">NoSSR — 静态页抠洞</h3>
         <p>
-          页面只有一部分是动态的（时间线、登录后数据）？把那部分包进
           <code>NoSSR</code>：SSR 只输出 <code>fallback</code>（骨架屏），
-          <code>children</code> 函数在服务端永不执行——无 fetch、无浏览器 API 访问、
+          <code>children</code> 在服务端永不执行——无 fetch、无浏览器 API 访问、
           不占用信号捕获槽位。客户端水合采纳骨架后，微任务填充真实内容：
         </p>
         <CodeBlock src="./assets/snippets/dom-nossr.tsx" lang="tsx" />
         <p class="note">
-          <code>children</code> 必须传函数——eager JSX 在调用点已被求值，抠洞语义无从谈起；
+          <code>children</code> 直接传组件即可（惰性占位天然跳过服务端执行）；函数形态同样支持；
           洞内异步内容请自行包 <code>Suspend</code>；宿主在填充前 dispose 会取消填充并保留骨架。
         </p>
       </section>

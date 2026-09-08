@@ -16,8 +16,17 @@ export const LAZY_BRAND = Symbol.for("kiko.lazy-node")
 
 export class KikoLazy {
   readonly build: () => unknown
-  constructor(build: () => unknown) {
+  /**
+   * 构造点已知的组件 tag 与 props（检查用，不触发执行）。
+   * 父组件可据此筛选 children（如 Tabs 按类型/props 选子），无需 realize。
+   * 非组件来源（HMR defer 等）为 undefined；跨实例品牌识别不受影响。
+   */
+  readonly tag: unknown
+  readonly props: unknown
+  constructor(build: () => unknown, tag?: unknown, props?: unknown) {
     this.build = build
+    this.tag = tag
+    this.props = props
     ;(this as unknown as Record<symbol, unknown>)[LAZY_BRAND] = true
   }
 }

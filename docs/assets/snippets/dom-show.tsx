@@ -5,7 +5,7 @@ const ready = createSignal(false)
 
 const view = (
   <Show when={ready} fallback={<p>加载中…</p>}>
-    {() => <p>内容已就绪</p>}
+    <p>内容已就绪</p>
   </Show>
 )
 

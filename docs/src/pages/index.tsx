@@ -111,6 +111,36 @@ render(
         ))}
       </div>
     </section>
+    <section>
+      <h2>最佳实践</h2>
+      <div class="features">
+        <div class="card">
+          <h3>静态分支直接写组件</h3>
+          <p>
+            组件 children 是惰性占位，未选中的分支体不执行。{"<Show when={c}><A /></Show>"}
+            即可；函数形态只在取 when 的值、For 逐条目映射、ErrorBoundary 重试重执行时使用。
+          </p>
+        </div>
+        <div class="card">
+          <h3>父组件内用信号选分支</h3>
+          <p>
+            组件体只执行一次，体内 if 不会响应式重跑。用 computed 包一层分支
+            JSX，变化时整块子树自动替换（详见<a href="./guide.html#control">指南·控制流</a>）。
+          </p>
+        </div>
+        <div class="card">
+          <h3>Tabs 筛选用检查 API</h3>
+          <p>
+            childrenToArray / childTag / childProps 可在不执行子组件体的前提下按类型与 props 筛选
+            children，只物化被选中的分支。
+          </p>
+        </div>
+        <div class="card">
+          <h3>昂贵 prop 手写 thunk</h3>
+          <p>prop 求值是急切的，运行时不自动调用函数 prop。昂贵计算传 () =&gt; 值、组件内解包。</p>
+        </div>
+      </div>
+    </section>
 
     <section>
       <h2>快速开始</h2>

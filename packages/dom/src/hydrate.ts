@@ -234,10 +234,10 @@ export function hydrateJsx(
     // 惰性原型：组件体推迟到游标采纳该 children 时执行，保持
     // 采纳顺序 == 求值顺序 == 文档序；ref 剥离后在元素采纳完成时触发
     const ref = p.ref
-    if (ref == null) return new KikoLazy(() => tag(p)) as unknown as unknown
+    if (ref == null) return new KikoLazy(() => tag(p), tag, p) as unknown as unknown
     const rest = { ...p } as Props
     delete rest.ref
-    return new KikoLazy(() => adoptComponentRef(tag(rest), ref)) as unknown as unknown
+    return new KikoLazy(() => adoptComponentRef(tag(rest), ref), tag, rest) as unknown as unknown
   }
 
   if (tag === "style") {
@@ -396,7 +396,7 @@ export function hydrateShow(props: {
  * children 的信号在恢复窗口关闭后创建，不与 SSR 捕获槽错位（SSR 从未执行 children）。
  * 填充失败（children 抛错）上报并保留骨架；宿主提前 dispose 时取消填充。
  */
-export function hydrateNoSSR(props: { fallback?: unknown; children: () => unknown }): PendingNode {
+export function hydrateNoSSR(props: { fallback?: unknown; children: unknown }): PendingNode {
   return new PendingNode("group", () => {
     const marker = take()
     if (!marker || marker.nodeType !== Node.COMMENT_NODE) {
@@ -411,7 +411,15 @@ export function hydrateNoSSR(props: { fallback?: unknown; children: () => unknow
     queueMicrotask(() => {
       if (!alive) return
       try {
-        swapNodes(marker, skeleton, toNodes(props.children()))
+        swapNodes(
+          marker,
+          skeleton,
+          toNodes(
+            typeof props.children === "function"
+              ? (props.children as () => unknown)()
+              : props.children,
+          ),
+        )
       } catch (err) {
         reportError(err)
       }

@@ -232,9 +232,10 @@ export function ErrorBoundary(props: {
   errorSignal?: Signal.State<unknown>
   children: unknown
 }): DocumentFragment {
-  // 裸 children（已求值的 JSX / 节点）直接包成 thunk 渲染；注意 JSX 是急切
-  // 求值的——裸形态下组件体在 boundary 创建前就已执行，初始挂载的 throw
-  // 捕获不到；要捕获初始错误仍用 thunk 形态 `children={() => <App />}`。
+  // 裸 children（组件 JSX 即惰性占位）在 render 内的 try/catch 中 realize，
+  // 初始挂载的 throw 同样能捕获。裸形态与 thunk 形态的唯一差异是重试语义：
+  // 裸形态复用同一个惰性占位（组件体缓存，reset 后复挂同一批节点），thunk
+  // 形态每次产生新 JSX（reset 后组件体重跑）。需要"重试即重执行"时用 thunk。
   const thunk =
     typeof props.children === "function" ? (props.children as () => unknown) : () => props.children
   const normalized = { ...props, children: thunk }
@@ -449,13 +450,14 @@ export function Suspend(props: { fallback?: unknown; children: unknown }): Docum
 }
 
 /**
- * NoSSR — 静态页抠洞：SSR 只渲染 `fallback`（骨架屏），`children` 函数在服务端
+ * NoSSR — 静态页抠洞：SSR 只渲染 `fallback`（骨架屏），`children` 在服务端
  * 永不执行（无 fetch、无浏览器 API、不占信号槽位）；水合采纳骨架后微任务填充
  * 真实内容；纯客户端渲染直接渲染 children。时间线、登录后数据等动态洞适用。
- * children 必须传函数——eager JSX 在调用点已被求值，抠洞语义无从谈起。
+ * children 可直接传组件（惰性占位，服务端天然跳过、客户端 realize）；函数形态
+ * `() => node` 同样支持（每次填充调用一次，兼容旧写法）。
  * 洞内异步内容请自行包 `<Suspend>`（走标准客户端挂起路径）。
  */
-export function NoSSR(props: { fallback?: unknown; children: () => unknown }): DocumentFragment {
+export function NoSSR(props: { fallback?: unknown; children: unknown }): DocumentFragment {
   if (isHydrating()) {
     return hydrateNoSSR(
       props as unknown as Parameters<typeof hydrateNoSSR>[0],
@@ -467,7 +469,9 @@ export function NoSSR(props: { fallback?: unknown; children: () => unknown }): D
   const marker = document.createComment(NOSSR_MARKER)
   frag.appendChild(marker)
   const branches = createBranchManager(marker)
-  branches.swap(toNodes((props.children as () => unknown)()), false)
+  const value =
+    typeof props.children === "function" ? (props.children as () => unknown)() : props.children
+  branches.swap(toNodes(value), false)
   trackCleanup(marker, () => branches.cleanup())
   return frag
 }
