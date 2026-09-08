@@ -22,14 +22,14 @@ function HeartIcon(props: IconProps) {
       stroke={props.color ?? "currentColor"}
       strokeWidth={2}
     >
-      <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />
+      {/* 图标 path 从 lucide / heroicons 复制，示意从略 */}
+      <circle cx="12" cy="12" r="9" />
     </svg>
   )
 }
 
 // 2. SVG 字符串注入：iconify / lucide-static 等返回 SVG 字符串时，
-// 用 innerHTML 挂载（运行时走 IDL 属性赋值，同样支持 signal 响应式更新）。
-const rocketSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="M12 15l-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/></svg>`
+const rocketSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><!-- 完整图形从 iconify 复制 --></svg>`
 const rocket = <span innerHTML={rocketSvg} />
 
 // 3. 字体图标：Font Awesome / Material Symbols 只需引入样式，
