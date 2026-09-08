@@ -46,6 +46,7 @@ Monorepo: `@kikojs/signal` (signal toolkit), `@kikojs/dom` (DOM + SSR), `@kikojs
 ### Development Workflow
 
 - After finishing any code change (verified + cleaned up), commit it locally by default.
+- **MUST run `bun run typecheck` (tsc) and get it clean BEFORE every commit** — enforced by `.husky/pre-commit`; NEVER commit with type errors or with `--no-verify`.
 - **Do NOT `git push`** unless the user explicitly asks to push; leave commits local and report the commit hash.
 
 ### Release
