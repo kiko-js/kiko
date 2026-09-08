@@ -1,5 +1,18 @@
 # @kikojs/router
 
+## 0.4.1
+
+### Patch Changes
+
+- ### @kikojs/dom (patch)
+  - use plain semver ranges for published runtime workspace deps (a9c6fa2)
+
+  ### @kikojs/router (patch)
+  - use plain semver ranges for published runtime workspace deps (a9c6fa2)
+
+- Updated dependencies
+  - @kikojs/dom@0.4.1
+
 ## 0.4.0
 
 ### Minor Changes
