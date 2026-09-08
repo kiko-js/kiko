@@ -42,6 +42,11 @@ jobs:
       - name: Bump versions from changesets
         run: bun run version-packages
 
+      # version 变动会让包间 range 失效（updateInternalDependencies 跟改），
+      # 这里刷新 lockfile，否则 Release PR 的 CI（--frozen-lockfile）必红。
+      - name: Sync lockfile with bumped versions
+        run: bun install
+
       - name: Open or update version PR
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
