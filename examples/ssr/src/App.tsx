@@ -1,11 +1,24 @@
 /** @jsxImportSource @kikojs/dom */
-import { createSignal, Style, Show, For, Suspend, lazy } from "@kikojs/dom"
+import { createSignal, Style, Show, For, Suspend, lazy, NoSSR } from "@kikojs/dom"
 import { computed } from "@kikojs/signal"
 
 // 代码分割：SSR 阶段服务端 await 该模块并输出内容；客户端 bundle 将其拆为
 // 独立 chunk，水合时模块未加载完成 → Suspend 静态采纳 SSR 内容，settle 后换入
 // 客户端节点并挂上绑定。
 const ClockCard = lazy(() => import("./lazy-card").then(m => m.default))
+
+// 抠洞内容：SSR 阶段此函数根本不执行（下面的 setTimeout 只在浏览器里跑），
+// 服务端只输出 NoSSR 的 fallback 骨架；水合后客户端填充并拉数据。
+function Timeline() {
+  const items = createSignal<string[]>([])
+  const ready = computed(() => items.get().length > 0)
+  setTimeout(() => items.set(["服务端没见过的第一条", "水合后填充的第二条"]), 1000)
+  return (
+    <Show when={ready} fallback={<li class="muted">加载中…</li>}>
+      <For each={items}>{item => <li>{item}</li>}</For>
+    </Show>
+  )
+}
 
 export function App() {
   const count = createSignal(0)
@@ -81,6 +94,20 @@ export function App() {
         <Suspend fallback={<p class="muted">加载中…</p>}>
           <ClockCard />
         </Suspend>
+      </section>
+
+      <section class="card">
+        <h2>NoSSR（静态页抠洞）</h2>
+        <p class="muted">服务端只输出骨架屏；水合后客户端拉数据填充（约 1 秒后出现时间线）。</p>
+        <NoSSR
+          fallback={
+            <ul>
+              <li class="muted">骨架屏…</li>
+            </ul>
+          }
+        >
+          {() => <Timeline />}
+        </NoSSR>
       </section>
 
       <section class="card">
