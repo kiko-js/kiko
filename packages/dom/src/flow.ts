@@ -7,10 +7,17 @@ import { isTruthy, unwrap, settleChildren } from "./shared"
 import { getSSRRuntime } from "./ssr-mode"
 import { createForCore } from "./for-engine"
 import { createBranchManager } from "./branch-engine"
-import { SHOW_MARKER, FOR_MARKER, ERROR_BOUNDARY_MARKER, SUSPEND_MARKER } from "./markers"
+import {
+  SHOW_MARKER,
+  FOR_MARKER,
+  ERROR_BOUNDARY_MARKER,
+  SUSPEND_MARKER,
+  NOSSR_MARKER,
+} from "./markers"
 import {
   hydrateErrorBoundary,
   hydrateFor,
+  hydrateNoSSR,
   hydrateShow,
   hydrateSuspend,
   isHydrating,
@@ -438,5 +445,29 @@ export function Suspend(props: { fallback?: unknown; children: unknown }): Docum
     fallbackNodes = null
   })
 
+  return frag
+}
+
+/**
+ * NoSSR — 静态页抠洞：SSR 只渲染 `fallback`（骨架屏），`children` 函数在服务端
+ * 永不执行（无 fetch、无浏览器 API、不占信号槽位）；水合采纳骨架后微任务填充
+ * 真实内容；纯客户端渲染直接渲染 children。时间线、登录后数据等动态洞适用。
+ * children 必须传函数——eager JSX 在调用点已被求值，抠洞语义无从谈起。
+ * 洞内异步内容请自行包 `<Suspend>`（走标准客户端挂起路径）。
+ */
+export function NoSSR(props: { fallback?: unknown; children: () => unknown }): DocumentFragment {
+  if (isHydrating()) {
+    return hydrateNoSSR(
+      props as unknown as Parameters<typeof hydrateNoSSR>[0],
+    ) as unknown as DocumentFragment
+  }
+  const ssr = getSSRRuntime()
+  if (ssr) return ssr.nossr(props as Record<string, unknown>) as unknown as DocumentFragment
+  const frag = document.createDocumentFragment()
+  const marker = document.createComment(NOSSR_MARKER)
+  frag.appendChild(marker)
+  const branches = createBranchManager(marker)
+  branches.swap(toNodes((props.children as () => unknown)()), false)
+  trackCleanup(marker, () => branches.cleanup())
   return frag
 }

@@ -17,6 +17,8 @@ export const ERROR_BOUNDARY_MARKER = "error-boundary"
 export const SUSPEND_MARKER = "suspend"
 /** Suspend 内容结束标记(水合对齐的右边界) */
 export const SUSPEND_END_MARKER = "/suspend"
+/** NoSSR 抠洞锚：SSR 只输出 fallback（骨架），水合后客户端填充真实内容 */
+export const NOSSR_MARKER = "nossr"
 
 /** Portal 在宿主位置留下的锚 */
 export const PORTAL_MARKER = "portal"

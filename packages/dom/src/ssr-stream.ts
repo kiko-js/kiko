@@ -17,6 +17,7 @@ import type { SSRRuntime } from "./ssr-mode"
 import {
   controlErrorBoundary,
   controlFor,
+  controlNoSSR,
   controlShow,
   controlSuspend,
   escapeAttr,
@@ -105,6 +106,7 @@ export const ssrStreamRuntime: SSRRuntime = {
     controlSuspend(props as Parameters<typeof controlSuspend>[0], {
       reenterRuntime: () => useSSRRuntime(ssrStreamRuntime),
     }) as unknown,
+  nossr: props => controlNoSSR(props as Parameters<typeof controlNoSSR>[0]) as unknown,
 }
 
 // ---------------------------------------------------------------------------

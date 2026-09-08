@@ -2,7 +2,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "bun:test"
 import { Signal } from "signal-polyfill"
 import { jsx, Fragment, Style } from "../src/jsx-runtime"
-import { Show, For, ErrorBoundary, Suspend } from "../src/flow"
+import { Show, For, ErrorBoundary, Suspend, NoSSR } from "../src/flow"
 import { lazy } from "../src/lazy"
 import { renderToFragment, ssrRuntime } from "../src/ssr"
 import { setSSRRuntime } from "../src/ssr-mode"
@@ -952,5 +952,94 @@ describe("hydrate — 信号状态恢复", () => {
     expect(container.textContent).toBe("9")
     expect(errors.some(e => e.includes("signal state mismatch"))).toBe(false)
     dispose()
+  })
+})
+
+describe("NoSSR hydration — 抠洞填充", () => {
+  it("采纳骨架，微任务填充真实内容", async () => {
+    // ssrThenHydrate 的 await 会先放行填充微任务；此处手写同步水合以断言骨架中间态
+    const container = document.createElement("div")
+    const root = () =>
+      jsx(NoSSR, {
+        fallback: jsx("span", { children: "skel" }),
+        children: () => jsx("div", { children: "real" }),
+      })
+    setSSRRuntime(ssrRuntime)
+    try {
+      container.innerHTML = await renderToFragment(root)
+    } finally {
+      setSSRRuntime(null)
+    }
+    const dispose = hydrate(root, container)
+    expect(container.textContent).toBe("skel")
+    await flush()
+    expect(container.textContent).toBe("real")
+    expect(container.querySelector("span")).toBeNull()
+    expect(container.querySelector("div")).not.toBeNull()
+    dispose()
+  })
+  it("填充内容响应式：洞内信号后续更新", async () => {
+    const container = document.createElement("div")
+    const text = createSignal("a")
+    const dispose = await ssrThenHydrate(
+      () =>
+        jsx(NoSSR, {
+          fallback: "skel",
+          children: () => jsx("p", { children: text }),
+        }),
+      container,
+    )
+    await flush()
+    expect(container.textContent).toBe("a")
+    text.set("b")
+    await flush()
+    expect(container.textContent).toBe("b")
+    dispose()
+  })
+
+  it("dispose 先于填充：取消填充，骨架保留", async () => {
+    const container = document.createElement("div")
+    const root = () =>
+      jsx(NoSSR, {
+        fallback: jsx("span", { children: "skel" }),
+        children: () => jsx("div", { children: "real" }),
+      })
+    setSSRRuntime(ssrRuntime)
+    try {
+      container.innerHTML = await renderToFragment(root)
+    } finally {
+      setSSRRuntime(null)
+    }
+    const dispose = hydrate(root, container)
+    dispose()
+    await flush()
+    expect(container.textContent).toBe("skel")
+    expect(container.textContent).not.toContain("real")
+  })
+  it("children 抛错：上报并保留骨架", async () => {
+    const container = document.createElement("div")
+    const reported: unknown[] = []
+    const original = globalThis.reportError
+    globalThis.reportError = (err: unknown) => {
+      reported.push(err)
+    }
+    try {
+      const dispose = await ssrThenHydrate(
+        () =>
+          jsx(NoSSR, {
+            fallback: jsx("span", { children: "skel" }),
+            children: () => {
+              throw new Error("hole boom")
+            },
+          }),
+        container,
+      )
+      await flush()
+      expect(container.textContent).toBe("skel")
+      expect(reported.length).toBe(1)
+      dispose()
+    } finally {
+      globalThis.reportError = original
+    }
   })
 })

@@ -20,6 +20,7 @@ import {
   ERROR_BOUNDARY_MARKER,
   FOR_MARKER,
   SHOW_MARKER,
+  NOSSR_MARKER,
   SIGNAL_MARKER_HTML,
   SUSPEND_END_MARKER,
   SUSPEND_MARKER,
@@ -245,6 +246,15 @@ export function controlSuspend(
       sync(markerHtml(SUSPEND_END_MARKER)),
     ],
   }
+}
+
+/**
+ * NoSSR（静态页抠洞）：SSR 只输出 fallback（骨架屏），`children` 永不求值——
+ * 函数形态连调用都不发生，服务端无 fetch、无浏览器 API 访问、不占用信号捕获槽位。
+ * 水合采纳骨架后，客户端在微任务中填充真实内容（见 hydrateNoSSR）。
+ */
+export function controlNoSSR(props: { fallback?: unknown; children: unknown }): StreamChunk {
+  return { kind: "sequence", chunks: [sync(markerHtml(NOSSR_MARKER)), streamValue(props.fallback)] }
 }
 
 // ---------------------------------------------------------------------------

@@ -9,6 +9,7 @@ import {
   chunksToSSRValue,
   controlErrorBoundary,
   controlFor,
+  controlNoSSR,
   controlShow,
   controlSuspend,
   escapeAttr,
@@ -258,6 +259,10 @@ export function ssrSuspend(props: Parameters<typeof controlSuspend>[0]): SSRValu
   return chunksToSSRValue(controlSuspend(props))
 }
 
+export function ssrNoSSR(props: Parameters<typeof controlNoSSR>[0]): SSRValue {
+  return chunksToSSRValue(controlNoSSR(props))
+}
+
 // ---------------------------------------------------------------------------
 // 运行时（由 server.ts 显式注册；不在模块加载时自注册，避免全局副作用）
 
@@ -270,6 +275,7 @@ export const ssrRuntime: SSRRuntime = {
   for: ssrFor,
   errorBoundary: ssrErrorBoundary,
   suspend: ssrSuspend,
+  nossr: ssrNoSSR,
 }
 
 /**

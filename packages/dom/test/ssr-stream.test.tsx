@@ -1,7 +1,7 @@
 /** @jsxImportSource @kikojs/dom */
 import { describe, it, expect, beforeAll, afterAll } from "bun:test"
 import { jsx, Style } from "../src/jsx-runtime"
-import { Show, For, Suspend } from "../src/flow"
+import { Show, For, Suspend, NoSSR } from "../src/flow"
 import { renderToStream } from "../src/ssr-stream"
 import { renderToFragment } from "../src/ssr"
 import { setSSRRuntime } from "../src/ssr-mode"
@@ -284,5 +284,23 @@ describe("renderToStream — abort", () => {
     await reader.read().catch(() => {}) // 确认流已报错
     // abort 前流式运行时占据槽位；恢复必须先于消费方通知，串行渲染才不被污染
     expect(await renderToFragment(() => jsx("p", { children: "next" }))).toBe("<p>next</p>")
+  })
+})
+
+describe("renderToStream — NoSSR 抠洞", () => {
+  it("流式只输出骨架，children 不执行", async () => {
+    let invoked = false
+    const stream = renderToStream(() =>
+      jsx(NoSSR, {
+        fallback: jsx("p", { children: "骨架屏" }),
+        children: () => {
+          invoked = true
+          return jsx("p", { children: "real" })
+        },
+      }),
+    )
+    const html = (await streamToChunks(stream)).join("")
+    expect(html).toBe("<!--nossr--><p>骨架屏</p>")
+    expect(invoked).toBe(false)
   })
 })

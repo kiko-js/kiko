@@ -687,6 +687,19 @@ render(<Card ref={node => console.log(node)} />, container)`}
           </li>
         </ul>
         <CodeBlock src="./assets/snippets/dom-hydrate.tsx" lang="tsx" />
+
+        <h3 id="nossr">NoSSR — 静态页抠洞</h3>
+        <p>
+          页面只有一部分是动态的（时间线、登录后数据）？把那部分包进
+          <code>NoSSR</code>：SSR 只输出 <code>fallback</code>（骨架屏），
+          <code>children</code> 函数在服务端永不执行——无 fetch、无浏览器 API 访问、
+          不占用信号捕获槽位。客户端水合采纳骨架后，微任务填充真实内容：
+        </p>
+        <CodeBlock src="./assets/snippets/dom-nossr.tsx" lang="tsx" />
+        <p class="note">
+          <code>children</code> 必须传函数——eager JSX 在调用点已被求值，抠洞语义无从谈起；
+          洞内异步内容请自行包 <code>Suspend</code>；宿主在填充前 dispose 会取消填充并保留骨架。
+        </p>
       </section>
 
       <section id="htm" class="api-section">

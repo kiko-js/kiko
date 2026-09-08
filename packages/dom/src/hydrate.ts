@@ -390,6 +390,35 @@ export function hydrateShow(props: {
     return [marker, ...branches.current]
   })
 }
+
+/**
+ * NoSSR 水合：采纳 SSR 输出的骨架，真实内容推迟到水合同步栈之后填充——
+ * children 的信号在恢复窗口关闭后创建，不与 SSR 捕获槽错位（SSR 从未执行 children）。
+ * 填充失败（children 抛错）上报并保留骨架；宿主提前 dispose 时取消填充。
+ */
+export function hydrateNoSSR(props: { fallback?: unknown; children: () => unknown }): PendingNode {
+  return new PendingNode("group", () => {
+    const marker = take()
+    if (!marker || marker.nodeType !== Node.COMMENT_NODE) {
+      warn("expected nossr marker")
+      return []
+    }
+    const skeleton = hydrateValue(props.fallback)
+    let alive = true
+    trackCleanup(marker, () => {
+      alive = false
+    })
+    queueMicrotask(() => {
+      if (!alive) return
+      try {
+        swapNodes(marker, skeleton, toNodes(props.children()))
+      } catch (err) {
+        reportError(err)
+      }
+    })
+    return [marker, ...skeleton]
+  })
+}
 export function hydrateFor(props: {
   each: unknown
   getKey?: (item: unknown, index: number) => unknown

@@ -1,7 +1,7 @@
 /** @jsxImportSource @kikojs/dom */
 import { describe, it, expect, beforeAll, afterAll } from "bun:test"
 import { jsx, Fragment, Style } from "../src/jsx-runtime"
-import { Show, For, ErrorBoundary, Suspend } from "../src/flow"
+import { Show, For, ErrorBoundary, Suspend, NoSSR } from "../src/flow"
 import { lazy } from "../src/lazy"
 import { renderToFragment, ssrRuntime } from "../src/ssr"
 import { setSSRRuntime } from "../src/ssr-mode"
@@ -390,6 +390,48 @@ describe("renderToPage — 单调用 SSR", () => {
     expect(html).toBe("<div><!---->hi</div>")
     expect(stateScript).toBe(
       `<script id="kiko-state" type="application/json">{"v":1,"s":["hi"]}</script>`,
+    )
+  })
+})
+
+describe("NoSSR — 静态页抠洞", () => {
+  it("只输出 fallback，children 函数永不执行", async () => {
+    let invoked = false
+    const html = await renderToFragment(() =>
+      jsx(NoSSR, {
+        fallback: jsx("ul", { children: jsx("li", { class: "skeleton", children: "骨架屏" }) }),
+        children: () => {
+          invoked = true
+          return jsx("p", { children: "real" })
+        },
+      }),
+    )
+    expect(invoked).toBe(false)
+    expect(html).toBe('<!--nossr--><ul><li class="skeleton">骨架屏</li></ul>')
+    expect(html).not.toContain("real")
+  })
+
+  it("洞内信号不占捕获槽：state 只有洞外信号", async () => {
+    const { renderToPage } = await import("../src/ssr-page")
+    const { html, stateScript } = await renderToPage(() => {
+      // 捕获窗口内按创建顺序记录；洞 children 永不执行，其信号无槽位
+      const before = createSignal("static")
+      const after = createSignal("tail")
+      return jsx("main", {
+        children: [
+          jsx("p", { children: before }),
+          jsx(NoSSR, {
+            fallback: jsx("span", { children: "skel" }),
+            children: () => jsx("b", { children: createSignal("hole") }),
+          }),
+          jsx("p", { children: after }),
+        ],
+      })
+    })
+    expect(html).not.toContain("hole")
+    expect(html).toContain("<!--nossr--><span>skel</span>")
+    expect(stateScript).toBe(
+      `<script id="kiko-state" type="application/json">{"v":1,"s":["static","tail"]}</script>`,
     )
   })
 })

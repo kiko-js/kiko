@@ -19,6 +19,7 @@ export interface SSRRuntime {
   for(props: Record<string, unknown>): unknown
   errorBoundary(props: Record<string, unknown>): unknown
   suspend(props: Record<string, unknown>): unknown
+  nossr(props: Record<string, unknown>): unknown
 }
 
 /**
