@@ -1,5 +1,23 @@
 # @kikojs/router
 
+## 0.4.0
+
+### Minor Changes
+
+- ### @kikojs/dom (minor)
+  - point build configs at built declarations for cross-package imports (816bbcd)
+  - **dom**: bare NoSSR children, inspectable lazy placeholders, conditional-rendering docs (ea52fea)
+
+  ### @kikojs/router (minor)
+  - point build configs at built declarations for cross-package imports (816bbcd)
+  - **router**: document memory mode as first-class RouteMode (a019828)
+  - **router**: memory history mode as first-class RouteMode (f9e6e68)
+
+### Patch Changes
+
+- Updated dependencies
+  - @kikojs/dom@0.4.0
+
 ## 0.3.0
 
 ### Minor Changes
