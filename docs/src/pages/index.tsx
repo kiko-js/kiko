@@ -115,29 +115,29 @@ render(
       <h2>最佳实践</h2>
       <div class="features">
         <div class="card">
-          <h3>静态分支直接写组件</h3>
+          <h3>分支直接写组件</h3>
           <p>
-            组件 children 是惰性占位，未选中的分支体不执行。{"<Show when={c}><A /></Show>"}
-            即可；函数形态只在取 when 的值、For 逐条目映射、ErrorBoundary 重试重执行时使用。
+            没显示的分支不会执行。{"<Show when={c}><A /></Show>"}
+            即可；需要条件的值时再把 children 写成函数（详见
+            <a href="./guide.html#control">指南·控制流</a>）。
           </p>
         </div>
         <div class="card">
           <h3>父组件内用信号选分支</h3>
           <p>
-            组件体只执行一次，体内 if 不会响应式重跑。用 computed 包一层分支
-            JSX，变化时整块子树自动替换（详见<a href="./guide.html#control">指南·控制流</a>）。
+            组件函数只跑一次，里面的 if 不会跟着数据变。把分支包一层信号， 数据变化时整块自动替换。
           </p>
         </div>
         <div class="card">
-          <h3>Tabs 筛选用检查 API</h3>
+          <h3>Tabs 按类型挑子组件</h3>
           <p>
-            childrenToArray / childTag / childProps 可在不执行子组件体的前提下按类型与 props 筛选
-            children，只物化被选中的分支。
+            用 childrenToArray / childTag / childProps 按类型和属性挑出要显示的子组件，
+            没选中的不会创建。
           </p>
         </div>
         <div class="card">
-          <h3>昂贵 prop 手写 thunk</h3>
-          <p>prop 求值是急切的，运行时不自动调用函数 prop。昂贵计算传 () =&gt; 值、组件内解包。</p>
+          <h3>费时的属性包一层函数</h3>
+          <p>写在属性里的表达式会先算好再传进去。费时的计算包一层函数传进去，在组件里调用。</p>
         </div>
       </div>
     </section>

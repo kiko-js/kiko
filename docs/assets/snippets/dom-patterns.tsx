@@ -2,7 +2,7 @@
 import { Show, createSignal, childrenToArray, childTag, childProps } from "@kikojs/dom"
 import { computed } from "@kikojs/signal"
 
-// --- 1. 静态 children 已是惰性的：未选中分支的组件体不执行，无需包函数 ---
+// --- 1. 没选中的分支不会执行，直接写组件 ---
 const ready = createSignal(false)
 
 const basic = (
@@ -11,10 +11,10 @@ const basic = (
   </Show>
 )
 
-// 函数形态只在需要 `when` 的值时使用（每次 when 变化重跑）
+// 需要 `when` 的值时写成函数
 const withValue = <Show when={ready}>{value => <p>{String(value)}</p>}</Show>
 
-// --- 2. 父组件按业务选择子分支：computed signal children，变化时整块子树替换 ---
+// --- 2. 父组件按数据选分支：把分支包一层信号，数据变化时整块自动替换 ---
 function A() {
   return <p>分支 A</p>
 }
@@ -33,7 +33,7 @@ function Parent() {
   )
 }
 
-// --- 3. Tabs 式筛选：读占位的 tag/props，不执行未选中的子组件体 ---
+// --- 3. Tabs 按类型挑子组件：没选中的不会创建 ---
 function Tab(props: { name: string }) {
   return <span>{props.name}</span>
 }

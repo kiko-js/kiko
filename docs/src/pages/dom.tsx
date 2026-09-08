@@ -263,13 +263,11 @@ render(
         <CodeBlock src="./assets/snippets/dom-ref.tsx" lang="tsx" />
         <h3 id="realize">realize — 显式物化</h3>
         <p>
-          组件标签的 JSX 值是惰性占位，组件体在消费点执行（render / 父元素 children / 控制流分支 /
-          水合采纳）。需要节点对象本身时用
-          <code>realize(value: unknown): unknown</code> 同步物化：组件体恰好执行一次，
-          同一占位反复物化返回同一批节点（节点身份稳定，可反复挂载/移动同一棵树）。
-          占位上同时记录构造点的组件与 props（检查用，不触发执行）——父组件可用
+          组件的 JSX 在放进页面时才真正创建。需要节点对象本身时用
+          <code>realize(value: unknown): unknown</code> 让它立刻创建并返回节点，
+          同一份反复用得到的是同一批节点。JSX 上还记着它是哪类组件、带了什么属性—— 父组件可用{" "}
           <code>childrenToArray / childTag / childProps</code>
-          在不执行子组件体的前提下筛选 children（如 Tabs 按类型选子）。
+          先挑出要显示的子组件，没选中的不会创建。
         </p>
         <Code
           lang="tsx"
@@ -622,8 +620,7 @@ render(<Card ref={node => console.log(node)} />, container)`}
           控制流组件，类型世界保持单一。
         </p>
         <p>
-          必须传<strong>函数</strong>（惰性求值）——JSX 会在 SSR 模式开启前被急切求值，
-          传值形态会在客户端模式下构建 DOM。
+          渲染入口传<strong>函数</strong>：让 SSR 先装好当前请求的作用域，再执行组件。
         </p>
         <ul style="color: var(--muted); margin-bottom: 22px">
           <li>
@@ -692,14 +689,12 @@ render(<Card ref={node => console.log(node)} />, container)`}
 
         <h3 id="nossr">NoSSR — 静态页抠洞</h3>
         <p>
-          <code>NoSSR</code>：SSR 只输出 <code>fallback</code>（骨架屏），
-          <code>children</code> 在服务端永不执行——无 fetch、无浏览器 API 访问、
-          不占用信号捕获槽位。客户端水合采纳骨架后，微任务填充真实内容：
+          <code>NoSSR</code>：服务端只输出 <code>fallback</code>（骨架屏），
+          <code>children</code> 在服务端不执行。客户端水合采纳骨架后，微任务填充真实内容：
         </p>
-        <CodeBlock src="./assets/snippets/dom-nossr.tsx" lang="tsx" />
         <p class="note">
-          <code>children</code> 直接传组件即可（惰性占位天然跳过服务端执行）；函数形态同样支持；
-          洞内异步内容请自行包 <code>Suspend</code>；宿主在填充前 dispose 会取消填充并保留骨架。
+          <code>children</code> 直接写组件，服务端不会执行它； 洞内异步内容请自行包{" "}
+          <code>Suspend</code>；宿主在填充前 dispose 会取消填充并保留骨架。
         </p>
       </section>
 

@@ -3,9 +3,9 @@ import { NoSSR, Show, For, createSignal } from "@kikojs/dom"
 import { computed } from "@kikojs/signal"
 import { renderToPage } from "@kikojs/dom/server"
 
-// 时间线页面：头部/页脚静态直出；时间线数据只存在客户端（登录后 fetch），
-// SSR 阶段 children（惰性占位）根本不执行——无 fetch、无 window 访问、不占信号槽位。
-// 水合先采纳骨架屏，微任务填充真实内容；数据到达后 Show/For 响应式渲染。
+// 时间线页面：头部/页脚服务端直出骨架屏；时间线数据只存在客户端（登录后 fetch），
+// SSR 阶段 children 根本不执行。水合先采纳骨架屏，微任务填充真实内容；
+// 数据到达后 Show/For 响应式渲染。
 function Timeline() {
   const items = createSignal<string[]>([])
   const ready = computed(() => items.get().length > 0)

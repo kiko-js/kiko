@@ -147,9 +147,8 @@ render(
         <h3>Show — 条件渲染</h3>
         <CodeBlock src="./assets/snippets/dom-show.tsx" lang="tsx" />
         <p>
-          组件 <code>children</code> 是惰性占位：未选中的分支体不执行、不建信号。 所以
-          <strong>静态内容直接写组件</strong>，函数形态只在需要 <code>when</code> 的值时使用
-          （每次变化重跑）：
+          没选中的分支不会执行，直接写组件即可。需要用到 <code>when</code> 的值时， 再把{" "}
+          <code>children</code> 写成函数：
         </p>
         <table>
           <thead>
@@ -163,52 +162,46 @@ render(
               <td>
                 <code>{"<Show when={c}><A /></Show>"}</code>
               </td>
-              <td>静态分支：首次选中时执行一次并缓存，换入换出复用节点。</td>
+              <td>条件成立时显示，平时不执行。</td>
             </tr>
             <tr>
               <td>
                 <code>{"<Show when={c}>{v => <A x={v} />}</Show>"}</code>
               </td>
-              <td>
-                函数分支：每次 <code>when</code> 变化重跑，可取到真值。
-              </td>
+              <td>需要把条件的值传给分支内容时写成函数。</td>
             </tr>
             <tr>
               <td>
                 <code>{"<For each={list}>{item => <Row v={item} />}</For>"}</code>
               </td>
               <td>
-                <code>For</code> 必须传函数——逐条目映射是本质需求（<code>keyed</code> 下
-                <code>item</code> 变为访问器）。
+                <code>For</code> 给每条数据生成界面，所以 children 是一个函数。
               </td>
             </tr>
             <tr>
               <td>
                 <code>{"<NoSSR fallback={skel}><Except /></NoSSR>"}</code>
               </td>
-              <td>直接传组件即可（SSR 跳过、客户端填充）；函数形态兼容保留。</td>
+              <td>服务端只输出骨架，组件在客户端填充时才创建。</td>
             </tr>
           </tbody>
         </table>
         <h3>父组件内按业务选择子分支</h3>
         <p>
-          组件体只执行一次，体内 <code>if (sig.get())</code> 不会响应式重跑。
-          父组件先执行、子组件后物化——响应式选择有两种写法：
+          组件函数只跑一次，写在里面的 <code>if</code> 不会跟着数据变。想让父组件按数据选分支，
+          把分支包一层信号即可：
         </p>
         <CodeBlock src="./assets/snippets/dom-patterns.tsx" lang="tsx" />
         <p>
-          约束：<code>prop</code> 级求值仍是急切的——
-          <code>{"<Foo v={expensive()} />"}</code> 在调用点先算，运行时无法区分回调 prop 与求值
-          thunk 而不会自动调用。昂贵计算请手写{"`() => expensive()`"}、 组件内解包。
+          写在属性里的表达式会先算好再传进去。费时的计算包一层函数传进去，在组件里调用它：
+          <code>{"<Foo v={() => expensive()} />"}</code>。
         </p>
         <h3>For — 列表渲染</h3>
         <CodeBlock src="./assets/snippets/dom-for.tsx" lang="tsx" />
         <p>
-          <code>For</code> 的 <code>index</code> 是访问器（调用返回当前序号）。默认按
-          <strong>条目身份</strong>
-          复用节点——对象移动/重排不重建、children 不重跑，重复条目回退整表重建；需要自定义
-          键控（item 变为访问器 <code>{"() => T"}</code>）时传 <code>getKey</code>（详见
-          <a href="./dom.html#for">dom API 参考</a>）。
+          <code>index</code> 是一个函数，调用返回当前是第几行。数据换顺序时，各行会跟着移动，
+          不会重建；有重复数据时整体重建。数据有唯一 id、希望按 id 复用行时传
+          <code>getKey</code>（详见<a href="./dom.html#for">dom API 参考</a>）。
         </p>
       </section>
       <section id="async" class="api-section">
@@ -216,15 +209,13 @@ render(
         <h3>ErrorBoundary — 渲染错误边界</h3>
         <CodeBlock src="./assets/snippets/dom-errorboundary.tsx" lang="tsx" />
         <div class="note">
-          <code>children</code>{" "}
-          可直接写组件（初始错误同样能捕获）。裸形态与函数形态的唯一差异是重试语义：
-          裸形态复用同一个惰性占位（<code>reset</code> 后复挂同一批节点），函数形态每次产生新 JSX（
-          <code>reset</code> 后组件体重跑）。需要"重试即重执行"时传函数。
+          <code>children</code> 直接写组件。重试时想让内容重新创建一次，再把
+          <code>children</code> 包成函数。
         </div>
         <h3>Suspend — 异步挂起</h3>
         <CodeBlock src="./assets/snippets/dom-suspend.tsx" lang="tsx" />
         <div class="note">
-          与 React 不同，kiko 组件函数只执行一次，因此 Suspend 只适合<strong>一次性初始化</strong>。
+          组件函数只执行一次，因此 Suspend 只适合<strong>一次性初始化</strong>。
           需要响应式刷新时请使用 <code>effect</code> 或<code>Show</code>。
         </div>
       </section>
