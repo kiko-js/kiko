@@ -31,8 +31,8 @@
     "prepack": "bun run build"
   },
   "dependencies": {
-    "@kikojs/dom": "workspace:*",
-    "@kikojs/signal": "workspace:*",
+    "@kikojs/dom": "^0.4.0",
+    "@kikojs/signal": "^0.1.0",
     "signal-polyfill": "^0.2.0"
   },
   "engines": {

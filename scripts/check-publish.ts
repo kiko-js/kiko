@@ -1,11 +1,14 @@
 /**
  * Publish guard: refuse to publish a package whose runtime dependency ranges
- * still use the `workspace:` protocol (unresolved internal versions).
+ * still use the `workspace:` protocol (npm ships package.json verbatim).
  *
- * `workspace:*` is rewritten to real versions by `changeset version` in the
- * release PR. Publishing from any other tree (e.g. straight from main) ships
- * a tarball whose `package.json` contains `workspace:*`, which npm cannot
- * install — previously this leaked and forced consumers to vendor `dist/`.
+ * Neither `changeset version` nor `changeset publish` (npm path) rewrites the
+ * protocol: bare `workspace:*`/`^`/`~` are skipped entirely by
+ * apply-release-plan, and versioned `workspace:^x.y.z` keeps its prefix.
+ * So published runtime deps MUST be plain semver ranges (`^x.y.z`) — bun
+ * still links them to the local workspace when the range is satisfied, and
+ * `updateInternalDependencies` keeps them in sync on every release.
+ * Previously a `workspace:*` leak forced consumers to vendor `dist/`.
  *
  * Runs in `prepublishOnly` (cwd = the package dir), so every publish path —
  * `changeset publish`, manual `npm publish`/`bun publish` — is covered.

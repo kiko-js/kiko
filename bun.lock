@@ -79,7 +79,7 @@
     },
     "packages/dom": {
       "name": "@kikojs/dom",
-      "version": "0.2.0",
+      "version": "0.4.0",
       "dependencies": {
         "@kikojs/hmr": "workspace:*",
         "signal-polyfill": "^0.2.0",
@@ -110,7 +110,7 @@
     },
     "packages/router": {
       "name": "@kikojs/router",
-      "version": "0.2.0",
+      "version": "0.4.0",
       "dependencies": {
         "@kikojs/dom": "workspace:*",
         "@kikojs/signal": "workspace:*",
@@ -119,7 +119,7 @@
     },
     "packages/signal": {
       "name": "@kikojs/signal",
-      "version": "0.0.7",
+      "version": "0.1.0",
       "dependencies": {
         "signal-polyfill": "^0.2.0",
       },
