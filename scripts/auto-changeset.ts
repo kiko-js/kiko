@@ -19,6 +19,7 @@ const PACKAGE_PATHS: Record<string, string> = {
   "packages/signal": "@kikojs/signal",
   "packages/dom": "@kikojs/dom",
   "packages/router": "@kikojs/router",
+  "packages/hmr": "@kikojs/hmr",
 }
 
 // conventional commit 类型 → changeset bump 级别
