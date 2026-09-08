@@ -114,7 +114,7 @@ describe("router SSR", () => {
     })
     const html = await withSSRRouter(router, () => renderToFragment(() => <Outlet />))
     expect(html).toBe("<p>users</p>")
-    expect(seenMode).toBe("path")
+    expect(seenMode).toBe("memory")
   })
 
   it("concurrent renders keep each request's router isolated across awaits", async () => {

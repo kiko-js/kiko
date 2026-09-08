@@ -1,6 +1,6 @@
 import { Signal } from "signal-polyfill"
 import { createSignal, effect } from "@kikojs/signal"
-import { createHashHistory, createPathHistory } from "./history"
+import { createHashHistory, createMemoryHistory, createPathHistory } from "./history"
 import { createMatcher } from "./matcher"
 import type {
   EntryScroll,
@@ -87,8 +87,13 @@ export function createRouter(options: RouterOptions): Router {
   const base = options.base ?? ""
   const ownsHistory = options.history === undefined
   const history: HistoryAdapter =
-    options.history ?? (options.mode === "hash" ? createHashHistory() : createPathHistory(base))
-  const mode: RouteMode = history.kind === "hash" ? "hash" : "path"
+    options.history ??
+    (options.mode === "hash"
+      ? createHashHistory()
+      : options.mode === "memory"
+        ? createMemoryHistory()
+        : createPathHistory(base))
+  const mode: RouteMode = history.kind
 
   // --- scrollBehavior 接管 -------------------------------------------------
   const scrollHandler = options.scrollBehavior

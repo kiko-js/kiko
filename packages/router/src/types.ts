@@ -6,8 +6,8 @@ export type RouteParams = Record<string, string>
 /** 查询参数值可以是单个字符串或字符串数组 */
 export type RouteQuery = Record<string, string | string[]>
 
-/** 路由模式：path（history）或 hash */
-export type RouteMode = "path" | "hash"
+/** 路由模式：path（history）、hash，或 memory（纯内存，不触碰 URL） */
+export type RouteMode = "path" | "hash" | "memory"
 
 /** 当前位置信息 */
 export interface RouteLocation {
@@ -263,11 +263,11 @@ export interface Router {
 
 /** 路由配置 */
 export interface RouterOptions {
-  /** 路由模式，默认 path。传入 `history` 时忽略，模式取自 `history.kind` */
+  /** 路由模式，默认 path。`memory` 纯内存导航不触碰 URL；传入 `history` 时忽略，模式取自 `history.kind` */
   mode?: RouteMode
   /**
    * 注入 history 实例（可跨 router 共享）。缺省时按 `mode` 自建并拥有其生命周期。
-   * 测试 / SSR / 无 DOM 环境用 `createMemoryHistory()`。
+   * 测试 / SSR / 无 DOM 环境用 `mode: "memory"` 或 `createMemoryHistory()`。
    */
   history?: HistoryAdapter
   /** 滚动行为钩子（配置后 router 接管 scrollRestoration） */

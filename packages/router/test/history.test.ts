@@ -163,4 +163,28 @@ describe("unified history semantics inside the router", () => {
     expect(router.query.get().q).toBe("hello")
     router.dispose()
   })
+
+  it("mode: memory self-builds a memory history without touching the URL", async () => {
+    window.history.replaceState(null, "", "/")
+    const router = createRouter({ mode: "memory", routes })
+    expect(router.mode).toBe("memory")
+    router.push("/search?q=x#frag")
+    await flushMicrotasks()
+    expect(router.location.get().path).toBe("/search")
+    expect(router.location.get().query.q).toBe("x")
+    expect(router.location.get().hash).toBe("frag")
+    // URL 未被触碰：仍停留在初始位置
+    expect(window.location.pathname).toBe("/")
+    router.back()
+    await flushMicrotasks()
+    expect(router.location.get().path).toBe("/")
+    router.dispose()
+  })
+
+  it("injected memory history surfaces mode memory", () => {
+    const router = createRouter({ history: createMemoryHistory("/search"), routes })
+    expect(router.mode).toBe("memory")
+    expect(router.location.get().path).toBe("/search")
+    router.dispose()
+  })
 })
