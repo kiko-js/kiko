@@ -1,6 +1,6 @@
 # @kikojs/router
 
-基于 `@kikojs/dom` 的声明式路由。支持 path / hash 两种模式、嵌套路由、路由守卫、`Link` / `Outlet` 导航原语与路由 hooks。
+基于 `@kikojs/dom` 的声明式路由。支持 path / hash / memory 三种模式、嵌套路由、路由守卫、`Link` / `Outlet` 导航原语与路由 hooks。
 
 ## 安装
 
@@ -90,13 +90,14 @@ history 是独立的响应式事实源（`location` 为信号），三种实现�
 - `createHashHistory()`——URL hash；
 - `createMemoryHistory(initial?)`——纯内存条目栈，无 DOM 依赖，适用于测试、SSR 与非浏览器环境。
 
-默认按 `mode` 自建并拥有其生命周期；也可以注入共享：
+默认按 `mode` 自建并拥有其生命周期——`mode: "memory"` 直接得到纯内存路由，不触碰 URL，无需手动注入 history；需要指定初始路径或共享时才注入：
 
 ```ts
 import { createRouter, createMemoryHistory } from "@kikojs/router"
 
-const history = createMemoryHistory("/")
-const router = createRouter({ history, routes }) // mode 取自 history.kind
+const router = createRouter({ mode: "memory", routes }) // 开箱即用的内存路由
+const history = createMemoryHistory("/users")
+const router2 = createRouter({ history, routes }) // mode 取自 history.kind
 ```
 
 同一 history 实例可被多个 router 共享：每个 router 独立观察位置变化并用自己的路由表与守卫处理。注入时 router 不拥有 history——`dispose()` 只解绑自身。
@@ -203,7 +204,7 @@ const stop = hydrate(
 
 ## API
 
-- **创建**：`createRouter(options)`（`mode: "path" | "hash"`）、`getRouteProps`
+- **创建**：`createRouter(options)`（`mode: "path" | "hash" | "memory"`）、`getRouteProps`
 - **组件**：`Router`、`Link`、`Outlet`、`Navigate`
 - **Hooks**：`useRouter`、`useRoute`、`useParams`、`useQuery`、`useLocation`、`useIsActive`、`useMatch`、`useNavigate`
 - **导航**：`useNavigate`、`redirect`、`redirectReplace`、`buildPath`
