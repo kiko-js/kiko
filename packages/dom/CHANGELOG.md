@@ -1,5 +1,12 @@
 # @kikojs/dom
 
+## 0.4.2
+
+### Patch Changes
+
+- ### @kikojs/dom (patch)
+  - **dom**: share SSR bridge across duplicate module copies (c0a6397)
+
 ## 0.4.1
 
 ### Patch Changes
