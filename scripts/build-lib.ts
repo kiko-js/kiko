@@ -21,7 +21,7 @@
  * .d.ts declarations with tsc.
  */
 
-import { rm } from "node:fs/promises"
+import { rm, writeFile } from "node:fs/promises"
 import { execFileSync } from "node:child_process"
 import { createRequire } from "node:module"
 import { dirname, resolve } from "node:path"
@@ -84,6 +84,23 @@ export async function buildPackage(opts: BuildOptions): Promise<void> {
     const bytes = outputs[path].bytes
     console.log("  " + path + "  " + (bytes / 1024).toFixed(2) + " KB")
   }
+
+  // Runtime-safe tsconfig for the built output. Bun resolves a module's bare
+  // imports against the NEAREST tsconfig.json walking up from the importing
+  // file, so a `dist/*.js` under this monorepo inherits the root `paths`
+  // aliases and remaps e.g. `@kikojs/dom` to `packages/dom/src` — a SECOND
+  // module instance whose module-level state (SSR runtime slot, hydration
+  // cursor, watcher registries) is disjoint from the package copy the app
+  // imported. A path-less tsconfig in `dist` stops that walk, so a built
+  // package always resolves its runtime deps through package `exports` (the
+  // same instance as the consumer), while the source `paths` stay intact for
+  // `tsc` typechecking.
+  await writeFile(
+    resolve("dist", "tsconfig.json"),
+    // `paths: {}` overrides the inherited alias table; compilation options
+    // never apply here (dist holds no TS/JSX input).
+    JSON.stringify({ compilerOptions: { paths: {} } }, null, 2) + "\n",
+  )
 
   // Emit .d.ts per source file. TypeScript 7 has an `exports` map that blocks
   // `require.resolve("typescript/bin/tsc")`, so resolve the physical path from

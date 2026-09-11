@@ -30,18 +30,43 @@ interface RuntimeSlot {
   runtime: SSRRuntime | null
 }
 
-let fallback: RuntimeSlot = { runtime: null }
-
 type RuntimeScope = () => RuntimeSlot | undefined
-let scope: RuntimeScope | null = null
+
+/**
+ * 槽位注册表以 `globalThis[Symbol.for("kiko:ssr")]` 单例存在——与 HMR
+ * 注册表(contract.ts)同一约定。SSR 桥是客户端/服务端两份 bundle 唯一的
+ * 公共点,必须按「双包加载共享一份状态」设计:当 `@kikojs/dom` 同时以源码
+ * (monorepo `paths` 别名)与 dist(消费方 package exports)两份副本进入同一
+ * 进程/bundle 时(如 `@kikojs/router` 的 dist 从消费方解析到源码别名),
+ * 组件代码读到的 `getSSRRuntime()` 必须与服务端 `server.ts` 注册的运行时
+ * 是同一槽位,否则 Router/Link 会误走客户端分支(`document is not defined`)。
+ * Symbol.for 跨副本稳定,`scope`/`fallback` 因此每个进程恰好一份。
+ */
+const KIKO_SSR_MODE: unique symbol = Symbol.for("kiko:ssr")
+
+interface SSRModeRegistry {
+  fallback: RuntimeSlot
+  scope: RuntimeScope | null
+}
+
+function registry(): SSRModeRegistry {
+  const g = globalThis as Record<symbol, unknown>
+  let reg = g[KIKO_SSR_MODE] as SSRModeRegistry | undefined
+  if (reg === undefined) {
+    reg = { fallback: { runtime: null }, scope: null }
+    g[KIKO_SSR_MODE] = reg
+  }
+  return reg
+}
 
 /** 注册请求作用域读取器(由 server 侧装置调用;客户端 bundle 不触发) */
 export function setSSRRuntimeScope(read: RuntimeScope | null): void {
-  scope = read
+  registry().scope = read
 }
 
 function slot(): RuntimeSlot {
-  return scope?.() ?? fallback
+  const reg = registry()
+  return reg.scope?.() ?? reg.fallback
 }
 
 /** 注册 SSR 运行时(由 server.ts 模块加载时自调用;写入当前作用域槽位) */
