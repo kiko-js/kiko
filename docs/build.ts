@@ -21,6 +21,7 @@ const htmlEntries = [
   "signal.html",
   "dom.html",
   "router.html",
+  "hmr.html",
   "api.html",
   "examples.html",
 ]

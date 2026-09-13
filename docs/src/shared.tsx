@@ -16,6 +16,7 @@ export const NAV_LINKS: PageLink[] = [
   { page: "signal", label: "signal" },
   { page: "dom", label: "dom" },
   { page: "router", label: "router" },
+  { page: "hmr", label: "hmr" },
   { page: "examples", label: "示例" },
 ]
 

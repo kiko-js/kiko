@@ -339,6 +339,13 @@ render(
           Link / Outlet 组件，支持嵌套、动态参数、守卫与重定向。
         </p>
         <CodeBlock src="./assets/snippets/router-basic.tsx" lang="tsx" />
+        <h3>热更新</h3>
+        <p>
+          <a href="./hmr.html">@kikojs/hmr</a> 提供 React Fast Refresh 语义的 HMR：独立{" "}
+          <code>/hmr</code> 端点（SSE / WebSocket，纯 Fetch API）+
+          <code>Bun.serve</code> 适配器。组件原位热替换，信号状态保留。
+        </p>
+        <CodeBlock src="./assets/snippets/hmr-server.ts" lang="ts" />
         <h3>React 桥接</h3>
         <p>
           <code>ReactPortal</code> 把 React 组件嵌入 kiko 树，signal prop 变化自动触发 React
@@ -378,6 +385,9 @@ render(
           </li>
           <li>
             <a href="./router.html">@kikojs/router API 参考</a> — 路由表、组件、守卫
+          </li>
+          <li>
+            <a href="./hmr.html">@kikojs/hmr API 参考</a> — 独立端点、传输与状态保留
           </li>
           <li>
             <a href="./examples.html">示例页</a> — 可运行代码与实时 demo

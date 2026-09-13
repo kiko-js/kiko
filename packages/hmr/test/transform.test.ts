@@ -28,7 +28,20 @@ describe("transformForHmr", () => {
     expect(code).toContain(`__kiko_hmr.endModule("src/app.tsx")`)
     expect(code).toContain(`import.meta.hot.accept`)
     expect(code).toContain(`import.meta.hot.on("bun:afterUpdate"`)
+    expect(code).toContain(
+      `import { acceptHmrModule as __kiko_acceptHmrModule } from "@kikojs/hmr/client";`,
+    )
+    expect(code).toContain(
+      `__kiko_acceptHmrModule("src/app.tsx", { url: import.meta.url, managed: typeof import.meta.hot !== "undefined" });`,
+    )
     expectParses(code)
+  })
+
+  it("honors a custom client module for the endpoint glue", () => {
+    const src = `export function App() {\n  return <p />\n}\n`
+    const out = transformForHmr(MOD, src, MOD, RUNTIME, "@custom/hmr-client")
+    expect(out!.code).toContain(`from "@custom/hmr-client"`)
+    expectParses(out!.code)
   })
 
   it("wraps a non-exported component used by other components", () => {
@@ -91,7 +104,9 @@ describe("transformForHmr", () => {
     const code = out!.code
     expect(code).toContain("beginModule")
     expect(code).toContain("endModule")
-    expect(code).not.toContain("import.meta.hot")
+    // 非组件模块不成为 accept 边界（否则更新停止冒泡），但仍登记到端点。
+    expect(code).not.toContain("import.meta.hot.accept")
+    expect(code).toContain("__kiko_acceptHmrModule(")
     expect(out?.components).toBe(0)
     expectParses(code)
   })

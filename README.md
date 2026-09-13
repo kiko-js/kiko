@@ -19,12 +19,12 @@
 
 ## 包
 
-| 包               | 入口                                                           | 作用                                                                                                                     |
-| ---------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `@kikojs/signal` | `@kikojs/signal`                                               | `createSignal` / `computed` / `effect` / `batch` / `untrack` / `on` / `createStore` / `createResource` / `createEmitter` |
-| `@kikojs/dom`    | `@kikojs/dom`、`@kikojs/dom/jsx-runtime`、`@kikojs/dom/server` | JSX 工厂、`render` / `hydrate`、控制流组件、`lazy`、`Style`、`createPortal`、SSR 入口                                    |
-| `@kikojs/router` | `@kikojs/router`                                               | `createRouter`、`Router` / `Link` / `Outlet` / `Navigate`、hooks、守卫                                                   |
-| `@kikojs/hmr`    | `@kikojs/hmr`、`@kikojs/hmr/bun`                               | HMR 运行时 + Bun dev server 插件（`bunfig.toml` `[serve.static]`），`@kikojs/dom/hmr` 为 DOM 接线层                      |
+| 包               | 入口                                                                         | 作用                                                                                                                                     |
+| ---------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `@kikojs/signal` | `@kikojs/signal`                                                             | `createSignal` / `computed` / `effect` / `batch` / `untrack` / `on` / `createStore` / `createResource` / `createEmitter`                 |
+| `@kikojs/dom`    | `@kikojs/dom`、`@kikojs/dom/jsx-runtime`、`@kikojs/dom/server`               | JSX 工厂、`render` / `hydrate`、控制流组件、`lazy`、`Style`、`createPortal`、SSR 入口                                                    |
+| `@kikojs/router` | `@kikojs/router`                                                             | `createRouter`、`Router` / `Link` / `Outlet` / `Navigate`、hooks、守卫                                                                   |
+| `@kikojs/hmr`    | `@kikojs/hmr`、`@kikojs/hmr/client`、`@kikojs/hmr/server`、`@kikojs/hmr/bun` | HMR 运行时 + 独立 `/hmr` 端点（SSE / WebSocket，Fetch API 无关框架）+ Bun 打包插件与 `Bun.serve` 适配器，`@kikojs/dom/hmr` 为 DOM 接线层 |
 
 `@kikojs/dom` **不依赖** `@kikojs/signal`——它自带一份薄薄的 signal-polyfill 封装，保持自包含。
 
@@ -53,14 +53,30 @@ const dispose = render(<App />, document.getElementById("app")!)
 
 ### 热更新（HMR）
 
-Bun 全栈 dev server（`Bun.serve` + `development: { hmr: true }`）下，在 `bunfig.toml` 启用插件：
+HMR 的通信层是一个**独立端点**：客户端连到 `/hmr`（路径可配置），通过 **SSE 或 WebSocket** 接收更新。核心 Hub 只依赖 Fetch API（`Request` / `Response` / `ReadableStream`），不解析路由、不依赖框架，Bun / Deno / Cloudflare Workers / Node 18+ 都能接入；更新事件由宿主 `publish()` 推入。
+
+Bun 全栈 dev server（`Bun.serve` + `development: { hmr: true }`）下，先在 `bunfig.toml` 启用打包插件：
 
 ```toml
 [serve.static]
 plugins = ["@kikojs/hmr/bun"]
 ```
 
-插件把顶层组件改写为注册表包装并注入 `import.meta.hot` 粘合代码（生产构建自动消除）。编辑组件文件：组件用新实现重跑、DOM 原位换入；组件内部信号按创建序恢复旧值，模块级信号直接复用旧信号对象——状态不丢。完整演示见 `examples/hmr`（`bun run dev`）。
+再把 `createBunHmr` 的 fetch / websocket 入口接进 `Bun.serve`（`watch` 打开后自动监听文件变化）：
+
+```ts
+import { createBunHmr } from "@kikojs/hmr/bun"
+
+const hmr = createBunHmr({ watch: ["src"] })
+
+Bun.serve({
+  fetch: (request, server) =>
+    hmr.fetch(request, server) ?? new Response("Not Found", { status: 404 }),
+  websocket: hmr.websocket,
+})
+```
+
+插件把顶层组件改写为注册表包装，注入 `import.meta.hot` 粘合与端点登记（生产构建自动消除）。编辑组件文件：组件用新实现重跑、DOM 原位换入；组件内部信号按创建序恢复旧值，模块级信号直接复用旧信号对象——状态不丢。没有 `import.meta.hot` 的宿主则由端点驱动按模块 URL 重新导入。完整演示见 `examples/hmr`（`bun run dev`），API 参考见[文档站 HMR 页](./docs/src/pages/hmr.tsx)。
 
 ## 示例
 

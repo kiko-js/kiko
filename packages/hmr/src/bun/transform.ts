@@ -8,9 +8,11 @@ import type { BindingIdentifier, Function, Program, VariableDeclaration } from "
  *    原名改写为 `__kiko_o$<name>`，并在声明之后插入
  *    `const <name> = __kiko_hmr.ref(moduleId, name, __kiko_o$<name>)`；
  *    后续引用在调用期解析到稳定包装，模块重求值后旧包装通过注册表拿到新实现。
- * 2. 注入 `beginModule` / `endModule`（模块级信号身份作用域）与
- *    `import.meta.hot` 粘合代码（自身变更走 accept 回调；依赖变更冒泡走
- *    `bun:afterUpdate` 事件）。
+ * 2. 注入 `beginModule` / `endModule`（模块级信号身份作用域）、独立的
+ *    HMR 端点客户端登记（`acceptHmrModule`），以及 `import.meta.hot`
+ *    粘合代码（自身变更走 accept 回调；依赖变更冒泡走 `bun:afterUpdate`
+ *    事件）。bundler 提供 `import.meta.hot` 时由它替换模块，端点只做通知；
+ *    没有 bundler HMR 的宿主则由端点驱动重新导入。
  * 3. 无组件的模块只在源码包含 `createSignal` 时注入模块作用域胶水，
  *    不注入 accept——非组件模块不应成为热更新边界，否则更新停止冒泡。
  */
@@ -56,6 +58,7 @@ export function transformForHmr(
   source: string,
   moduleId: string,
   runtimeModule: string,
+  clientModule = "@kikojs/hmr/client",
 ): HmrTransformResult | null {
   let program: Program
   try {
@@ -157,11 +160,17 @@ export function transformForHmr(
   if (needsScope) {
     header.push(
       `import { installHmr as __kiko_installHmr } from ${quote(runtimeModule)};`,
+      `import { acceptHmrModule as __kiko_acceptHmrModule } from ${quote(clientModule)};`,
       `const __kiko_hmr = __kiko_installHmr();`,
       `__kiko_hmr.beginModule(${quote(moduleId)});`,
       ``,
     )
-    footer.push(`__kiko_hmr.endModule(${quote(moduleId)});`)
+    footer.push(
+      `__kiko_hmr.endModule(${quote(moduleId)});`,
+      // 登记到独立端点客户端：`managed` 为真时 bundler 的 import.meta.hot
+      // 负责替换模块，端点仅通知；否则端点会按 import.meta.url 重新导入。
+      `__kiko_acceptHmrModule(${quote(moduleId)}, { url: import.meta.url, managed: typeof import.meta.hot !== "undefined" });`,
+    )
   }
   if (registrations.length > 0) {
     for (const r of registrations) {

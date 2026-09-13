@@ -4,6 +4,7 @@
   "type": "module",
   "dependencies": {
     "@kikojs/dom": "workspace:*",
+    "@kikojs/hmr": "workspace:*",
     "@kikojs/router": "workspace:*",
     "@kikojs/signal": "workspace:*"
   },

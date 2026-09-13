@@ -11,11 +11,12 @@ docs/
 ├── signal.html     @kikojs/signal API 参考
 ├── dom.html        @kikojs/dom API 参考
 ├── router.html     @kikojs/router API 参考
+├── hmr.html        @kikojs/hmr API 参考（独立端点 / 传输 / 状态保留）
 ├── examples.html   示例：实时 demo + 代码 + 本地示例项目
 ├── api.html        旧链接重定向（→ guide.html）
 ├── build.ts        构建脚本（bun run docs/build.ts）
 ├── tsconfig.json   type-check 代码片段（assets/**）
-├── package.json    workspace 成员（依赖三个 @kikojs/* 包，用于片段类型检查）
+├── package.json    workspace 成员（依赖各 @kikojs/* 包，用于片段类型检查）
 └── assets/
     ├── style.css   站点样式
     ├── highlight.js 代码高亮 + data-src 片段加载
