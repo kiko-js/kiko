@@ -164,29 +164,26 @@ export function Link(props: LinkProps): Node {
   if (isHydrating()) {
     // 水合：SSR 已输出 <a href>。采纳现有元素并重放 props（onClick 委托等），
     // 采纳后补上响应式部分：href 按 mode/base 修正 + activeClass 高亮。
-    // children 交由标准游标采纳，不能像客户端分支那样手动 append。
+    // children 交由标准游标采纳。
     return hydratePendingElement("a", { ...rest, onClick, children }, el => {
       const stop = attachLinkEffects(el as HTMLAnchorElement, to, activeClass, exact, resolve)
       trackCleanup(el, stop)
     })
   }
 
+  // children 走 jsx 工厂：dom 的 appendChild 会给信号子节点建 marker+watcher，
+  // 语言等信号变化时精准更新。手动 toNodes(children) 不认信号，会 String() 成
+  // "[object Object]"（`t()` 返回 computed 时，导航后链接文本损坏）。
   const anchor = jsx("a", {
     ...rest,
     href: resolveHref(resolve(), to),
     onClick,
+    children,
   })
 
   const stop = attachLinkEffects(anchor as HTMLAnchorElement, to, activeClass, exact, resolve)
   // effect 的 watcher 不挂在 anchor 上，不 track 会在 Router 卸载后泄漏
   trackCleanup(anchor, stop)
-
-  if (children) {
-    const nodes = toNodes(children)
-    for (const node of nodes) {
-      anchor.appendChild(node)
-    }
-  }
 
   return anchor
 }

@@ -732,4 +732,19 @@ describe("JSX composition (children evaluate before Router)", () => {
     cleanupWatchers(tree)
     router.dispose()
   })
+
+  it("Link renders a signal child reactively (no [object Object])", async () => {
+    // 回归：客户端分支曾用 toNodes(children) 手动 append，不认信号子节点，
+    // `t()` 这类返回 computed 的翻译在导航后渲染成 "[object Object]"。
+    const router = createRouter({ mode: "path", routes: createRoutes() })
+    const label = createSignal("Home")
+    const link = withFrame({ router, depth: 0 }, () =>
+      Link({ to: "/", children: label }),
+    ) as HTMLAnchorElement
+    expect(link.textContent).toBe("Home")
+    label.set("Início")
+    await drainMicrotasks()
+    expect(link.textContent).toBe("Início")
+    router.dispose()
+  })
 })
