@@ -1,6 +1,7 @@
 import { Signal } from "signal-polyfill"
 import { trackSignal, nextRestoreValue, noteRestoreType } from "./signal-serialize"
 import { getHmrRegistry } from "@kikojs/hmr"
+import { isHydrating } from "./hydrate"
 /**
  * A watchable signal — either `Signal.State` (writable) or `Signal.Computed`
  * (read-only derived).  Both expose `.get()` and are accepted by
@@ -34,6 +35,8 @@ export function isSignal(value: unknown): value is WatchableSignal<unknown> {
 /** Convenience: create a `Signal.State<T>` (standard TC39 Signals interface). */
 export function createSignal<T>(initial: T): Signal.State<T> {
   // HMR 热替换模式：实例/模块作用域内复用旧信号对象（身份与值保留）。
+  // 水合期例外：此时必须走下面的恢复路径消费 SSR 快照，HMR 复用会把快照
+  // 整体吞掉（组件信号在 dev 下全部退回初始值）。
   //
   // `process.env.NODE_ENV` 是给 bundler（Bun / Vite / esbuild / webpack）的
   // 裸字面量：构建期被静态替换为字面量，生产构建下整个分支连同
@@ -41,7 +44,7 @@ export function createSignal<T>(initial: T): Signal.State<T> {
   // 不加 `typeof process` 守卫（那会让表达式无法折叠）。浏览器侧代码必经
   // bundler 处理（`@kikojs/dom` 使用裸模块说明符，无法直接在浏览器解析），
   // 运行期不会真正求值 `process`。
-  if (process.env.NODE_ENV !== "production") {
+  if (process.env.NODE_ENV !== "production" && !isHydrating()) {
     const hmr = getHmrRegistry()?.takeSignal(initial)
     if (hmr) return hmr as Signal.State<T>
   }
