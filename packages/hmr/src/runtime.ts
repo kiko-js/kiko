@@ -292,7 +292,7 @@ function performUpdate(moduleId: string): void {
   }
 }
 
-/** accept 与 afterUpdate 可能对同一次更新各触发一次：微任务批处理去重。 */
+/** 微任务批处理：同一次更新的多次通知（如多个模块同批）合并去重。 */
 function scheduleUpdate(moduleId: string): void {
   if (scheduled.has(moduleId)) return
   scheduled.add(moduleId)

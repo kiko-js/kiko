@@ -14,7 +14,11 @@ export interface KikoHmrRegistry {
   endModule(moduleId: string): void
   /** 插件注入：注册组件实现，返回追踪实例的包装函数。 */
   ref(moduleId: string, name: string, impl: unknown): unknown
-  /** 插件注入：模块自身变更（accept 回调，mod 为新模块导出；依赖冒泡时 mod 为 null）。 */
+  /**
+   * 插件注入：模块变更（bundler 的 accept 回调，或端点按 URL 重新导入之后）。
+   * `mod` 为新模块导出；端点路径可传 `null`——运行时只用它作为触发信号，
+   * 不读取内容。
+   */
   moduleUpdated(moduleId: string, mod: unknown): void
   /**
    * `createSignal` 钩子：处于实例/模块作用域时返回应复用的信号（值与身份

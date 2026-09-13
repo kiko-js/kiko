@@ -32,7 +32,9 @@ describe("transformForHmr", () => {
     expect(code).toContain(`__kiko_hmr.beginModule("src/app.tsx")`)
     expect(code).toContain(`__kiko_hmr.endModule("src/app.tsx")`)
     expect(code).toContain(`import.meta.hot.accept`)
-    expect(code).toContain(`import.meta.hot.on("bun:afterUpdate"`)
+    // 不注册 afterUpdate：Bun 的 `hot.on()` 会触发其运行时崩溃（onDispose）。
+    expect(code).not.toContain("bun:afterUpdate")
+    expect(code).not.toContain("import.meta.hot.on(")
     expect(code).toContain(
       `import { acceptHmrModule as __kiko_acceptHmrModule } from "@kikojs/hmr/client";`,
     )

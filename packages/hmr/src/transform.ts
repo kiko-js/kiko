@@ -13,8 +13,8 @@ import type { BindingIdentifier, Function, Program, VariableDeclaration } from "
  *    （`acceptHmrModule(moduleId, { url, managed })`）。`moduleId` 是不透明
  *    字符串，由接入层规范化，核心不假设它是文件路径。
  * 3. 仅当 `bundler` 指定时注入 bundler 热替换粘合（如 Bun 的
- *    `import.meta.hot.accept` / `bun:afterUpdate`）；没有 bundler HMR 的
- *    接入方式（如 Node）不注入，由端点按模块 URL 重新导入。
+ *    `import.meta.hot.accept`）；没有 bundler HMR 的接入方式（如 Node）
+ *    不注入，由端点按模块 URL 重新导入。
  * 4. 无组件的模块只在源码包含 `createSignal` 时注入模块作用域胶水，
  *    不注入 accept——非组件模块不应成为热更新边界，否则更新停止冒泡。
  */
@@ -32,7 +32,7 @@ export interface HmrTransformOptions {
   clientModule?: string
   /**
    * bundler 热替换粘合：
-   * - `"bun"`：注入 `import.meta.hot.accept` 与 `bun:afterUpdate` 监听；
+   * - `"bun"`：注入 `import.meta.hot.accept` 自接受粘合；
    * - `false`（默认）：不注入，端点负责驱动模块更新。
    */
   bundler?: "bun" | false
@@ -205,10 +205,13 @@ export function transformForHmr(
       }
     }
     if (bundler === "bun") {
+      // 只用 accept：模块自身变更或依赖冒泡到本模块时，Bun 都会重求值并回调。
+      // 刻意不注册 `import.meta.hot.on("bun:afterUpdate", ...)`——Bun 的 `on()`
+      // 内部会 `this.dispose(...)`，在 1.4.x 上会触发其 HMR 运行时
+      // `onDispose is not iterable` 崩溃并整页重载（丢失状态）。
       footer.push(
         `if (import.meta.hot) {`,
         `  import.meta.hot.accept((m) => { __kiko_hmr.moduleUpdated(${quote(moduleId)}, m) })`,
-        `  import.meta.hot.on("bun:afterUpdate", () => { __kiko_hmr.moduleUpdated(${quote(moduleId)}, null) })`,
         `}`,
       )
     }

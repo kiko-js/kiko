@@ -486,8 +486,8 @@ render(
             （端点登记）。
           </li>
           <li>
-            <code>bundler: "bun"</code> 时组件模块再注入 <code>import.meta.hot.accept</code> /{" "}
-            <code>bun:afterUpdate</code> 粘合；
+            <code>bundler: "bun"</code> 时组件模块再注入 <code>import.meta.hot.accept</code>{" "}
+            自接受粘合；
             <code>false</code>（Node 等无 bundler HMR 的接入）不注入，由端点驱动。
             非组件模块只登记端点，不成为 accept 边界（否则更新停止冒泡）。
           </li>
