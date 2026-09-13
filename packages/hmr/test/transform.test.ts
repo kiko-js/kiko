@@ -1,12 +1,17 @@
 import { describe, it, expect } from "bun:test"
 import { parseSync } from "oxc-parser"
-import { transformForHmr } from "../src/bun/transform"
+import { transformForHmr, type HmrTransformOptions } from "../src/transform"
 
 const RUNTIME = "@kikojs/dom/hmr"
 const MOD = "src/app.tsx"
 
-function transform(source: string, filename = MOD) {
-  return transformForHmr(filename, source, filename, RUNTIME)
+/** Bun 接入的改写选项（bundler 提供 import.meta.hot）。 */
+const BUN: HmrTransformOptions = { runtimeModule: RUNTIME, bundler: "bun" }
+/** 通用改写：不带 bundler 粘合，交给端点驱动（如 Node 接入）。 */
+const GENERIC: HmrTransformOptions = { runtimeModule: RUNTIME }
+
+function transform(source: string, filename = MOD, options: HmrTransformOptions = BUN) {
+  return transformForHmr(filename, source, filename, options)
 }
 
 /** 输出必须是合法的 TSX：解析失败即回归。 */
@@ -37,9 +42,20 @@ describe("transformForHmr", () => {
     expectParses(code)
   })
 
+  it("omits bundler glue in the generic (endpoint-driven) mode", () => {
+    const src = `export function App() {\n  return <p />\n}\n`
+    const out = transform(src, MOD, GENERIC)
+    const code = out!.code
+    expect(out?.components).toBe(1)
+    expect(code).not.toContain("import.meta.hot.accept")
+    expect(code).not.toContain("bun:afterUpdate")
+    expect(code).toContain("__kiko_acceptHmrModule(")
+    expectParses(code)
+  })
+
   it("honors a custom client module for the endpoint glue", () => {
     const src = `export function App() {\n  return <p />\n}\n`
-    const out = transformForHmr(MOD, src, MOD, RUNTIME, "@custom/hmr-client")
+    const out = transformForHmr(MOD, src, MOD, { ...BUN, clientModule: "@custom/hmr-client" })
     expect(out!.code).toContain(`from "@custom/hmr-client"`)
     expectParses(out!.code)
   })

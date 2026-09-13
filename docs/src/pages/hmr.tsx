@@ -1,5 +1,5 @@
 /**
- * @kikojs/hmr API 参考页：独立 HMR 端点、Bun 适配器与运行时语义。
+ * @kikojs/hmr API 参考页：独立 HMR 端点、通用核心与 Bun / Node 接入。
  */
 import { render } from "@kikojs/dom"
 import { Layout, Toc } from "../shared"
@@ -8,10 +8,11 @@ import { CodeBlock } from "../code"
 
 const TOC: TocItem[] = [
   { id: "overview", label: "概览" },
-  { id: "install", label: "安装" },
+  { id: "install", label: "安装与入口" },
   { id: "endpoint", label: "独立端点（/hmr）" },
   { id: "hub", label: "createHmrHub" },
-  { id: "bun", label: "Bun 适配器" },
+  { id: "bun", label: "Bun 接入" },
+  { id: "node", label: "Node 接入" },
   { id: "client", label: "客户端" },
   { id: "protocol", label: "协议" },
   { id: "transform", label: "模块改写" },
@@ -53,33 +54,91 @@ render(
           </li>
         </ul>
         <div class="note">
-          三层结构：<code>@kikojs/hmr</code>（协议 + Hub + 客户端）→
-          <code>@kikojs/hmr/bun</code>（打包插件 + <code>Bun.serve</code> 的 fetch / websocket
-          入口）→ <code>@kikojs/dom/hmr</code>（DOM 适配器接线）。
+          架构：<strong>通用代码</strong>（<code>@kikojs/hmr</code>：协议 / Hub / 客户端 / 注册表；
+          <code>@kikojs/hmr/transform</code>：模块改写；<code>@kikojs/hmr/watcher</code>：文件监听）
+          + <strong>接入方式</strong>（<code>@kikojs/hmr/bun</code>、<code>@kikojs/hmr/node</code>
+          ）。 根入口保持浏览器 / SSR 安全，不引入 <code>oxc-parser</code> / <code>node:fs</code>。
         </div>
       </section>
 
       <section id="install" class="api-section">
-        <h2>安装</h2>
-        <p>HMR 相关的是一个运行时包加两个入口：</p>
-        <CodeBlock src="./assets/snippets/install.sh" lang="shell" />
-        <ul style="color: var(--muted)">
-          <li>
-            <code>@kikojs/hmr</code> — 协议、服务端 Hub（<code>createHmrHub</code>）、 客户端（
-            <code>connectHmr</code>）与注册表运行时。
-          </li>
-          <li>
-            <code>@kikojs/hmr/client</code> — 浏览器侧入口（客户端 + 注册表应用层）。
-          </li>
-          <li>
-            <code>@kikojs/hmr/bun</code> — Bun 打包插件（<code>kikoHmr</code>）与
-            <code>createBunHmr</code>（fetch / websocket 适配）。
-          </li>
-          <li>
-            <code>@kikojs/dom/hmr</code> — DOM 宿主接线层（注入 <code>HmrDomAdapters</code>
-            并安装全局注册表）。
-          </li>
-        </ul>
+        <h2>安装与入口</h2>
+        <p>通用代码与接入入口分开导出：</p>
+        <CodeBlock src="./assets/snippets/hmr-install.sh" lang="shell" />
+        <table>
+          <thead>
+            <tr>
+              <th>入口</th>
+              <th>内容</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>
+                <code>@kikojs/hmr</code>
+              </td>
+              <td>
+                通用核心：协议、服务端 Hub（<code>createHmrHub</code>）、客户端（
+                <code>connectHmr</code> / <code>ensureHmrClient</code>）与注册表运行时。浏览器 / SSR
+                安全。
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <code>@kikojs/hmr/client</code>
+              </td>
+              <td>浏览器侧入口（客户端 + 注册表应用层），插件注入的胶水使用它。</td>
+            </tr>
+            <tr>
+              <td>
+                <code>@kikojs/hmr/server</code>
+              </td>
+              <td>仅服务端 Hub / 协议（不含浏览器客户端）。</td>
+            </tr>
+            <tr>
+              <td>
+                <code>@kikojs/hmr/transform</code>
+              </td>
+              <td>
+                通用模块改写（<code>transformForHmr</code>，依赖 <code>oxc-parser</code>）。
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <code>@kikojs/hmr/watcher</code>
+              </td>
+              <td>
+                通用递归文件监听（<code>createPathWatcher</code> / <code>toModuleId</code>）。
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <code>@kikojs/hmr/bun</code>
+              </td>
+              <td>
+                Bun 接入：打包插件（<code>kikoHmr</code>）+ <code>createBunHmr</code>（fetch /
+                websocket）。
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <code>@kikojs/hmr/node</code>
+              </td>
+              <td>
+                Node 接入：<code>createNodeHmr</code>、<code>toNodeListener</code>（
+                <code>node:http</code>）、<code>bindSocket</code>。
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <code>@kikojs/dom/hmr</code>
+              </td>
+              <td>
+                DOM 宿主接线层（注入 <code>HmrDomAdapters</code> 并安装全局注册表）。
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </section>
 
       <section id="endpoint" class="api-section">
@@ -205,7 +264,7 @@ render(
       </section>
 
       <section id="bun" class="api-section">
-        <h2>Bun 适配器</h2>
+        <h2>Bun 接入</h2>
         <p>
           在 <code>bunfig.toml</code> 启用打包插件（把顶层组件改写为注册表包装并注入端点胶水）：
         </p>
@@ -285,6 +344,58 @@ render(
         </table>
       </section>
 
+      <section id="node" class="api-section">
+        <h2>Node 接入</h2>
+        <p>
+          Node 没有内置 bundler，也不提供 <code>import.meta.hot</code>：<code>createNodeHmr</code>{" "}
+          提供纯 Fetch API 的 <code>fetch</code>，用 <code>toNodeListener</code> 桥接{" "}
+          <code>node:http</code>（响应体流式写回，SSE 实时）， 用 <code>bindSocket</code> 把{" "}
+          <code>ws</code> 等 EventEmitter 风格 WebSocket 接进同一 Hub。改写后的模块由端点驱动（
+          <code>managed: false</code>）按模块 URL 重新导入。
+        </p>
+        <CodeBlock src="./assets/snippets/hmr-node.ts" lang="ts" />
+        <table>
+          <thead>
+            <tr>
+              <th>成员</th>
+              <th>签名</th>
+              <th>说明</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>
+                <code>fetch</code>
+              </td>
+              <td>
+                <code>{"(request: Request) => Response | Promise<Response> | undefined"}</code>
+              </td>
+              <td>非本端点返回 undefined，可交给上层框架。</td>
+            </tr>
+            <tr>
+              <td>
+                <code>toNodeListener</code>
+              </td>
+              <td>
+                <code>{"(hmr, options?) => (req, res) => void"}</code>
+              </td>
+              <td>
+                <code>node:http</code> 适配器；<code>options.fallback</code> 处理未命中请求。
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <code>bindSocket</code>
+              </td>
+              <td>
+                <code>{"(socket) => () => void"}</code>
+              </td>
+              <td>把 WebSocket 接进 Hub，返回解绑函数。</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
       <section id="client" class="api-section">
         <h2>客户端</h2>
         <p>
@@ -357,7 +468,9 @@ render(
       <section id="transform" class="api-section">
         <h2>模块改写</h2>
         <p>
-          <code>kikoHmr()</code> 基于 <code>oxc-parser</code> 的 AST span 做文本拼接（不重排格式）：
+          通用改写器 <code>transformForHmr()</code> 基于 <code>oxc-parser</code> 的 AST span
+          做文本拼接（不重排格式）；接入方式决定是否注入 bundler 粘合（
+          <code>bundler: "bun" | false</code>）：
         </p>
         <ul style="color: var(--muted)">
           <li>
@@ -373,11 +486,13 @@ render(
             （端点登记）。
           </li>
           <li>
-            组件模块再注入 <code>import.meta.hot.accept</code> / <code>bun:afterUpdate</code>{" "}
-            粘合；非组件模块只登记端点，不成为 accept 边界（否则更新停止冒泡）。
+            <code>bundler: "bun"</code> 时组件模块再注入 <code>import.meta.hot.accept</code> /{" "}
+            <code>bun:afterUpdate</code> 粘合；
+            <code>false</code>（Node 等无 bundler HMR 的接入）不注入，由端点驱动。
+            非组件模块只登记端点，不成为 accept 边界（否则更新停止冒泡）。
           </li>
           <li>
-            <code>moduleId</code> 由适配器规范化（<code>relative(cwd, file)</code>，正斜杠）；
+            <code>moduleId</code> 由接入层规范化（<code>relative(cwd, file)</code>，正斜杠）；
             核心只把它当不透明字符串。
           </li>
         </ul>
@@ -413,6 +528,8 @@ render(
           <code>createBunHmr({"{ watch: ['src'] }"})</code>）。
         </p>
         <CodeBlock src="./assets/snippets/hmr-server.ts" lang="ts" />
+        <p>Node 接入同一套协议与运行时：</p>
+        <CodeBlock src="./assets/snippets/hmr-node.ts" lang="ts" />
       </section>
     </div>
   </Layout>,

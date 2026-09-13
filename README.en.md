@@ -19,12 +19,12 @@ A fine-grained reactive DOM library built on [signal-polyfill](https://github.co
 
 ## Packages
 
-| Package          | Entry                                                                        | Purpose                                                                                                                                                                                   |
-| ---------------- | ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@kikojs/signal` | `@kikojs/signal`                                                             | `createSignal` / `computed` / `effect` / `batch` / `untrack` / `on` / `createStore` / `createResource` / `createEmitter`                                                                  |
-| `@kikojs/dom`    | `@kikojs/dom`, `@kikojs/dom/jsx-runtime`, `@kikojs/dom/server`               | JSX factory, `render` / `hydrate`, control-flow components, `lazy`, `Style`, `createPortal`, SSR entry                                                                                    |
-| `@kikojs/router` | `@kikojs/router`                                                             | `createRouter`, `Router` / `Link` / `Outlet` / `Navigate`, hooks, guards                                                                                                                  |
-| `@kikojs/hmr`    | `@kikojs/hmr`, `@kikojs/hmr/client`, `@kikojs/hmr/server`, `@kikojs/hmr/bun` | HMR runtime + standalone `/hmr` endpoint (SSE / WebSocket over the Fetch API, framework-agnostic) + Bun bundler plugin and `Bun.serve` adapter; `@kikojs/dom/hmr` is the DOM wiring layer |
+| Package          | Entry                                                                          | Purpose                                                                                                                                                                                               |
+| ---------------- | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@kikojs/signal` | `@kikojs/signal`                                                               | `createSignal` / `computed` / `effect` / `batch` / `untrack` / `on` / `createStore` / `createResource` / `createEmitter`                                                                              |
+| `@kikojs/dom`    | `@kikojs/dom`, `@kikojs/dom/jsx-runtime`, `@kikojs/dom/server`                 | JSX factory, `render` / `hydrate`, control-flow components, `lazy`, `Style`, `createPortal`, SSR entry                                                                                                |
+| `@kikojs/router` | `@kikojs/router`                                                               | `createRouter`, `Router` / `Link` / `Outlet` / `Navigate`, hooks, guards                                                                                                                              |
+| `@kikojs/hmr`    | `@kikojs/hmr`, `/client`, `/server`, `/transform`, `/watcher`, `/bun`, `/node` | HMR runtime + standalone `/hmr` endpoint (SSE / WebSocket over the Fetch API, framework-agnostic) + shared transform / watcher + Bun and Node integrations; `@kikojs/dom/hmr` is the DOM wiring layer |
 
 `@kikojs/dom` does **not** depend on `@kikojs/signal` — it carries its own thin signal-polyfill wrapper to stay self-contained.
 
@@ -77,6 +77,17 @@ Bun.serve({
 ```
 
 The plugin rewrites top-level components into registry-backed wrappers and injects `import.meta.hot` glue plus endpoint registration (eliminated in production builds). Editing a component file re-runs it with the new implementation and swaps the DOM in place; component-internal signals restore their previous values by creation order and module-level signals reuse the previous signal objects — state survives. Hosts without `import.meta.hot` let the endpoint re-import modules by URL. See `examples/hmr` (`bun run dev`) for a full demo and the HMR page in the docs site for the API reference.
+
+Node integrates through the same shared code (protocol / hub / client / `@kikojs/hmr/transform` / `@kikojs/hmr/watcher`):
+
+```ts
+import { createServer } from "node:http"
+import { createNodeHmr, toNodeListener } from "@kikojs/hmr/node"
+
+const hmr = createNodeHmr({ watch: ["src"] })
+createServer(toNodeListener(hmr)).listen(3000)
+// optional: wss.on("connection", socket => hmr.bindSocket(socket))
+```
 
 ## Examples
 

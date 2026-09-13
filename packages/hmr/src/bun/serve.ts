@@ -1,11 +1,10 @@
-import { watch as watchFs, type FSWatcher } from "node:fs"
-import { relative, resolve } from "node:path"
 import { decodeHmrMessage, encodeHmrMessage, HMR_PROTOCOL_VERSION } from "../protocol"
 import { createHmrHub, type HmrHub, type HmrHubOptions, type HmrSink } from "../server"
+import { createPathWatcher, DEFAULT_HMR_INCLUDE, resolveWatchRoots } from "../watcher"
 
 /**
- * `@kikojs/hmr/bun` 的服务端接线：把核心 Hub 接成 `Bun.serve` 的
- * `fetch` + `websocket` 入口。
+ * `@kikojs/hmr/bun` 的服务端接线：把通用核心 Hub 接成 `Bun.serve` 的
+ * `fetch` + `websocket` 入口（接入方式之一；通用代码见 `@kikojs/hmr`）。
  *
  * ```ts
  * import { createBunHmr } from "@kikojs/hmr/bun"
@@ -18,10 +17,11 @@ import { createHmrHub, type HmrHub, type HmrHubOptions, type HmrSink } from "../
  * 宿主都能用），带 `Upgrade: websocket` 时走 WebSocket。`path` 可改，
  * 核心 Hub 本身不认识任何路径。
  *
- * `watch` 打开后适配器用 `fs.watch`（recursive）监听源码目录，把变化文件
- * 映射成模块 id 后 `publish()`；模块 id 的规范化与打包插件一致
- * （`relative(cwd, file)`，正斜杠）。
+ * `watch` 打开后复用通用 watcher（`../watcher`）监听源码目录，把变化文件
+ * 映射成模块 id 后 `publish()`；模块 id 规范化与打包插件一致。
  */
+
+export { toModuleId } from "../watcher"
 
 /** `Bun.serve` 的 server 参数里我们用到的最小面（便于测试注入）。 */
 export interface BunHmrUpgradeServer {
@@ -76,61 +76,6 @@ export interface BunHmr {
   close(): void
 }
 
-const DEFAULT_INCLUDE = /\.(tsx|jsx|ts)$/
-
-/** 与打包插件保持一致的模块 id 规范化。 */
-export function toModuleId(cwd: string, file: string): string {
-  return relative(cwd, file).replaceAll("\\", "/")
-}
-
-function startWatcher(
-  hub: HmrHub,
-  roots: string[],
-  options: { cwd: string; include: RegExp; debounceMs: number; onError?(error: unknown): void },
-): () => void {
-  const watchers: FSWatcher[] = []
-  const pending = new Set<string>()
-  let timer: ReturnType<typeof setTimeout> | null = null
-
-  const flush = (): void => {
-    timer = null
-    const modules = [...pending]
-    pending.clear()
-    if (modules.length > 0) hub.publish(modules)
-  }
-
-  const enqueue = (file: string): void => {
-    if (file.includes("node_modules")) return
-    if (!options.include.test(file)) return
-    pending.add(toModuleId(options.cwd, file))
-    if (timer) clearTimeout(timer)
-    timer = setTimeout(flush, options.debounceMs)
-  }
-
-  for (const root of roots) {
-    try {
-      const watcher = watchFs(root, { recursive: true }, (_event, filename) => {
-        if (!filename) return
-        enqueue(resolve(root, filename.toString()))
-      })
-      watcher.on("error", error => options.onError?.(error))
-      watchers.push(watcher)
-    } catch (error) {
-      options.onError?.(error)
-    }
-  }
-
-  return () => {
-    if (timer) {
-      clearTimeout(timer)
-      timer = null
-    }
-    pending.clear()
-    for (const watcher of watchers) watcher.close()
-    watchers.length = 0
-  }
-}
-
 export function createBunHmr(options: BunHmrOptions = {}): BunHmr {
   const path = options.path ?? "/hmr"
   const hub = options.hub ?? createHmrHub(options)
@@ -144,16 +89,12 @@ export function createBunHmr(options: BunHmrOptions = {}): BunHmr {
 
   let stopWatcher: (() => void) | null = null
   if (options.watch) {
-    const roots =
-      options.watch === true
-        ? [cwd]
-        : Array.isArray(options.watch)
-          ? options.watch
-          : [options.watch]
-    stopWatcher = startWatcher(hub, roots, {
+    stopWatcher = createPathWatcher({
+      roots: resolveWatchRoots(options.watch, cwd),
       cwd,
-      include: options.include ?? DEFAULT_INCLUDE,
+      include: options.include ?? DEFAULT_HMR_INCLUDE,
       debounceMs: options.debounceMs ?? 30,
+      onChange: modules => hub.publish(modules),
       onError: options.onWatchError,
     })
   }

@@ -1,9 +1,11 @@
 import { relative } from "node:path"
 import type { BunPlugin, OnLoadArgs } from "bun"
-import { transformForHmr } from "./transform"
+import { transformForHmr } from "../transform"
+import { DEFAULT_HMR_INCLUDE } from "../watcher"
 
 /**
- * `@kikojs/hmr/bun` — kiko 的 Bun HMR 插件（React Fast Refresh 语义）。
+ * `@kikojs/hmr/bun` — kiko 的 Bun 接入入口（插件 + `Bun.serve` 适配器）。
+ * 通用代码（协议 / Hub / 客户端 / 改写 / watcher）在 `@kikojs/hmr`。
  *
  * bunfig.toml（Bun 全栈 dev server 的打包插件走 `[serve.static]`）：
  *
@@ -21,6 +23,7 @@ import { transformForHmr } from "./transform"
  */
 
 export { createBunHmr, toModuleId, type BunHmr, type BunHmrOptions } from "./serve"
+export { transformForHmr, type HmrTransformOptions, type HmrTransformResult } from "../transform"
 
 export interface KikoHmrOptions {
   /** 需要 HMR 改写的文件（默认 .ts/.tsx/.jsx）。 */
@@ -31,8 +34,6 @@ export interface KikoHmrOptions {
   clientModule?: string
 }
 
-const DEFAULT_INCLUDE = /\.(tsx|jsx|ts)$/
-
 type Loader = "ts" | "tsx" | "jsx"
 
 function loaderOf(path: string): Loader {
@@ -42,9 +43,7 @@ function loaderOf(path: string): Loader {
 }
 
 export function kikoHmr(options: KikoHmrOptions = {}): BunPlugin {
-  const include = options.include ?? DEFAULT_INCLUDE
-  const runtimeModule = options.runtimeModule ?? "@kikojs/dom/hmr"
-  const clientModule = options.clientModule ?? "@kikojs/hmr/client"
+  const include = options.include ?? DEFAULT_HMR_INCLUDE
   return {
     name: "kiko-hmr",
     setup(build) {
@@ -55,7 +54,11 @@ export function kikoHmr(options: KikoHmrOptions = {}): BunPlugin {
           return { contents: source, loader: loaderOf(args.path) }
         }
         const moduleId = relative(process.cwd(), args.path).replaceAll("\\", "/")
-        const result = transformForHmr(args.path, source, moduleId, runtimeModule, clientModule)
+        const result = transformForHmr(args.path, source, moduleId, {
+          runtimeModule: options.runtimeModule,
+          clientModule: options.clientModule,
+          bundler: "bun",
+        })
         return { contents: result ? result.code : source, loader: loaderOf(args.path) }
       })
     },

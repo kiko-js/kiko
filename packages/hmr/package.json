@@ -23,9 +23,21 @@
       "types": "./dist/server.d.ts",
       "default": "./dist/server.js"
     },
+    "./transform": {
+      "types": "./dist/transform.d.ts",
+      "default": "./dist/transform.js"
+    },
+    "./watcher": {
+      "types": "./dist/watcher.d.ts",
+      "default": "./dist/watcher.js"
+    },
     "./bun": {
       "types": "./dist/bun/index.d.ts",
       "default": "./dist/bun/index.js"
+    },
+    "./node": {
+      "types": "./dist/node/index.d.ts",
+      "default": "./dist/node/index.js"
     },
     "./package.json": "./package.json"
   },
@@ -47,6 +59,7 @@
     "@kikojs/dom": "workspace:*"
   },
   "engines": {
-    "bun": ">=1.2.4"
+    "bun": ">=1.2.4",
+    "node": ">=18"
   }
 }

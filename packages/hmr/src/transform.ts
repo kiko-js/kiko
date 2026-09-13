@@ -2,18 +2,20 @@ import { parseSync } from "oxc-parser"
 import type { BindingIdentifier, Function, Program, VariableDeclaration } from "oxc-parser"
 
 /**
- * HMR 组件模块改写。基于 oxc-parser 的 AST span 做文本拼接（不重排格式）：
+ * 通用 HMR 模块改写（与接入方式无关）。基于 oxc-parser 的 AST span 做文本
+ * 拼接（不重排格式）：
  *
  * 1. 顶层 PascalCase 组件声明（函数声明 / const 箭头与函数表达式 / 默认导出）
  *    原名改写为 `__kiko_o$<name>`，并在声明之后插入
  *    `const <name> = __kiko_hmr.ref(moduleId, name, __kiko_o$<name>)`；
  *    后续引用在调用期解析到稳定包装，模块重求值后旧包装通过注册表拿到新实现。
- * 2. 注入 `beginModule` / `endModule`（模块级信号身份作用域）、独立的
- *    HMR 端点客户端登记（`acceptHmrModule`），以及 `import.meta.hot`
- *    粘合代码（自身变更走 accept 回调；依赖变更冒泡走 `bun:afterUpdate`
- *    事件）。bundler 提供 `import.meta.hot` 时由它替换模块，端点只做通知；
- *    没有 bundler HMR 的宿主则由端点驱动重新导入。
- * 3. 无组件的模块只在源码包含 `createSignal` 时注入模块作用域胶水，
+ * 2. 注入 `beginModule` / `endModule`（模块级信号身份作用域）与端点客户端登记
+ *    （`acceptHmrModule(moduleId, { url, managed })`）。`moduleId` 是不透明
+ *    字符串，由接入层规范化，核心不假设它是文件路径。
+ * 3. 仅当 `bundler` 指定时注入 bundler 热替换粘合（如 Bun 的
+ *    `import.meta.hot.accept` / `bun:afterUpdate`）；没有 bundler HMR 的
+ *    接入方式（如 Node）不注入，由端点按模块 URL 重新导入。
+ * 4. 无组件的模块只在源码包含 `createSignal` 时注入模块作用域胶水，
  *    不注入 accept——非组件模块不应成为热更新边界，否则更新停止冒泡。
  */
 
@@ -21,6 +23,19 @@ export interface HmrTransformResult {
   code: string
   /** 注册的组件数量（含默认导出）。 */
   components: number
+}
+
+export interface HmrTransformOptions {
+  /** HMR 运行时模块（注入 `installHmr`）；默认 `@kikojs/dom/hmr`。 */
+  runtimeModule?: string
+  /** 端点客户端模块（注入 `acceptHmrModule`）；默认 `@kikojs/hmr/client`。 */
+  clientModule?: string
+  /**
+   * bundler 热替换粘合：
+   * - `"bun"`：注入 `import.meta.hot.accept` 与 `bun:afterUpdate` 监听；
+   * - `false`（默认）：不注入，端点负责驱动模块更新。
+   */
+  bundler?: "bun" | false
 }
 
 interface Edit {
@@ -57,9 +72,12 @@ export function transformForHmr(
   filename: string,
   source: string,
   moduleId: string,
-  runtimeModule: string,
-  clientModule = "@kikojs/hmr/client",
+  options: HmrTransformOptions = {},
 ): HmrTransformResult | null {
+  const runtimeModule = options.runtimeModule ?? "@kikojs/dom/hmr"
+  const clientModule = options.clientModule ?? "@kikojs/hmr/client"
+  const bundler = options.bundler ?? false
+
   let program: Program
   try {
     const parsed = parseSync(filename, source)
@@ -186,12 +204,14 @@ export function transformForHmr(
           edits.push({ start: r.end, end: r.end, text: `\nexport default ${r.binding};` })
       }
     }
-    footer.push(
-      `if (import.meta.hot) {`,
-      `  import.meta.hot.accept((m) => { __kiko_hmr.moduleUpdated(${quote(moduleId)}, m) })`,
-      `  import.meta.hot.on("bun:afterUpdate", () => { __kiko_hmr.moduleUpdated(${quote(moduleId)}, null) })`,
-      `}`,
-    )
+    if (bundler === "bun") {
+      footer.push(
+        `if (import.meta.hot) {`,
+        `  import.meta.hot.accept((m) => { __kiko_hmr.moduleUpdated(${quote(moduleId)}, m) })`,
+        `  import.meta.hot.on("bun:afterUpdate", () => { __kiko_hmr.moduleUpdated(${quote(moduleId)}, null) })`,
+        `}`,
+      )
+    }
   }
   if (registrations.length === 0 && header.length === 0) return null
 
