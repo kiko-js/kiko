@@ -433,7 +433,10 @@ function attachOutletLoop(
               `wrap it in <Suspend> or make it synchronous`,
           )
         }
-        next.push(node)
+        // HMR 包装（`@kikojs/hmr` 的 `ref`）让组件返回 KikoLazy 占位，
+        // 组件函数也可能产出数组/片段；直接 push 会把非 Node 交给 swapNodes，
+        // 换出旧分支后插入失败 → 导航后整页空白。统一走 toNodes 解包。
+        next.push(...toNodes(node))
       } finally {
         popFrame()
       }

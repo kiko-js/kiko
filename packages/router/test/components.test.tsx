@@ -708,4 +708,28 @@ describe("JSX composition (children evaluate before Router)", () => {
     expect(tree.textContent).toBe("layout:inner")
     cleanupWatchers(tree)
   })
+
+  it("Outlet realizes a lazy route component on swap (HMR ref wrapper)", async () => {
+    // `@kikojs/hmr` 的 `ref` 包装让组件被直接调用时返回 KikoLazy 占位：
+    // 客户端换入分支若把占位原样交给 swapNodes，会先移除旧节点再插入失败，
+    // 导航后整页空白（回归：dev bundle 路由切换空白）。
+    const LazyPage = (): Node => jsx("p", { children: "lazy page" })
+    const routes: RouteRecord[] = [
+      { path: "/", component: () => jsx("div", { children: "home" }) },
+      { path: "/lazy", component: () => jsx(LazyPage, {}) },
+    ]
+    const router = createRouter({ mode: "path", routes })
+    const tree = realize(
+      <Router router={router}>
+        <Outlet />
+      </Router>,
+    ) as DocumentFragment
+    await drainMicrotasks()
+    expect(tree.textContent).toBe("home")
+    router.push("/lazy")
+    await drainMicrotasks()
+    expect(tree.textContent).toBe("lazy page")
+    cleanupWatchers(tree)
+    router.dispose()
+  })
 })
