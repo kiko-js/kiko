@@ -2,8 +2,8 @@
 name: kiko/async
 description: >-
   @kikojs/signal 的异步与事件工具：createResource 把异步拉取映射为
-  data/loading/error 三信号，支持依赖驱动重拉与并发安全；createEmitter
-  提供类型化事件总线（on/emit/off/hasListeners/clear）。
+  data/loading/error 三个标准 Signal.State，支持依赖驱动重拉与并发安全；
+  createEmitter 提供类型化事件总线（on/once/off/emit/hasListeners/clear）。
 type: sub-skill
 library: kiko
 requires:
@@ -15,65 +15,74 @@ requires:
 
 ## createResource：异步数据
 
-把一次（或依赖驱动的多次）异步拉取映射为三个信号，适合请求数据绑定到 UI。
+把一次（或依赖驱动的多次）异步拉取映射为三个信号，返回 `{ data, loading, error, refetch, dispose }`。
 
 ```ts
-import { createResource } from "@kikojs/signal"
+import { createResource, createSignal } from "@kikojs/signal"
 
-const { data, loading, error, refetch, dispose } = createResource(
-  async source => (await fetch(`/api?user=${source}`)).json(),
-  { initial: null, source: () => userId.get() },
-)
+const userId = createSignal(1)
 
-// data / loading / error 均为 Signal.State<T>
-// JSX：<div>{data.signal}</div> 或 {data.get()}
+const user = createResource(async (id: number) => (await fetch(`/api/users/${id}`)).json(), {
+  initial: null,
+  source: () => userId.get(),
+})
+
+// data / loading / error 本身就是 Signal.State（没有 .signal 子对象）
+user.data.get() // 当前数据（加载中为 initial / undefined）
+user.loading.get() // 是否有请求在途
+user.error.get() // 最近一次错误；无错误为 null
+user.refetch() // 用当前 source 值手动重拉
+user.dispose() // 停止监听与在途请求
 ```
 
 行为：
 
 - `source` 为 getter，其内读取的信号依赖变化时**自动重新拉取**；`fetcher(source)` 收到当前 source 值。
-- **并发安全**：旧请求的迟到结果不会覆盖新请求（序号守卫）。
-- `initial` 在首次加载完成前作为 `data` 的初值。
-- `refetch()`：使用当前 source 值手动重拉。
-- **生命周期**：在 effect 内创建时随作用域自动 `dispose`（内部 `onCleanup`）；在 effect 外（模块/组件顶层）需手动 `dispose()`，否则请求与监听泄漏。
-- `dispose()` 后 `refetch()` 不生效（已短路）。
+- **并发安全**：序号守卫保证旧请求的迟到结果不会覆盖新请求；`source` 抛错进入 `error` 态并结束 loading。
+- **生命周期**：在 effect 内创建时随作用域自动 `dispose`（组件是单次执行，通常需手动管理）；在组件/模块顶层创建需手动 `dispose()`，否则请求与监听泄漏。
+- `dispose()` 幂等，会把 `loading` 复位为 `false`；dispose 后 `refetch()` 不生效。
 
 ## createEmitter：类型化事件总线
 
 ```ts
 import { createEmitter } from "@kikojs/signal"
 
-const em = createEmitter<{ open: (id: number) => void }>()
-const off = em.on("open", id => console.log("open", id))
+// 事件名 → 载荷类型（不是函数签名）
+const em = createEmitter<{ open: number; close: void }>()
+const off = em.on("open", id => console.log("open", id)) // id: number
+em.once("open", id => console.log("once", id))
 
-em.emit("open", 1) // 触发 open 监听
+em.emit("open", 1)
 off() // 移除该监听（幂等）
-em.hasListeners("open") // boolean
-em.clear() // 清空所有事件监听
+em.hasListeners("open") // 事件名可省略：是否有任意监听
+em.clear() // 也可只清某个事件：em.clear("open")
 ```
 
-- 事件名由泛型 `EventMap` 约束，`on`/`emit` 类型安全。
-- `emit` 对监听者做快照，监听者在派发期间增删不影响本轮。
-- 监听者抛错会向 `emit` 调用方传播（需自行 try/catch）。
-- 适合作为轻量发布/订阅，不引入信号依赖。
+- 事件名由泛型 `EventMap` 约束，`on`/`emit` 类型安全；`once` 只触发一次（需用其返回的函数取消，`off` 传原 listener 无法移除）。
+- `emit` 对监听者做快照，监听者在派发期间增删不影响本轮；无监听时 no-op。
+- 监听者抛错会**直接向 `emit` 调用方传播**（需自行 try/catch）。
+- 适合轻量发布/订阅，不引入信号依赖。
 
 ## 在 JSX 中消费
 
-三个包的信号都可直接放进 JSX：
+三个状态信号可直接交给 `Show`/`For` 或放进 JSX：
 
 ```tsx
-import { createResource, createSignal } from "@kikojs/signal"
+/** @jsxImportSource @kikojs/dom */
+import { createResource } from "@kikojs/signal"
+import { Show, For } from "@kikojs/dom"
 
-function App() {
-  const { data, loading, error } = createResource(() => fetchUsers().then(r => r.json()))
+function UserList() {
+  const { data, loading, error } = createResource(() => fetchUsers())
+
   return (
     <div>
-      {loading} // 信号 → 文本节点（true/false 会 toString）
-      {error && <p>出错了</p>} // 直接布尔运算
-      <ul>{data && data.map(u => <li>{u.name}</li>)}</ul>
+      {loading} {/* 布尔信号直接绑定 → 文本节点 */}
+      <Show when={error}>{e => <p>出错了: {String(e)}</p>}</Show>
+      <Show when={data}>{list => <For each={list}>{u => <li>{u.name}</li>}</For>}</Show>
     </div>
   )
 }
 ```
 
-更结构化的条件/列表渲染用 `Show`/`For`（见 `kiko/control-flow`）。
+更结构化的条件/列表渲染见 `kiko/control-flow`。
