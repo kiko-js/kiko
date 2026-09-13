@@ -66,6 +66,13 @@ export async function buildPackage(opts: BuildOptions): Promise<void> {
       splitting: opts.splitting ?? true,
       minify: true,
       external: opts.external,
+      // Library builds must NOT bake in a NODE_ENV value. esbuild's browser
+      // platform defines `process.env.NODE_ENV` to "production" whenever
+      // minify is on, which would permanently fold dev-only gates (e.g.
+      // @kikojs/dom's HMR hook) to `false` in the published dist — HMR could
+      // then never turn on for consumers. Self-defining leaves the expression
+      // for the *consumer's* bundler to replace (dev bundlers -> development).
+      define: { "process.env.NODE_ENV": "process.env.NODE_ENV" },
       // Automatic JSX runtime for @kikojs/router's components.tsx; inert for
       // the other packages (no .tsx). The runtime import stays external.
       jsx: "automatic",
