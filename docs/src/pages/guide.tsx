@@ -359,6 +359,20 @@ render(
           挂载，字体图标（Font Awesome / Material Symbols）只需引入样式：
         </p>
         <CodeBlock src="./assets/snippets/dom-icons.tsx" lang="tsx" />
+        <h3>国际化</h3>
+        <p>
+          i18next 用一层 <strong>signal 桥</strong>接入：把当前语言暴露成 signal，语言事件 （
+          <code>languageChanged</code> / <code>loaded</code>）写入它；<code>t()</code> 返回读取该
+          signal 的 <code>computed</code>，绑定到 JSX 文本或属性即可响应式更新——组件体不重跑，
+          也不需要 Provider：
+        </p>
+        <CodeBlock src="./assets/snippets/i18n-i18next.tsx" lang="tsx" />
+        <p>
+          SSR 下用 <code>i18next.getFixedT(lng)</code> 绑定请求语言（不要
+          <code>changeLanguage()</code> 改全局实例），并把语言 signal 建在 <code>renderToPage</code>{" "}
+          回调内——它会被信号捕获随 HTML 下发，水合后首帧即同一语言：
+        </p>
+        <CodeBlock src="./assets/snippets/i18n-i18next-ssr.tsx" lang="tsx" />
         <h3>本地示例项目</h3>
         <ul style="color: var(--muted)">
           <li>

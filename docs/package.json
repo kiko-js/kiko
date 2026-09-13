@@ -10,6 +10,7 @@
   },
   "devDependencies": {
     "@types/react": "^19",
-    "htm": "^3.1.1"
+    "htm": "^3.1.1",
+    "i18next": "^26.4.2"
   }
 }
