@@ -27,8 +27,8 @@
   "scripts": {
     "build": "bun build.ts",
     "test": "bun test",
-    "prepublishOnly": "bun ../../scripts/check-publish.ts && bun run build && bun test",
-    "prepack": "bun run build"
+    "prepublishOnly": "bun ../../scripts/check-publish.ts && bun ../../scripts/prebuild-deps.ts && bun run build && bun test",
+    "prepack": "bun ../../scripts/prebuild-deps.ts && bun run build"
   },
   "dependencies": {
     "@kikojs/dom": "^0.4.3",
