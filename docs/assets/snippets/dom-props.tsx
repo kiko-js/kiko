@@ -8,7 +8,7 @@ const view = (
     class="card" // 静态 class
     style={{ color: "#4cc38a" }} // 对象 style → 逐个设置 CSS 属性
     data-theme="dark" // 任意属性
-    onClick={(e) => console.log(e.currentTarget)} // onXxx → addEventListener
+    onClick={(e) => console.log(e.target)} // onXxx → 委托到挂载根;当前元素用 ref(e.currentTarget 是挂载根)
   >
     {"字符串子节点"}
     {42}

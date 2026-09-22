@@ -186,7 +186,12 @@ render(
                 <code>onXxx</code>
               </td>
               <td>
-                调用 <code>addEventListener</code>；值为 signal 时变化自动替换监听器（不泄漏）。
+                冒泡事件（<code>click</code>、<code>input</code>、<code>keydown</code>{" "}
+                等）按类型委托到挂载根统一分发；
+                <code>Capture</code> 变体与非冒泡事件（<code>focus</code>、<code>blur</code>{" "}
+                等）直接 <code>addEventListener</code>；值为 signal
+                时变化自动替换监听器（不泄漏）。委托 handler 内 <code>e.currentTarget</code>{" "}
+                是挂载根而非当前元素，取当前元素请用 <code>ref</code>。
               </td>
             </tr>
             <tr>
