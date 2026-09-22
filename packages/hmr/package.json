@@ -56,7 +56,7 @@
     "signal-polyfill": "^0.2.0"
   },
   "devDependencies": {
-    "@kikojs/dom": "workspace:*"
+    "@kikojs/dom": "*"
   },
   "engines": {
     "bun": ">=1.2.4",
