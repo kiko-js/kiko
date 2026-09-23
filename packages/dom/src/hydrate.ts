@@ -15,7 +15,9 @@ import {
   swapNodes,
   toNodes,
   trackCleanup,
+  trackSnapshot,
   trackWatcher,
+  untrackSnapshot,
 } from "./jsx-runtime"
 import { isPromiseLike, isTruthy, unwrap, settleChildren } from "./shared"
 import { createForCore } from "./for-engine"
@@ -305,6 +307,8 @@ function hydrateSignalChild(signal: WatchableSignal<unknown>): Node[] {
     return []
   }
   let current = hydrateValue(signal.get())
+  // 初始快照登记:本数组持有 value 内嵌套控制流的节点,后续换出才能被补丁
+  trackSnapshot(current)
   const render = (): void => {
     current = swapNodes(marker, current, toNodes(signal.get()))
   }
@@ -312,6 +316,7 @@ function hydrateSignalChild(signal: WatchableSignal<unknown>): Node[] {
   trackWatcher(marker, watcher)
   trackCleanup(marker, () => {
     for (const n of current) cleanupWatchers(n)
+    untrackSnapshot(current)
     current = []
   })
   return [marker, ...current]
@@ -404,9 +409,13 @@ export function hydrateNoSSR(props: { fallback?: unknown; children: unknown }): 
       return []
     }
     const skeleton = hydrateValue(props.fallback)
+    // skeleton 是 swapNodes 的 old:登记后,微任务填充前若有嵌套换出,补丁会
+    // 让这次填充只清理仍然属于骨架的节点
+    trackSnapshot(skeleton)
     let alive = true
     trackCleanup(marker, () => {
       alive = false
+      untrackSnapshot(skeleton)
     })
     queueMicrotask(() => {
       if (!alive) return

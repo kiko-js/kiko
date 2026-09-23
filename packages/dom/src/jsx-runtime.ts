@@ -285,19 +285,114 @@ export function toNodes(value: unknown): Node[] {
 }
 
 /**
+ * 活快照注册表:节点 → 依赖该节点的快照数组(当前分支、静态缓存、For 条目
+ * 节点、signal 子节点快照等)。
+ *
+ * 嵌套控制流换出会令外层数组过期:外层持有已随内层换出而移除的节点
+ * (`removeChild` 抛 NotFoundError),又漏掉内层新换入的节点(换出后残留)。
+ * 每次 swap 时按被移除的节点反查所有持有它们的数组,把旧节点段原地替换为
+ * `next`——数组以原对象注册,所有别名(closure 缓存 / branch-manager)同步可见。
+ *
+ * 排除 `old`(本次被换出的数组本身,静态换出后还要还魂)与 `next`(目标数组)。
+ * 返回被补丁的数组个数:0 表示没有任何宿主快照持有 `old`。
+ */
+const nodeSnapshots = new WeakMap<Node, Set<Node[]>>()
+
+export function trackSnapshot(nodes: Node[]): void {
+  for (const n of nodes) {
+    let set = nodeSnapshots.get(n)
+    if (!set) {
+      set = new Set()
+      nodeSnapshots.set(n, set)
+    }
+    set.add(nodes)
+  }
+}
+
+export function untrackSnapshot(nodes: Node[]): void {
+  for (const n of nodes) {
+    const set = nodeSnapshots.get(n)
+    if (!set) continue
+    set.delete(nodes)
+    if (set.size === 0) nodeSnapshots.delete(n)
+  }
+}
+
+export function syncSnapshots(old: Node[], next: Node[]): number {
+  if (old.length === 0) return 0
+  const oldSet = new Set(old)
+  const targets = new Set<Node[]>()
+  for (const n of old) {
+    const set = nodeSnapshots.get(n)
+    if (!set) continue
+    for (const a of set) {
+      if (a !== old && a !== next) targets.add(a)
+    }
+  }
+  if (targets.size === 0) return 0
+  let patched = 0
+  for (const arr of targets) {
+    // 只补丁「全包含」old 的数组:外层展平快照必然持有本批全部节点;
+    // 只持有子集的数组(条目内 signal 快照等)有自己的 marker 边界,
+    // 整批替换会把无关节点灌进去。先数命中再决定,避免误伤。
+    let hits = 0
+    for (const n of arr) {
+      if (oldSet.has(n)) hits++
+    }
+    if (hits !== old.length) continue
+    // 一个构造的节点在宿主数组里是连续段:首段换入 next,
+    // 后续(不应出现的)残留段只删不插,避免同批节点出现两次。
+    let i = 0
+    let placed = false
+    while (i < arr.length) {
+      const head = arr[i] as Node
+      if (!oldSet.has(head)) {
+        i++
+        continue
+      }
+      let j = i
+      while (j < arr.length && oldSet.has(arr[j] as Node)) j++
+      if (placed) {
+        arr.splice(i, j - i)
+      } else {
+        arr.splice(i, j - i, ...next)
+        i += next.length
+        placed = true
+      }
+    }
+    patched++
+  }
+  return patched
+}
+
+/**
  * Replace `old` nodes (siblings after `marker`) with `next`, cleaning up
  * watchers/cleanups on the removed nodes. Returns `next`. No-op if `marker`
  */
 export function swapNodes(marker: Node, old: Node[], next: Node[]): Node[] {
+  trackSnapshot(next)
+  // 先补丁后动 DOM:宿主快照(swapBranch 的 old / For 条目)可能正持有本批
+  // 被移除的节点,替换后它们的 removeChild 才不会踩到已脱离的节点。
+  const patched = syncSnapshots(old, next)
   const parent = marker.parentNode
   if (!parent) {
-    for (const n of next) cleanupWatchers(n)
+    // 区域被祖先保留(如外层 Show 静态分支换出):祖先快照已被补丁为 next,
+    // 回插时会带回它——next 不能清理;signal 子节点无静态缓存,old 清掉。
+    // old 非空却无任何宿主快照接管 → 构造已无人持有,按死亡处理丢弃 next;
+    // old 为空(尚无内容)无法判定归属,保留给 branch-manager 的 cleanup 兜底。
+    for (const n of old) cleanupWatchers(n)
+    untrackSnapshot(old)
+    if (old.length > 0 && patched === 0) {
+      for (const n of next) cleanupWatchers(n)
+      untrackSnapshot(next)
+    }
     return next
   }
   for (const n of old) {
     cleanupWatchers(n)
     parent.removeChild(n)
   }
+  untrackSnapshot(old)
   const ref = marker.nextSibling
   for (const n of next) {
     applyScopeRoots(n, parent)
@@ -313,15 +408,29 @@ export function swapNodes(marker: Node, old: Node[], next: Node[]): Node[] {
  * 绑定"死亡"）。为 false 时与 `swapNodes` 相同（完整清理）。
  */
 export function swapBranch(marker: Node, old: Node[], next: Node[], retainOld: boolean): Node[] {
+  trackSnapshot(next)
+  const patched = syncSnapshots(old, next)
   const parent = marker.parentNode
   if (!parent) {
-    if (!retainOld) for (const n of old) cleanupWatchers(n)
+    // 同 swapNodes 的 detached 分支:祖先快照已补丁为 next。old 按保留语义
+    // 处理(静态分支还魂依赖其节点存活);无宿主接管则视为死亡,丢弃 next。
+    if (retainOld) {
+      // 保留:old 可能仍是静态缓存/祖先保留数组引用的一部分,原样留在注册表
+    } else {
+      for (const n of old) cleanupWatchers(n)
+      untrackSnapshot(old)
+    }
+    if (!retainOld && old.length > 0 && patched === 0) {
+      for (const n of next) cleanupWatchers(n)
+      untrackSnapshot(next)
+    }
     return next
   }
   for (const n of old) {
     parent.removeChild(n)
     if (!retainOld) cleanupWatchers(n)
   }
+  if (!retainOld) untrackSnapshot(old)
   const ref = marker.nextSibling
   for (const n of next) {
     applyScopeRoots(n, parent)
@@ -352,6 +461,8 @@ function appendChild(parent: Node, child: unknown): void {
       applyScopeRoots(n, parent)
       parent.insertBefore(n, ref)
     }
+    // 首次插入不走 swapNodes,快照在此登记,嵌套控制流换出时才能被补丁
+    trackSnapshot(current)
 
     const render = (): void => {
       current = swapNodes(marker, current, toNodes(signal.get()))

@@ -7,7 +7,7 @@
  * 分支,也要清隐藏保留分支(其 watcher 一直存活)。把这些簿记收敛为一处,
  * 避免六个调用点各自漂移。
  */
-import { cleanupWatchers, swapBranch } from "./jsx-runtime"
+import { cleanupWatchers, swapBranch, trackSnapshot, untrackSnapshot } from "./jsx-runtime"
 
 export interface BranchManager {
   /** 当前可见分支节点(构造返回值 / 初次采纳直接设置) */
@@ -28,16 +28,21 @@ export function createBranchManager(marker: Node): BranchManager {
       return current
     },
     adopt(nodes) {
+      // 水合采纳的数组同样进注册表:嵌套控制流后续换出时才能被补丁
+      trackSnapshot(nodes)
       current = nodes
     },
     swap(next, retainOld) {
       if (retainOld) retainedAway = current
       else retainedAway = null
+      // swapBranch 内部 track(next) 并按 old 反查补丁所有宿主快照
       current = swapBranch(marker, current, next, retainOld)
     },
     cleanup() {
       for (const n of current) cleanupWatchers(n)
       if (retainedAway) for (const n of retainedAway) cleanupWatchers(n)
+      untrackSnapshot(current)
+      if (retainedAway) untrackSnapshot(retainedAway)
       current = []
       retainedAway = null
     },

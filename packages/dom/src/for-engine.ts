@@ -7,7 +7,14 @@
  * hydrate 特有的,保留在 hydrate.ts,不在此模块。
  */
 import { Signal } from "signal-polyfill"
-import { applyScopeRoots, cleanupWatchers, toNodes } from "./jsx-runtime"
+import {
+  applyScopeRoots,
+  cleanupWatchers,
+  syncSnapshots,
+  toNodes,
+  trackSnapshot,
+  untrackSnapshot,
+} from "./jsx-runtime"
 import { defaultForKey } from "./shared"
 
 /** keyed 条目:children 通过 accessor 读取,state 是 per-key 的真值源 */
@@ -77,8 +84,16 @@ function reconcileForList(
   // 用完即清,无重入风险。
   for (const nodes of droppedNodes) {
     for (const n of nodes) cleanupWatchers(n)
+    untrackSnapshot(nodes)
   }
-  if (!parent) return next
+  // 外层展平快照持有本表全部节点:先补丁(去 dropped、入新节点、更新顺序),
+  // 外层后续换出的 removeChild 才不会踩到脱离节点、也不会漏掉新条目
+  syncSnapshots(currentNodes, next)
+  if (!parent) {
+    untrackSnapshot(currentNodes)
+    trackSnapshot(next)
+    return next
+  }
   keepSet.clear()
   for (const n of next) keepSet.add(n)
   for (const n of currentNodes) {
@@ -92,6 +107,8 @@ function reconcileForList(
     applyScopeRoots(node, parent)
     ref = node
   }
+  untrackSnapshot(currentNodes)
+  trackSnapshot(next)
   return next
 }
 
@@ -126,6 +143,9 @@ export function createForCore<T>(opts: ForCoreOptions<T>): ForCore<T> {
               () => entry.idx.get(),
             ),
           )
+          // 条目节点数组独立登记:条目内嵌套控制流换出时,dropped 清理与
+          // 外层快照补丁都要拿到最新的节点集合
+          trackSnapshot(entry.nodes)
           nextEntries.set(key, entry)
           for (const n of entry.nodes) next.push(n)
         }
@@ -163,6 +183,7 @@ export function createForCore<T>(opts: ForCoreOptions<T>): ForCore<T> {
           for (const n of existing) next.push(n)
         } else {
           const nodes = toNodes(childFn(item, () => i))
+          trackSnapshot(nodes)
           nextPlain.set(key, nodes)
           for (const n of nodes) next.push(n)
         }
