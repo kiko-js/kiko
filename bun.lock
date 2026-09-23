@@ -81,7 +81,7 @@
     },
     "packages/dom": {
       "name": "@kikojs/dom",
-      "version": "0.4.3",
+      "version": "0.4.4",
       "dependencies": {
         "@kikojs/hmr": "^0.2.0",
         "signal-polyfill": "^0.2.0",
@@ -101,7 +101,7 @@
     },
     "packages/hmr": {
       "name": "@kikojs/hmr",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "dependencies": {
         "oxc-parser": "^0.148.0",
         "signal-polyfill": "^0.2.0",
@@ -112,7 +112,7 @@
     },
     "packages/router": {
       "name": "@kikojs/router",
-      "version": "0.4.2",
+      "version": "0.4.3",
       "dependencies": {
         "@kikojs/dom": "^0.4.1",
         "@kikojs/signal": "^0.1.0",
@@ -121,7 +121,7 @@
     },
     "packages/signal": {
       "name": "@kikojs/signal",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "dependencies": {
         "signal-polyfill": "^0.2.0",
       },

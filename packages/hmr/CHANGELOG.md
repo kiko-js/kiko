@@ -1,5 +1,24 @@
 # @kikojs/hmr
 
+## 0.2.1
+
+### Patch Changes
+
+- ### @kikojs/dom (patch)
+  - **dom**: prune snapshot-registry hot path; fix stale host after re-flip (07ac897)
+  - **dom**: patch stale branch snapshots on nested control-flow swaps (10ebc96)
+  - **release**: build in-repo deps before each package's publish build (557fcf5)
+
+  ### @kikojs/hmr (patch)
+  - **hmr**: drop workspace: prefix from @kikojs/dom devDependency (1cd107e)
+  - **release**: build in-repo deps before each package's publish build (557fcf5)
+
+  ### @kikojs/router (patch)
+  - **release**: build in-repo deps before each package's publish build (557fcf5)
+
+  ### @kikojs/signal (patch)
+  - **release**: build in-repo deps before each package's publish build (557fcf5)
+
 ## 0.2.0
 
 ### Minor Changes
