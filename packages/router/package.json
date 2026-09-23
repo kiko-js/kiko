@@ -1,6 +1,6 @@
 {
   "name": "@kikojs/router",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/kiko-js/kiko.git"
@@ -31,8 +31,8 @@
     "prepack": "bun ../../scripts/prebuild-deps.ts && bun run build"
   },
   "dependencies": {
-    "@kikojs/dom": "^0.4.3",
-    "@kikojs/signal": "^0.1.0",
+    "@kikojs/dom": "^0.4.4",
+    "@kikojs/signal": "^0.1.1",
     "signal-polyfill": "^0.2.0"
   },
   "engines": {

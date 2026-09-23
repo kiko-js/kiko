@@ -1,6 +1,6 @@
 {
   "name": "@kikojs/dom",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/kiko-js/kiko.git"
@@ -51,7 +51,7 @@
     "prepack": "bun ../../scripts/prebuild-deps.ts && bun run build"
   },
   "dependencies": {
-    "@kikojs/hmr": "^0.2.0",
+    "@kikojs/hmr": "^0.2.1",
     "signal-polyfill": "^0.2.0"
   },
   "devDependencies": {
