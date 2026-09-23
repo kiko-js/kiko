@@ -298,15 +298,20 @@ export function toNodes(value: unknown): Node[] {
  */
 const nodeSnapshots = new WeakMap<Node, Set<Node[]>>()
 
-export function trackSnapshot(nodes: Node[]): void {
+/** 把 arr 登记到每个节点的依赖集合(节点 → 持有它的数组) */
+function linkSnapshot(arr: Node[], nodes: readonly Node[]): void {
   for (const n of nodes) {
     let set = nodeSnapshots.get(n)
     if (!set) {
       set = new Set()
       nodeSnapshots.set(n, set)
     }
-    set.add(nodes)
+    set.add(arr)
   }
+}
+
+export function trackSnapshot(nodes: Node[]): void {
+  linkSnapshot(nodes, nodes)
 }
 
 export function untrackSnapshot(nodes: Node[]): void {
@@ -320,18 +325,37 @@ export function untrackSnapshot(nodes: Node[]): void {
 
 export function syncSnapshots(old: Node[], next: Node[]): number {
   if (old.length === 0) return 0
-  const oldSet = new Set(old)
+  // 收集期先做长度过滤:hits ≤ arr.length,装不下整批 old 的数组必然
+  // 拒绝,提前跳过(For 协调时数千条目数组否则全部进 targets 再被全扫)。
+  // oldSet 延迟到确有 target 再分配:顶层无嵌套翻转时 targets 恒空,
+  // 省掉每次 swap 一个 O(|old|) 的 Set。
   const targets = new Set<Node[]>()
+  const oldLen = old.length
   for (const n of old) {
     const set = nodeSnapshots.get(n)
     if (!set) continue
     for (const a of set) {
-      if (a !== old && a !== next) targets.add(a)
+      if (a !== old && a !== next && a.length >= oldLen) targets.add(a)
     }
   }
   if (targets.size === 0) return 0
+  const oldSet = new Set(old)
   let patched = 0
   for (const arr of targets) {
+    if (oldLen === 1) {
+      // 单节点快路径(嵌套翻转最常见的内层单文本/单节点形态):原生
+      // indexOf/lastIndexOf 一趟完成定位与全包含验证,省掉两趟解释执行的
+      // Set.has 扫描。lastIndexOf !== idx 即宿主内重复出现,与两趟版
+      // hits(2) !== oldLen 同语义拒绝。
+      const target = old[0] as Node
+      const idx = arr.indexOf(target)
+      if (idx !== -1 && arr.lastIndexOf(target) === idx) {
+        arr.splice(idx, 1, ...next)
+        linkSnapshot(arr, next)
+        patched++
+      }
+      continue
+    }
     // 只补丁「全包含」old 的数组:外层展平快照必然持有本批全部节点;
     // 只持有子集的数组(条目内 signal 快照等)有自己的 marker 边界,
     // 整批替换会把无关节点灌进去。先数命中再决定,避免误伤。
@@ -360,6 +384,11 @@ export function syncSnapshots(old: Node[], next: Node[]): number {
         placed = true
       }
     }
+    // 补丁把 next 段灌进了 arr:只需把 arr 链到 next 节点上(未改动的
+    // 元素在整段初登记/上次补丁时已链接;被换下的旧节点残留条目无害,
+    // 后续反查会因不全包含而拒绝)。不重登记则第二次内层换出按新节点
+    // 反查漏掉本宿主,外层快照再度过期(内层连翻两次即复现)。
+    linkSnapshot(arr, next)
     patched++
   }
   return patched

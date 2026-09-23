@@ -246,4 +246,68 @@ describe("nested control-flow snapshot staleness", () => {
     await flush()
     expect(el.textContent).toBe("[in-on]")
   })
+
+  // 重登记缺口:补丁只 splice 不重登记,宿主数组停在补丁前的元素上,
+  // 第二次内层换出按新节点反查漏掉宿主,外层快照再度过期。
+  it("inner flips twice while outer visible, then outer swaps", async () => {
+    const outerOn = createSignal(true)
+    const innerOn = createSignal(true)
+    const el = jsx("div", {
+      children: Show({
+        when: outerOn as never,
+        fallback: "outer-off",
+        children: [
+          "[",
+          Show({ when: innerOn as never, fallback: "in-off", children: "in-on" }),
+          "]",
+        ],
+      }),
+    }) as HTMLElement
+    expect(el.textContent).toBe("[in-on]")
+
+    innerOn.set(false)
+    await flush()
+    innerOn.set(true)
+    await flush()
+    expect(el.textContent).toBe("[in-on]")
+
+    outerOn.set(false)
+    await flush()
+    expect(el.textContent).toBe("outer-off")
+
+    outerOn.set(true)
+    await flush()
+    expect(el.textContent).toBe("[in-on]")
+  })
+
+  it("inner flips twice while outer retained away, then outer back", async () => {
+    const outerOn = createSignal(true)
+    const innerOn = createSignal(true)
+    const el = jsx("div", {
+      children: Show({
+        when: outerOn as never,
+        fallback: "outer-off",
+        children: [
+          "[",
+          Show({ when: innerOn as never, fallback: "in-off", children: "in-on" }),
+          "]",
+        ],
+      }),
+    }) as HTMLElement
+    expect(el.textContent).toBe("[in-on]")
+
+    outerOn.set(false)
+    await flush()
+    expect(el.textContent).toBe("outer-off")
+
+    // 保留期内两次切换:两次都必须写进外层保留快照
+    innerOn.set(false)
+    await flush()
+    innerOn.set(true)
+    await flush()
+
+    outerOn.set(true)
+    await flush()
+    expect(el.textContent).toBe("[in-on]")
+  })
 })
