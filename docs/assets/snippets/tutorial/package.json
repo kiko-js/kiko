@@ -1,0 +1,14 @@
+{
+  "name": "spa",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run server.ts",
+    "build": "bun run bundler.ts"
+  },
+  "dependencies": {
+    "@kikojs/dom": "workspace:*",
+    "@kikojs/router": "workspace:*",
+    "@kikojs/signal": "workspace:*"
+  }
+}

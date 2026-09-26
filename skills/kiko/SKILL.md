@@ -110,5 +110,5 @@ render(app, document.getElementById("app")!)
 
 monorepo 含完整示例与文档：
 
-- `examples/basic`、`examples/htm`、`examples/react-portal`、`examples/ssr`（全栈 SSR + 水合 + NoSSR）、`examples/hmr`（热更新）
-- `docs/` 静态文档站（`signal.html` / `dom.html` / `router.html` / `hmr.html` / `guide.html` / `examples.html` / `api.html`），构建：`bun run docs/build.ts`
+- `examples/basic`、`examples/spa`（dom + signal + router 单页应用，对应 `docs/tutorial.html`）、`examples/htm`、`examples/react-portal`、`examples/ssr`（全栈 SSR + 水合 + NoSSR）、`examples/hmr`（热更新）
+- `docs/` 静态文档站（`guide.html` / `tutorial.html` / `signal.html` / `dom.html` / `router.html` / `hmr.html` / `examples.html` / `api.html`），构建：`bun run docs/build.ts`

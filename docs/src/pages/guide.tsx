@@ -379,6 +379,10 @@ render(
             <code>examples/basic</code> — 计数器（Bun bundler + dev server）
           </li>
           <li>
+            <code>examples/spa</code> — 单页应用：dom + signal + router（见
+            <a href="./tutorial.html">教程</a>）
+          </li>
+          <li>
             <code>examples/htm</code> — 无构建 htm 模板字符串
           </li>
           <li>

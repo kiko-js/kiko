@@ -37,6 +37,11 @@ const DOCS = [
     text: "设计理念与完整上手：第一个组件、响应式渲染、控制流、scoped 样式、生命周期。",
   },
   {
+    href: "./tutorial.html",
+    title: "教程：Bun SPA",
+    text: "从安装开始，用 Bun 搭一个 dom + signal + router 的单页应用，含路由、状态与生产构建。",
+  },
+  {
     href: "./signal.html",
     title: "@kikojs/signal",
     text: "状态管理 API：createSignal、computed、effect、batch、untrack、on、createStore。",

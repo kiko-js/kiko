@@ -13,6 +13,7 @@ export interface PageLink {
 export const NAV_LINKS: PageLink[] = [
   { page: "index", label: "首页" },
   { page: "guide", label: "指南" },
+  { page: "tutorial", label: "教程" },
   { page: "signal", label: "signal" },
   { page: "dom", label: "dom" },
   { page: "router", label: "router" },

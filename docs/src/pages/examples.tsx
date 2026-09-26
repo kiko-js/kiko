@@ -114,6 +114,18 @@ render(
           </tr>
           <tr>
             <td>
+              <code>examples/spa</code>
+            </td>
+            <td>
+              Bun 运行的单页应用（dom + signal + router，对应
+              <a href="./tutorial.html">教程</a>）
+            </td>
+            <td>
+              <code>bun run dev</code>
+            </td>
+          </tr>
+          <tr>
+            <td>
               <code>examples/react-portal</code>
             </td>
             <td>React 组件桥接</td>

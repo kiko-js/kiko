@@ -64,6 +64,14 @@
         "@types/react-dom": "^19.2.3",
       },
     },
+    "examples/spa": {
+      "name": "spa",
+      "dependencies": {
+        "@kikojs/dom": "workspace:*",
+        "@kikojs/router": "workspace:*",
+        "@kikojs/signal": "workspace:*",
+      },
+    },
     "examples/ssr": {
       "name": "ssr",
       "dependencies": {
@@ -114,7 +122,7 @@
       "name": "@kikojs/router",
       "version": "0.4.3",
       "dependencies": {
-        "@kikojs/dom": "^0.4.1",
+        "@kikojs/dom": "^0.4.3",
         "@kikojs/signal": "^0.1.0",
         "signal-polyfill": "^0.2.0",
       },
@@ -577,6 +585,8 @@
     "signal-polyfill": ["signal-polyfill@0.2.2", "", {}, "sha512-p63Y4Er5/eMQ9RHg0M0Y64NlsQKpiu6MDdhBXpyywRuWiPywhJTpKJ1iB5K2hJEbFZ0BnDS7ZkJ+0AfTuL37Rg=="],
 
     "slash": ["slash@3.0.0", "", {}, "sha512-g9Q1haeby36OSStwb4ntCGGGaKsaVSjQ68fBxoQcutl5fS1vuY18H3wSt3jFyFtrkx+Kz0V1G85A4MyAdDMi2Q=="],
+
+    "spa": ["spa@workspace:examples/spa"],
 
     "spawndamnit": ["spawndamnit@3.0.1", "", { "dependencies": { "cross-spawn": "^7.0.5", "signal-exit": "^4.0.1" } }, "sha512-MmnduQUuHCoFckZoWnXsTg7JaiLBJrKFj9UI2MbRPGaJeVpsLcVBu6P/IGZovziM/YBsellCmsprgNA+w0CzVg=="],
 

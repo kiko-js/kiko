@@ -94,6 +94,7 @@ createServer(toNodeListener(hmr)).listen(3000)
 | 示例                    | 说明                                       |
 | ----------------------- | ------------------------------------------ |
 | `examples/basic`        | 计数器，Bun bundler + 开发服务器           |
+| `examples/spa`          | 单页应用：dom + signal + router（含教程）  |
 | `examples/htm`          | `dom` / `htm` 标签模板运行时（无构建 JSX） |
 | `examples/react-portal` | ReactPortal 桥接 React 组件                |
 | `examples/ssr`          | 全栈 Bun 服务端渲染 + 客户端水合           |
@@ -103,7 +104,7 @@ createServer(toNodeListener(hmr)).listen(3000)
 
 访问项目官网：**https://kiko-js.github.io/kiko/**
 
-官网源码位于 `docs/`（静态 HTML，含 `signal.html` / `dom.html` / `router.html` / `examples.html` / `api.html`），由 GitHub Actions 构建并部署到 GitHub Pages。
+官网源码位于 `docs/`（静态 HTML，含 `guide.html` / `tutorial.html` / `signal.html` / `dom.html` / `router.html` / `examples.html` / `api.html`），由 GitHub Actions 构建并部署到 GitHub Pages。
 
 ## 开发
 

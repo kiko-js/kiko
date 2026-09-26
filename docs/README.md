@@ -8,6 +8,7 @@
 docs/
 ├── index.html      首页：特性、文档地图、实时 demo、快速开始
 ├── guide.html      指南：设计理念 → 安装 → 上手 → 响应式 → 样式 → 生态
+├── tutorial.html   教程：用 Bun 搭一个 dom + signal + router 的单页应用
 ├── signal.html     @kikojs/signal API 参考
 ├── dom.html        @kikojs/dom API 参考
 ├── router.html     @kikojs/router API 参考
@@ -15,14 +16,13 @@ docs/
 ├── examples.html   示例：实时 demo + 代码 + 本地示例项目
 ├── api.html        旧链接重定向（→ guide.html）
 ├── build.ts        构建脚本（bun run docs/build.ts）
-├── tsconfig.json   type-check 代码片段（assets/**）
+├── tsconfig.json   type-check 代码片段（assets/**、src/**）
 ├── package.json    workspace 成员（依赖各 @kikojs/* 包，用于片段类型检查）
+├── src/            页面客户端组件 + 共享组件（Layout / Toc / Code / 实时 demo）
 └── assets/
     ├── style.css   站点样式
-    ├── highlight.js 代码高亮 + data-src 片段加载
-    ├── counter.ts  首页 / 示例页实时计数器 demo
-    ├── htm.ts      示例页 htm demo
     └── snippets/   所有代码片段（页面通过 data-src 加载，单一事实来源）
+        └── tutorial/  教程片段，与 examples/spa/ 逐文件对应
 ```
 
 ## 约定
@@ -33,6 +33,8 @@ docs/
   保证文档代码始终与真实 API 一致。片段用到可选依赖（如 htm）时，把该依赖加到
   `docs/package.json` 的 devDependencies。
 - 单行 shell 命令（如 `bun add ...`）直接内联，不走 data-src。
+- 教程页（`tutorial.html`）的片段放在 `assets/snippets/tutorial/`，与
+  `examples/spa/` 逐文件对应；改任一处时同步另一处（两边都会 typecheck）。
 - 页面导航使用 `aria-current="page"` 标记当前页（样式见 style.css）。
 - 所有 HTML 必须是可解析的闭合标记（oxfmt 会在提交钩子中格式化）。
 

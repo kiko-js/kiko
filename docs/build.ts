@@ -18,6 +18,7 @@ await mkdir(dist, { recursive: true })
 const htmlEntries = [
   "index.html",
   "guide.html",
+  "tutorial.html",
   "signal.html",
   "dom.html",
   "router.html",
@@ -29,6 +30,10 @@ const result = await Bun.build({
   entrypoints: htmlEntries.map(f => `${docs}/${f}`),
   outdir: dist,
   target: "browser",
+  // Pin the project root so HTML entrypoints always emit at the output root
+  // (index.html, guide.html, ...) instead of nested under docs/ — Bun's
+  // relative-path handling flips past a threshold of entrypoints.
+  root: docs,
 })
 
 if (!result.success) {

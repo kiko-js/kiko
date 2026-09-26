@@ -94,6 +94,7 @@ createServer(toNodeListener(hmr)).listen(3000)
 | Example                 | Description                                           |
 | ----------------------- | ----------------------------------------------------- |
 | `examples/basic`        | Counter, Bun bundler + dev server                     |
+| `examples/spa`          | SPA: dom + signal + router (with tutorial)            |
 | `examples/htm`          | `dom` / `htm` tagged-template runtime (buildless JSX) |
 | `examples/react-portal` | ReactPortal bridge for React components               |
 | `examples/ssr`          | Full-stack Bun SSR + client hydration                 |
@@ -103,7 +104,7 @@ createServer(toNodeListener(hmr)).listen(3000)
 
 Visit the project site: **https://kiko-js.github.io/kiko/**
 
-The site source lives in `docs/` (static HTML, with `signal.html` / `dom.html` / `router.html` / `examples.html` / `api.html`), built and deployed to GitHub Pages via GitHub Actions.
+The site source lives in `docs/` (static HTML, with `guide.html` / `tutorial.html` / `signal.html` / `dom.html` / `router.html` / `examples.html` / `api.html`), built and deployed to GitHub Pages via GitHub Actions.
 
 ## Development
 
