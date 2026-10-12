@@ -10,6 +10,7 @@ import {
   detachDelegationRoot,
   setRef,
   jsx,
+  Fragment,
   setProp,
   Style,
   swapNodes,
@@ -262,7 +263,14 @@ export function hydrateJsx(
 }
 
 export function hydrateFragment(children: unknown): PendingNode {
-  return new PendingNode("group", () => hydrateValue(children))
+  return new PendingNode(
+    "group",
+    () => hydrateValue(children),
+    // 水合结束后的分支换入(Show/For 切回一个 fragment 分支)走客户端重建:没有
+    // rebuild 时 toNodes 会把 PendingNode 兜底成 "[object Object]" 文本——与
+    // hydrateStyle 同理。重建产出 DocumentFragment,由 toNodes 展平为子节点。
+    () => Fragment({ children }),
+  )
 }
 
 export function hydrateStyle(props: StyleProps): PendingNode {
@@ -626,7 +634,9 @@ function hydrateResolvedContent(value: unknown, adopted: Node[]): Node[] {
       for (const item of v) out.push(...align(item))
       return out
     }
-    if (v instanceof Node) return [v]
+    // 真实节点(水合结束后客户端构建)统一走 toNodes:与分支/条目路径共用同一条
+    // 物化规则,DocumentFragment 会被展平——单节点形态([v])会让 fragment 变空
+    // 后仍留在快照里,下一次换出 removeChild 抛 NotFoundError。
     return toNodes(v)
   }
   return align(value)

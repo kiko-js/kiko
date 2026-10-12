@@ -266,7 +266,14 @@ export function toNodes(value: unknown): Node[] {
   if (isPromiseLike(value)) {
     throw new Error("Promise rendered outside <Suspend> — wrap async components in <Suspend>")
   }
-  if (value instanceof Node) return [value]
+  if (value instanceof Node) {
+    // DocumentFragment 插入时会把子节点交给父节点、自身清空,不能作为"单个可
+    // 追踪节点"进入分支/条目快照——否则该分支换出时 `removeChild(空 fragment)`
+    // 会抛 NotFoundError(For 协调的 insertBefore 同理)。展平为子节点,与
+    // createPortal(portal.ts)及下面的数组分支保持一致。
+    if (value.nodeType === Node.DOCUMENT_FRAGMENT_NODE) return Array.from(value.childNodes)
+    return [value]
+  }
   if (Array.isArray(value)) {
     const out: Node[] = []
     const frag = document.createDocumentFragment()
@@ -890,16 +897,22 @@ export function Style(props: StyleProps): Node {
   const scoped = !props.global
   const attr = scoped ? createScopeAttr() : null
   const constructable = supportsConstructable()
-  const anchor: Node = constructable
-    ? document.createComment(scoped ? SCOPE_ANCHOR_PREFIX + attr : STYLE_ANCHOR_TEXT)
+  // 追踪锚点始终是那个注释节点(两种模式都有),fragment 只当容器:
+  // toNodes 会把 fragment 展平为子节点,watcher/cleanup 若挂在 fragment 上,
+  // 换出时 cleanupWatchers(子节点) 再也够不到它(订阅泄漏)。fallback 模式下
+  // 插入会搬走子节点令 fragment 变空,故 <style> 元素引用单独留存。
+  const anchor: Node = document.createComment(
+    scoped ? SCOPE_ANCHOR_PREFIX + attr : STYLE_ANCHOR_TEXT,
+  )
+  let styleEl: HTMLStyleElement | null = null
+  const root: Node = constructable
+    ? anchor
     : (() => {
         const frag = document.createDocumentFragment()
-        frag.appendChild(
-          document.createComment(scoped ? SCOPE_ANCHOR_PREFIX + attr : STYLE_ANCHOR_TEXT),
-        )
-        const el = document.createElement("style")
-        if (props.nonce) el.setAttribute("nonce", props.nonce)
-        frag.appendChild(el)
+        frag.appendChild(anchor)
+        styleEl = document.createElement("style")
+        if (props.nonce) styleEl.setAttribute("nonce", props.nonce)
+        frag.appendChild(styleEl)
         return frag
       })()
 
@@ -910,10 +923,8 @@ export function Style(props: StyleProps): Node {
     const rewritten = attr === null ? css : rewriteScopedCss(css, attr)
     if (sheet !== null) {
       sheet.replaceSync(rewritten)
-    } else {
-      // fallback mode: the anchor fragment's last child is the <style> element
-      const el = anchor.lastChild as HTMLStyleElement | null
-      if (el !== null) el.textContent = rewritten
+    } else if (styleEl !== null) {
+      styleEl.textContent = rewritten
     }
   }
 
@@ -948,7 +959,7 @@ export function Style(props: StyleProps): Node {
     trackWatcher(anchor, watcher)
   }
 
-  return anchor
+  return root
 }
 
 export const jsxDEV = jsx
