@@ -89,7 +89,7 @@
     },
     "packages/dom": {
       "name": "@kikojs/dom",
-      "version": "0.4.4",
+      "version": "0.4.5",
       "dependencies": {
         "@kikojs/hmr": "^0.2.0",
         "signal-polyfill": "^0.2.0",

@@ -1,5 +1,12 @@
 # @kikojs/dom
 
+## 0.4.5
+
+### Patch Changes
+
+- ### @kikojs/dom (patch)
+  - **dom**: keep DocumentFragment out of branch/entry snapshots (4fd33dc)
+
 ## 0.4.4
 
 ### Patch Changes
