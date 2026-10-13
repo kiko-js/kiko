@@ -76,7 +76,7 @@ Bun.serve({
 })
 ```
 
-插件把顶层组件改写为注册表包装，注入 `import.meta.hot` 粘合与端点登记（生产构建自动消除）。编辑组件文件：组件用新实现重跑、DOM 原位换入；组件内部信号按创建序恢复旧值，模块级信号直接复用旧信号对象——状态不丢。没有 `import.meta.hot` 的宿主则由端点驱动按模块 URL 重新导入。完整演示见 `examples/hmr`（`bun run dev`），API 参考见[文档站 HMR 页](./docs/src/pages/hmr.tsx)。
+插件把顶层组件改写为注册表包装，注入 `import.meta.hot` 粘合与端点登记（生产构建自动消除）。编辑组件文件：组件用新实现重跑、DOM 原位换入；组件内部信号按创建序恢复旧值，模块级信号直接复用旧信号对象——状态不丢。没有 `import.meta.hot` 的宿主则由端点驱动按模块 URL 重新导入。两个可直接运行的完整演示：纯前端 SPA（`examples/hmr-spa`，`bun run dev`，默认 3003；只有浏览器侧热替换）与全栈（`examples/hmr-fullstack`，`bun run dev`，默认 3004；客户端热替换 + `bun --hot` 服务端软重载 + `/hmr` 广播整页刷新）。API 参考见[文档站 HMR 页](./docs/src/pages/hmr.tsx)。
 
 Node 接入复用同一套通用代码（协议 / Hub / 客户端 / `@kikojs/hmr/transform` / `@kikojs/hmr/watcher`）：
 
@@ -91,14 +91,15 @@ createServer(toNodeListener(hmr)).listen(3000)
 
 ## 示例
 
-| 示例                    | 说明                                       |
-| ----------------------- | ------------------------------------------ |
-| `examples/basic`        | 计数器，Bun bundler + 开发服务器           |
-| `examples/spa`          | 单页应用：dom + signal + router（含教程）  |
-| `examples/htm`          | `dom` / `htm` 标签模板运行时（无构建 JSX） |
-| `examples/react-portal` | ReactPortal 桥接 React 组件                |
-| `examples/ssr`          | 全栈 Bun 服务端渲染 + 客户端水合           |
-| `examples/hmr`          | 热更新演示（状态保留），`bun run dev`      |
+| 示例                     | 说明                                                            |
+| ------------------------ | --------------------------------------------------------------- |
+| `examples/basic`         | 计数器，Bun bundler + 开发服务器                                |
+| `examples/spa`           | 单页应用：dom + signal + router（含教程）                       |
+| `examples/htm`           | `dom` / `htm` 标签模板运行时（无构建 JSX）                      |
+| `examples/react-portal`  | ReactPortal 桥接 React 组件                                     |
+| `examples/ssr`           | 全栈 Bun 服务端渲染 + 客户端水合                                |
+| `examples/hmr-spa`       | 纯前端 SPA 热更新：组件原位替换 + 状态保留，`bun run dev`       |
+| `examples/hmr-fullstack` | 全栈热更新：客户端热替换 + 服务端软重载 + `/hmr`，`bun run dev` |
 
 ## 文档
 

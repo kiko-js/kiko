@@ -520,13 +520,29 @@ render(
 
       <section id="example" class="api-section">
         <h2>完整示例</h2>
-        <p>
-          仓库内 <code>examples/hmr</code> 是可直接运行的演示（<code>bun run dev</code>， 默认{" "}
-          <code>http://localhost:3003</code>）：编辑 <code>src/counter.tsx</code>{" "}
-          组件热替换且计数保留；编辑 <code>src/store.ts</code> 模块信号身份保留；编辑{" "}
-          <code>src/client.tsx</code> 入口重渲染并认领实例。服务端同时暴露 <code>/hmr</code> 端点（
-          <code>createBunHmr({"{ watch: ['src'] }"})</code>）。
-        </p>
+        <p>仓库内有两个可直接运行的演示，都用 Bun 作为运行时（默认端口不同，可同时启动）：</p>
+        <ul style="color: var(--muted)">
+          <li>
+            <strong>纯前端 SPA：</strong>
+            <code>examples/hmr-spa</code>（<code>bun run dev</code>，默认{" "}
+            <code>http://localhost:3003</code>）。Bun 开发服务器 +{" "}
+            <code>development: {"{ hmr: true }"}</code>，没有服务端路由 / API / SSR：编辑{" "}
+            <code>src/counter.tsx</code> 组件原位热替换、计数保留；编辑 <code>src/store.ts</code>{" "}
+            模块级信号身份与值保留；编辑 <code>src/app.tsx</code> 子组件实例按创建序认领。
+            <code>bun run build</code> 输出可静态托管的 dist（生产构建不含 HMR 运行时）。
+          </li>
+          <li>
+            <strong>全栈：</strong>
+            <code>examples/hmr-fullstack</code>（<code>bun run dev</code> →{" "}
+            <code>bun --hot server.tsx</code>，默认 <code>http://localhost:3004</code>
+            ）。一个进程同时 装前端（HTML import + 打包器 HMR）与后端（<code>/api/*</code>
+            ，实现放在仅服务端模块里）。 编辑客户端组件：不刷新页面、计数与已拉取数据保留；编辑{" "}
+            <code>src/server/db.ts</code>：<code>bun --hot</code> 软重载服务端模块，{" "}
+            <code>createPathWatcher</code> 经独立 <code>/hmr</code> 端点（
+            <code>createBunHmr</code>）广播 <code>reload</code>，浏览器整页刷新拿到新的 API 行为。
+          </li>
+        </ul>
+        <p>两个示例的 Bun 接线都是这个形状：</p>
         <CodeBlock src="./assets/snippets/hmr-server.ts" lang="ts" />
         <p>Node 接入同一套协议与运行时：</p>
         <CodeBlock src="./assets/snippets/hmr-node.ts" lang="ts" />

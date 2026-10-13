@@ -1,9 +1,9 @@
 {
-  "name": "hmr",
+  "name": "hmr-fullstack",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun run server.ts"
+    "dev": "bun --hot server.tsx"
   },
   "dependencies": {
     "@kikojs/dom": "workspace:*",

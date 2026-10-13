@@ -5,5 +5,5 @@
     "jsxImportSource": "@kikojs/dom",
     "lib": ["ESNext", "DOM"]
   },
-  "include": ["src", "server.ts"]
+  "include": ["src", "server.tsx"]
 }

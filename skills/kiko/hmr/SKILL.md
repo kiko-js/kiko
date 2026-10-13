@@ -131,8 +131,12 @@ client.close()
 - **moduleId 是不透明字符串**，核心不要求它是文件路径；路径路由由接入层负责，核心从不硬编码 `/hmr`。
 - **Bun 自带 HMR 时不重复替换**：有 `import.meta.hot` 的模块交给 bundler 的 accept 回调，端点只通知；无 bundler HMR 的宿主才由端点按模块 URL 重新导入。
 - 客户端是全局单例（`Symbol.for("kiko:hmr:client")`），注册表也是全局单例（`Symbol.for("kiko:hmr")`，`installHmr` 幂等）；测试可用 `resetHmrClient()` 重新接线。
-- 生产构建靠 `process.env.NODE_ENV` 守卫 DCE 掉 HMR 代码（`render` 的 scope 包裹等）。
+- 生产构建靠 `process.env.NODE_ENV` 守卫 DCE 掉 HMR 代码（`render` 的 scope 包裹等）；`Bun.build` 不会自动把 `NODE_ENV` 当 production，需要 `define: { "process.env.NODE_ENV": JSON.stringify("production") }`（见 `examples/hmr-spa/bundler.ts`）。
+- **monorepo 里要留一个入口 accept 边界**：Bun 开发服务器的 HMR 图包含经 tsconfig `paths` 解析到项目根之外的框架源码（`packages/dom/src/*`），这些模块在更新时会被判为「未接受」并把整页刷新冒泡到 HTML 入口——结果是每次保存都整页刷新、状态全丢。示例在客户端入口 `src/main.tsx` 里加 `if (import.meta.hot) import.meta.hot.accept(() => {})` 让冒泡终止；组件模块自己的 accept 回调仍会原位热替换。
 
 ## 参考
 
-`examples/hmr`（`bun run dev`，默认 `http://localhost:3003`）：编辑组件文件热替换且计数保留、编辑模块信号文件身份保留、编辑入口重渲染并认领实例。API 参考见 `docs/src/pages/hmr.tsx`。
+- `examples/hmr-spa`（`bun run dev`，默认 `http://localhost:3003`）：纯前端 SPA，编辑组件文件热替换且计数保留、编辑模块信号文件身份保留、编辑顶层组件子实例按创建序认领。
+- `examples/hmr-fullstack`（`bun run dev` → `bun --hot server.tsx`，默认 `http://localhost:3004`）：客户端热替换保留状态 + 服务端模块软重载，服务端文件变化经独立 `/hmr` 端点广播 `reload` 触发整页刷新。
+
+API 参考见 `docs/src/pages/hmr.tsx`。

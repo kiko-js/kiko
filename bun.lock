@@ -36,8 +36,16 @@
         "@kikojs/signal": "workspace:*",
       },
     },
-    "examples/hmr": {
-      "name": "hmr",
+    "examples/hmr-fullstack": {
+      "name": "hmr-fullstack",
+      "dependencies": {
+        "@kikojs/dom": "workspace:*",
+        "@kikojs/hmr": "workspace:*",
+        "@kikojs/signal": "workspace:*",
+      },
+    },
+    "examples/hmr-spa": {
+      "name": "hmr-spa",
       "dependencies": {
         "@kikojs/dom": "workspace:*",
         "@kikojs/hmr": "workspace:*",
@@ -91,7 +99,7 @@
       "name": "@kikojs/dom",
       "version": "0.4.5",
       "dependencies": {
-        "@kikojs/hmr": "^0.2.0",
+        "@kikojs/hmr": "^0.2.1",
         "signal-polyfill": "^0.2.0",
       },
       "devDependencies": {
@@ -470,7 +478,9 @@
 
     "happy-dom": ["happy-dom@20.14.0", "", { "dependencies": { "@types/node": ">=20.0.0", "@types/whatwg-mimetype": "^3.0.2", "@types/ws": "^8.18.1", "buffer-image-size": "^0.6.4", "entities": "^7.0.1", "whatwg-mimetype": "^3.0.0", "ws": "^8.21.0" } }, "sha512-4bRh1KzRvKDnFNTlLhzT1RZTpkKhQbQDl9j+7GXszWsvuspYdo29k6OHRf4PwiM6oLb8r/pMWeYiJjkfod5AvQ=="],
 
-    "hmr": ["hmr@workspace:examples/hmr"],
+    "hmr-fullstack": ["hmr-fullstack@workspace:examples/hmr-fullstack"],
+
+    "hmr-spa": ["hmr-spa@workspace:examples/hmr-spa"],
 
     "htm": ["htm@3.1.1", "", {}, "sha512-983Vyg8NwUE7JkZ6NmOqpCZ+sh1bKv2iYTlUkzlWmA5JD2acKoxd4KVxbMmxX/85mtfdnDmTFoNKcg5DGAvxNQ=="],
 

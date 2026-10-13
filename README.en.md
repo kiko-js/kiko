@@ -76,7 +76,7 @@ Bun.serve({
 })
 ```
 
-The plugin rewrites top-level components into registry-backed wrappers and injects `import.meta.hot` glue plus endpoint registration (eliminated in production builds). Editing a component file re-runs it with the new implementation and swaps the DOM in place; component-internal signals restore their previous values by creation order and module-level signals reuse the previous signal objects — state survives. Hosts without `import.meta.hot` let the endpoint re-import modules by URL. See `examples/hmr` (`bun run dev`) for a full demo and the HMR page in the docs site for the API reference.
+The plugin rewrites top-level components into registry-backed wrappers and injects `import.meta.hot` glue plus endpoint registration (eliminated in production builds). Editing a component file re-runs it with the new implementation and swaps the DOM in place; component-internal signals restore their previous values by creation order and module-level signals reuse the previous signal objects — state survives. Hosts without `import.meta.hot` let the endpoint re-import modules by URL. Two runnable demos: a frontend-only SPA (`examples/hmr-spa`, `bun run dev`, port 3003; browser-side hot replacement only) and a full-stack app (`examples/hmr-fullstack`, `bun run dev`, port 3004; client hot replacement + `bun --hot` server soft reload + `/hmr`-driven full page reload). See the HMR page in the docs site for the API reference.
 
 Node integrates through the same shared code (protocol / hub / client / `@kikojs/hmr/transform` / `@kikojs/hmr/watcher`):
 
@@ -91,14 +91,15 @@ createServer(toNodeListener(hmr)).listen(3000)
 
 ## Examples
 
-| Example                 | Description                                           |
-| ----------------------- | ----------------------------------------------------- |
-| `examples/basic`        | Counter, Bun bundler + dev server                     |
-| `examples/spa`          | SPA: dom + signal + router (with tutorial)            |
-| `examples/htm`          | `dom` / `htm` tagged-template runtime (buildless JSX) |
-| `examples/react-portal` | ReactPortal bridge for React components               |
-| `examples/ssr`          | Full-stack Bun SSR + client hydration                 |
-| `examples/hmr`          | HMR demo (state preservation), `bun run dev`          |
+| Example                  | Description                                                         |
+| ------------------------ | ------------------------------------------------------------------- |
+| `examples/basic`         | Counter, Bun bundler + dev server                                   |
+| `examples/spa`           | SPA: dom + signal + router (with tutorial)                          |
+| `examples/htm`           | `dom` / `htm` tagged-template runtime (buildless JSX)               |
+| `examples/react-portal`  | ReactPortal bridge for React components                             |
+| `examples/ssr`           | Full-stack Bun SSR + client hydration                               |
+| `examples/hmr-spa`       | Frontend-only SPA HMR: in-place component swap + state preservation |
+| `examples/hmr-fullstack` | Full-stack HMR: client hot swap + server soft reload + `/hmr`       |
 
 ## Documentation
 

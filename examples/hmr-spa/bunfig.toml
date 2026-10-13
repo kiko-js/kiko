@@ -1,0 +1,4 @@
+# Bun 开发服务器的打包插件：把顶层组件改写为 HMR 注册表包装，
+# 并注入 import.meta.hot 粘合与端点登记。
+[serve.static]
+plugins = ["@kikojs/hmr/bun"]

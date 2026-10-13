@@ -1,0 +1,14 @@
+{
+  "name": "hmr-spa",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run server.ts",
+    "build": "bun run bundler.ts"
+  },
+  "dependencies": {
+    "@kikojs/dom": "workspace:*",
+    "@kikojs/hmr": "workspace:*",
+    "@kikojs/signal": "workspace:*"
+  }
+}

@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>kiko HMR · 全栈</title>
+    <style>
+      :root {
+        color-scheme: light;
+      }
+      body {
+        font-family: system-ui, sans-serif;
+        max-width: 720px;
+        margin: 2rem auto;
+        padding: 0 1rem;
+      }
+      h1 {
+        margin-bottom: 0.25rem;
+      }
+      .row {
+        display: flex;
+        gap: 0.5rem;
+        margin: 1rem 0;
+      }
+      .row input {
+        flex: 1;
+        padding: 0.4rem 0.6rem;
+        font-size: 1rem;
+      }
+      button {
+        padding: 0.4rem 0.8rem;
+        font-size: 0.95rem;
+        cursor: pointer;
+      }
+      ul.todos {
+        list-style: none;
+        padding: 0;
+      }
+      ul.todos li {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.35rem 0;
+        border-bottom: 1px solid #eee;
+      }
+      ul.todos li.done span {
+        text-decoration: line-through;
+        color: #999;
+      }
+      .meta {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 0.5rem;
+        margin-top: 1.5rem;
+        font-size: 0.85rem;
+        color: #555;
+      }
+      .meta div {
+        border: 1px solid #eee;
+        border-radius: 6px;
+        padding: 0.5rem 0.75rem;
+      }
+      .counter {
+        margin-top: 1.5rem;
+        border: 1px solid #eee;
+        border-radius: 6px;
+        padding: 0.5rem 1rem 1rem;
+      }
+      .counter h2 {
+        font-size: 1rem;
+      }
+      .actions {
+        display: flex;
+        gap: 0.5rem;
+      }
+      .hint {
+        color: #666;
+        font-size: 0.9rem;
+        line-height: 1.6;
+      }
+      code {
+        background: #f4f4f4;
+        padding: 0 0.25rem;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script>
+      // HMR 端点传输（必须在模块脚本之前配置）。这里选 WebSocket：长连接不会
+      // 被服务端的 `bun --hot` 软重载打断（SSE 流在重载瞬间会被释放），并且能
+      // 实时收到服务端模块变化触发的整页刷新通知。
+      globalThis.__KIKO_HMR__ = { transport: "ws" }
+    </script>
+    <script type="module" src="src/main.tsx"></script>
+  </body>
+</html>
