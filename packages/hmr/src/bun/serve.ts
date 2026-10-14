@@ -18,6 +18,12 @@ import { createPathWatcher, DEFAULT_HMR_INCLUDE, resolveWatchRoots } from "../wa
  * 宿主都能用），带 `Upgrade: websocket` 时走 WebSocket。`path` 可改，
  * 核心 Hub 本身不认识任何路径。
  *
+ * SSE 是长连接，而 `Bun.serve` 默认 **10 秒空闲就断开**（比默认心跳 15s 还快）：
+ * 连接被就地掐掉时 ReadableStream 来不及收尾，浏览器就报
+ * `net::ERR_INCOMPLETE_CHUNKED_ENCODING 200 (OK)`。所以 `fetch` 收到 server 时，
+ * 会按 Bun 官方 SSE 指南关掉该请求的空闲超时（`server.timeout(request, 0)`）。
+ * 宿主只传 request 时（拿不到 server）必须自己配 `idleTimeout: 0` 或调用同一 API。
+ *
  * `watch` 打开后复用通用 watcher（`../watcher`）监听源码目录，把变化文件
  * 映射成模块 id 后 `publish()`；模块 id 规范化与打包插件一致。
  */
@@ -27,6 +33,8 @@ export { toModuleId } from "../watcher"
 /** `Bun.serve` 的 server 参数里我们用到的最小面（便于测试注入）。 */
 export interface BunHmrUpgradeServer {
   upgrade(request: Request, options?: { data?: unknown }): boolean
+  /** 重置该请求的空闲超时（秒），`0` = 不超时；Bun 1.1.27+ 提供。 */
+  timeout?(request: Request, seconds: number): void
 }
 
 /** Bun WebSocket 的最小面。 */
@@ -115,6 +123,11 @@ export function createBunHmr(options: BunHmrOptions = {}): BunHmr {
       if (upgraded) return undefined
       return new Response("WebSocket upgrade failed", { status: 400, headers })
     }
+    // SSE 流建立后可能长时间没有更新；Bun.serve 默认 10s 空闲即断开，切在 chunked
+    // 流的中间 → 浏览器报 net::ERR_INCOMPLETE_CHUNKED_ENCODING 200。心跳（默认 15s）
+    // 比这个阈值慢，救不了场，所以按 Bun 官方 SSE 指南就地关掉该请求的空闲超时
+    // （`0` = 不超时）。只对 GET（SSE）动手，POST / 预检仍是普通短响应。
+    if (request.method.toUpperCase() === "GET") server?.timeout?.(request, 0)
     return hub.handle(request)
   }
 

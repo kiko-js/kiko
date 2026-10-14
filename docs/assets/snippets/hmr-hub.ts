@@ -10,6 +10,9 @@ const hub = createHmrHub({
 })
 
 // 任何 Fetch API 宿主（Deno / Cloudflare Workers / Node 18+ ...）
+// Bun 宿主注意：Bun.serve 默认 10s 空闲就断连，静默的 SSE 流会被切在
+// chunked 流中间（浏览器报 net::ERR_INCOMPLETE_CHUNKED_ENCODING 200）。
+// 用 Bun 时先 server.timeout(request, 0)，或给 Bun.serve 配 idleTimeout: 0。
 export default {
   fetch(request: Request): Promise<Response> {
     if (new URL(request.url).pathname === "/hmr") return hub.handle(request)

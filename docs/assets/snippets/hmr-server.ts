@@ -8,6 +8,8 @@ Bun.serve({
   fetch(request, server) {
     // GET /hmr → SSE；Upgrade: websocket → WebSocket；
     // 其它路径返回 undefined，交回宿主自己的路由。
+    // server 要透传：适配器据此关掉 SSE 请求的空闲超时（Bun.serve 默认 10s
+    // 空闲就断流，浏览器会报 net::ERR_INCOMPLETE_CHUNKED_ENCODING 200）。
     return hmr.fetch(request, server) ?? new Response("Not Found", { status: 404 })
   },
   websocket: hmr.websocket,

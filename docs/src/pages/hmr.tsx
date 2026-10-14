@@ -344,6 +344,15 @@ render(
             </tr>
           </tbody>
         </table>
+        <p>
+          SSE 是长连接，而 <code>Bun.serve</code> 默认 10 秒空闲就断开连接——比默认心跳还快，
+          连接被切在 chunked 流中间，浏览器就报{" "}
+          <code>net::ERR_INCOMPLETE_CHUNKED_ENCODING 200 (OK)</code>。把 <code>server</code> 透传给{" "}
+          <code>hmr.fetch</code> 后，适配器会按 Bun 官方 SSE 指南对该请求调用{" "}
+          <code>server.timeout(request, 0)</code> 关掉空闲超时；若宿主不传 <code>server</code>
+          （或自建 fetch 入口），需自行设置 <code>idleTimeout: 0</code>，或把{" "}
+          <code>heartbeatMs</code> 调到 10 秒以内。
+        </p>
       </section>
 
       <section id="node" class="api-section">

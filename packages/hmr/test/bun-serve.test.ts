@@ -18,6 +18,10 @@ async function waitFor(predicate: () => boolean, timeoutMs = 2000): Promise<void
   }
 }
 
+function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
 describe("toModuleId", () => {
   it("normalizes to forward slashes relative to cwd", () => {
     expect(toModuleId("/app", "/app/src/counter.tsx")).toBe("src/counter.tsx")
@@ -87,6 +91,102 @@ describe("createBunHmr", () => {
     expect(response?.status).toBe(426)
     hmr.close()
   })
+
+  it("disables Bun's per-request idle timeout for the SSE stream only", async () => {
+    const hmr = createBunHmr({ heartbeatMs: 0 })
+    const timeouts: number[] = []
+    const server = {
+      upgrade: () => false,
+      timeout: (_request: Request, seconds: number) => {
+        timeouts.push(seconds)
+      },
+    }
+    try {
+      const sse = await hmr.fetch(new Request("http://localhost/hmr"), server)
+      expect(sse?.headers.get("content-type")).toContain("text/event-stream")
+      expect(timeouts).toEqual([0])
+      await sse?.body?.cancel()
+
+      // 升级 / 非 GET 都不是长连接，不该动宿主的超时设置。
+      await hmr.fetch(
+        new Request("http://localhost/hmr", { headers: { upgrade: "websocket" } }),
+        server,
+      )
+      await hmr.fetch(
+        new Request("http://localhost/hmr", {
+          method: "POST",
+          body: JSON.stringify({ type: "hello" }),
+        }),
+        server,
+      )
+      expect(timeouts).toEqual([0])
+
+      // 没有 server（或老版本 Bun 没这个方法）时端点照常工作。
+      const sseWithoutTimeout = await hmr.fetch(new Request("http://localhost/hmr"), {
+        upgrade: () => false,
+      })
+      expect(sseWithoutTimeout?.status).toBe(200)
+      await sseWithoutTimeout?.body?.cancel()
+    } finally {
+      hmr.close()
+    }
+  })
+
+  // 回归：Bun.serve 默认空闲 10s 就会断开连接，切在 chunked 流中间 → 浏览器报
+  // net::ERR_INCOMPLETE_CHUNKED_ENCODING 200 (OK)。这里把空闲窗口压到 1s，用
+  // 「只传 request」的对照组证明切断真实存在，而透传 server 的连接必须活下来。
+  it("keeps the SSE stream alive past Bun's idle timeout", async () => {
+    const fixed = createBunHmr({ heartbeatMs: 0 })
+    const control = createBunHmr({ heartbeatMs: 0 })
+    const servers = [
+      Bun.serve({
+        port: 0,
+        idleTimeout: 1,
+        fetch: (request, server) =>
+          fixed.fetch(request, server) ?? new Response(null, { status: 404 }),
+        websocket: fixed.websocket,
+      }),
+      Bun.serve({
+        port: 0,
+        idleTimeout: 1,
+        fetch: request => control.fetch(request) ?? new Response(null, { status: 404 }),
+        websocket: control.websocket,
+      }),
+    ]
+    try {
+      const fixedReader = (
+        await fetch(`http://localhost:${servers[0]!.port}/hmr`)
+      ).body!.getReader()
+      const controlReader = (
+        await fetch(`http://localhost:${servers[1]!.port}/hmr`)
+      ).body!.getReader()
+      await fixedReader.read()
+      await controlReader.read()
+
+      // 对照组：宿主没把 server 交给 hmr.fetch，空闲超时照旧，read 以结束或报错收场。
+      const killed = await Promise.race([
+        controlReader.read().then(
+          () => true,
+          () => true,
+        ),
+        delay(15000).then(() => false),
+      ])
+      expect(killed).toBe(true)
+
+      // 修好的那条连接在对照组被切断之后仍然能收到广播。
+      fixed.hub.publish("src/app.tsx")
+      const frame = new TextDecoder().decode((await fixedReader.read()).value)
+      expect(decodeHmrMessage(dataOf(frame))).toEqual({
+        type: "update",
+        modules: ["src/app.tsx"],
+      })
+      await fixedReader.cancel()
+    } finally {
+      for (const server of servers) server.stop(true)
+      fixed.close()
+      control.close()
+    }
+  }, 20000)
 
   it("watches files and publishes debounced module ids", async () => {
     const root = await mkdtemp(join(tmpdir(), "kiko-hmr-"))
