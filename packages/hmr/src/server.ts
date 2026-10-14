@@ -1,3 +1,4 @@
+import { noCacheHeaders } from "./cache"
 import {
   decodeHmrMessage,
   encodeHmrMessage,
@@ -55,15 +56,23 @@ export interface HmrHub {
   close(): void
 }
 
-const SSE_HEADERS: Record<string, string> = {
+const SSE_HEADERS: HeadersInit = noCacheHeaders({
   "content-type": "text/event-stream; charset=utf-8",
-  "cache-control": "no-cache, no-transform",
   connection: "keep-alive",
   // 反向代理（nginx 等）默认缓冲响应；显式关闭才能实时推送。
   "x-accel-buffering": "no",
-}
+})
 
 const METHODS = "GET, POST, OPTIONS"
+
+/**
+ * 端点响应一律禁用缓存：HMR 通道（SSE / POST / 预检）没有任何可复用性，
+ * 浏览器或反向代理缓存住一次就再也收不到更新。`noCacheHeaders` 同时覆盖
+ * `no-store` 与老式的 `pragma` / `expires`。
+ */
+function endpointResponse(body: BodyInit | null, init: ResponseInit = {}): Response {
+  return new Response(body, { ...init, headers: noCacheHeaders(init.headers) })
+}
 
 export function createHmrHub(options: HmrHubOptions = {}): HmrHub {
   const sinks = new Set<HmrSink>()
@@ -155,19 +164,19 @@ export function createHmrHub(options: HmrHubOptions = {}): HmrHub {
   const handle = async (request: Request): Promise<Response> => {
     const method = request.method.toUpperCase()
     if (method === "OPTIONS") {
-      return new Response(null, { status: 204, headers: { allow: METHODS } })
+      return endpointResponse(null, { status: 204, headers: { allow: METHODS } })
     }
     if (method === "POST") {
       const body = await request.text()
       const message = decodeHmrMessage(body)
       if (!message || !isHmrClientMessage(message)) {
-        return new Response("Bad Request", { status: 400 })
+        return endpointResponse("Bad Request", { status: 400 })
       }
       options.onMessage?.(message, null)
-      return new Response(null, { status: 204 })
+      return endpointResponse(null, { status: 204 })
     }
     if (method === "GET") return sseResponse()
-    return new Response("Method Not Allowed", { status: 405, headers: { allow: METHODS } })
+    return endpointResponse("Method Not Allowed", { status: 405, headers: { allow: METHODS } })
   }
 
   const close = (): void => {

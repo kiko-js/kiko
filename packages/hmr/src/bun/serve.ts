@@ -1,3 +1,4 @@
+import { noCacheHeaders } from "../cache"
 import { decodeHmrMessage, encodeHmrMessage, HMR_PROTOCOL_VERSION } from "../protocol"
 import { createHmrHub, type HmrHub, type HmrHubOptions, type HmrSink } from "../server"
 import { createPathWatcher, DEFAULT_HMR_INCLUDE, resolveWatchRoots } from "../watcher"
@@ -108,10 +109,11 @@ export function createBunHmr(options: BunHmrOptions = {}): BunHmr {
 
     const upgrade = request.headers.get("upgrade")
     if (upgrade?.toLowerCase() === "websocket") {
-      if (!server) return new Response("WebSocket upgrade unsupported", { status: 426 })
+      const headers = noCacheHeaders({ "content-type": "text/plain; charset=utf-8" })
+      if (!server) return new Response("WebSocket upgrade unsupported", { status: 426, headers })
       const upgraded = server.upgrade(request, { data: { kikoHmr: path } })
       if (upgraded) return undefined
-      return new Response("WebSocket upgrade failed", { status: 400 })
+      return new Response("WebSocket upgrade failed", { status: 400, headers })
     }
     return hub.handle(request)
   }

@@ -86,15 +86,18 @@ describe("connectHmr", () => {
   it("defaults to SSE against the resolved endpoint", () => {
     const client = connectHmr({
       url: "http://example.test/hmr",
+      stamp: () => 1234,
       createEventSource: url => new FakeEventSource(url),
     })
     expect(client.transport).toBe("sse")
     expect(FakeEventSource.instances.length).toBe(1)
-    expect(FakeEventSource.instances[0]!.url).toBe("http://example.test/hmr")
+    // 开发默认（NODE_ENV 非 production）自动带上时间戳参数绕开缓存。
+    expect(FakeEventSource.instances[0]!.url).toBe("http://example.test/hmr?kiko-dev=1234")
 
     const statuses: string[] = []
     const client2 = connectHmr({
       url: "http://example.test/hmr",
+      stamp: () => 1234,
       createEventSource: url => new FakeEventSource(url),
       onStatus: status => statuses.push(status),
     })
@@ -111,15 +114,43 @@ describe("connectHmr", () => {
     client2.close()
   })
 
+  it("keeps the raw endpoint when cache busting is off", () => {
+    const client = connectHmr({
+      url: "http://example.test/hmr",
+      cacheBust: false,
+      createEventSource: url => new FakeEventSource(url),
+    })
+    expect(FakeEventSource.instances[0]!.url).toBe("http://example.test/hmr")
+    client.close()
+  })
+
+  it("uses a fresh timestamp on every reconnect", async () => {
+    let now = 100
+    const client = connectHmr({
+      url: "http://example.test/hmr",
+      minReconnectDelayMs: 1,
+      maxReconnectDelayMs: 2,
+      stamp: () => ++now,
+      createEventSource: url => new FakeEventSource(url),
+    })
+    expect(FakeEventSource.instances[0]!.url).toBe("http://example.test/hmr?kiko-dev=101")
+    FakeEventSource.instances[0]!.fail()
+    await tick(15)
+    expect(FakeEventSource.instances.length).toBeGreaterThan(1)
+    expect(FakeEventSource.instances[1]!.url).toBe("http://example.test/hmr?kiko-dev=102")
+    client.close()
+  })
+
   it("connects over WebSocket when requested", () => {
     const client = connectHmr({
       url: "http://example.test/hmr",
       transport: "ws",
+      stamp: () => 42,
       createWebSocket: url => new FakeWebSocket(url),
     })
     const socket = FakeWebSocket.instances[0]!
     expect(client.transport).toBe("ws")
-    expect(socket.url).toBe("ws://example.test/hmr")
+    expect(socket.url).toBe("ws://example.test/hmr?kiko-dev=42")
 
     socket.open()
     expect(client.status).toBe("connected")
@@ -167,9 +198,9 @@ describe("connectHmr", () => {
 
   it("POSTs client messages when the transport is SSE", async () => {
     const original = globalThis.fetch
-    const calls: { url: string; body: string }[] = []
+    const calls: { url: string; body: string; cache?: RequestCache }[] = []
     globalThis.fetch = (async (url: string, init: RequestInit) => {
-      calls.push({ url, body: String(init.body) })
+      calls.push({ url, body: String(init.body), cache: init.cache })
       return new Response(null, { status: 204 })
     }) as typeof fetch
     try {
@@ -180,7 +211,9 @@ describe("connectHmr", () => {
       FakeEventSource.instances[0]!.open()
       client.send({ type: "hello" })
       await tick()
-      expect(calls).toEqual([{ url: "http://example.test/hmr", body: '{"type":"hello"}' }])
+      expect(calls).toEqual([
+        { url: "http://example.test/hmr", body: '{"type":"hello"}', cache: "no-store" },
+      ])
       client.close()
     } finally {
       globalThis.fetch = original
@@ -241,6 +274,55 @@ describe("ensureHmrClient / acceptHmrModule", () => {
     expect(loaded[0]).toContain("kiko-hmr=")
     expect(registry.updates).toEqual([["src/counter.tsx", { tag: "fresh" }]])
     applied.close()
+  })
+
+  it("busts module re-imports uniquely across page sessions", async () => {
+    const realNow = Date.now
+    const loaded: string[] = []
+    const registry = fakeRegistry()
+    const load = async (url: string): Promise<unknown> => {
+      loaded.push(url)
+      return {}
+    }
+    try {
+      Date.now = () => 1000
+      const first = ensureHmrClient({
+        url: "http://example.test/hmr",
+        registry,
+        createEventSource: url => new FakeEventSource(url),
+        loadModule: load,
+      })
+      first.register("src/counter.tsx", { url: "http://example.test/counter.tsx" })
+      FakeEventSource.instances
+        .at(-1)!
+        .emit(encodeHmrMessage({ type: "update", modules: ["src/counter.tsx"] }))
+      await tick()
+      first.close()
+
+      // 整页刷新：客户端单例重建，自增计数从 1 重新开始。
+      resetHmrClient()
+      Date.now = () => 9000
+      const second = ensureHmrClient({
+        url: "http://example.test/hmr",
+        registry,
+        createEventSource: url => new FakeEventSource(url),
+        loadModule: load,
+      })
+      second.register("src/counter.tsx", { url: "http://example.test/counter.tsx" })
+      FakeEventSource.instances
+        .at(-1)!
+        .emit(encodeHmrMessage({ type: "update", modules: ["src/counter.tsx"] }))
+      await tick()
+      second.close()
+    } finally {
+      Date.now = realNow
+    }
+
+    expect(loaded.length).toBe(2)
+    // 计数相同也不会撞上上一次会话缓存住的 URL。
+    expect(loaded[0]).toContain("kiko-hmr=1000-1")
+    expect(loaded[1]).toContain("kiko-hmr=9000-1")
+    expect(loaded[0]).not.toBe(loaded[1])
   })
 
   it("leaves bundler-managed modules to import.meta.hot", async () => {

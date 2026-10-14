@@ -14,6 +14,7 @@ const TOC: TocItem[] = [
   { id: "bun", label: "Bun 接入" },
   { id: "node", label: "Node 接入" },
   { id: "client", label: "客户端" },
+  { id: "cache", label: "缓存击穿（dev）" },
   { id: "protocol", label: "协议" },
   { id: "transform", label: "模块改写" },
   { id: "state", label: "状态保留" },
@@ -79,7 +80,8 @@ render(
               </td>
               <td>
                 通用核心：协议、服务端 Hub（<code>createHmrHub</code>）、客户端（
-                <code>connectHmr</code> / <code>ensureHmrClient</code>）与注册表运行时。浏览器 / SSR
+                <code>connectHmr</code> / <code>ensureHmrClient</code>）、开发期缓存击穿工具（
+                <code>devFetch</code> / <code>withNoCache</code>）与注册表运行时。浏览器 / SSR
                 安全。
               </td>
             </tr>
@@ -87,7 +89,7 @@ render(
               <td>
                 <code>@kikojs/hmr/client</code>
               </td>
-              <td>浏览器侧入口（客户端 + 注册表应用层），插件注入的胶水使用它。</td>
+              <td>浏览器侧入口（客户端 + 注册表应用层 + 缓存击穿工具），插件注入的胶水使用它。</td>
             </tr>
             <tr>
               <td>
@@ -409,6 +411,73 @@ render(
           <code>import.meta.url</code> 重新导入模块；Bun 自带 HMR 时由 accept
           回调负责替换，端点只负责通知。需要宿主自行加载模块时，传 <code>loadModule</code>{" "}
           覆盖默认的 <code>import()</code>。
+        </div>
+      </section>
+
+      <section id="cache" class="api-section">
+        <h2>缓存击穿（dev cache bypass）</h2>
+        <p>
+          开发时「改了代码，浏览器拿到的还是旧的」通常不是 HMR 没工作，而是 缓存：前端 GET
+          命中浏览器 / 代理缓存，或端点通知后按同一个 URL 重新 <code>import()</code>{" "}
+          拿到缓存里的旧模块。开发期统一用
+          <strong>时间戳 param</strong> 绕开，生产构建一律透传。
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>场景</th>
+              <th>行为</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>
+                前端 GET（<code>devFetch</code>）
+              </td>
+              <td>
+                开发模式下追加 <code>?kiko-dev=&lt;时间戳&gt;</code> 并声明{" "}
+                <code>cache: "no-store"</code>；其它方法只声明不缓存；
+                <code>NODE_ENV=production</code> 时与原生 <code>fetch</code> 完全一致。
+              </td>
+            </tr>
+            <tr>
+              <td>HMR 端点连接</td>
+              <td>
+                <code>connectHmr</code> 的 SSE / WebSocket GET 默认按 <code>isDevMode()</code>{" "}
+                携带时间戳 param（每次重连换新），SSE 下的客户端 POST 声明{" "}
+                <code>cache: "no-store"</code>；<code>cacheBust: false</code> 可关闭。
+              </td>
+            </tr>
+            <tr>
+              <td>端点响应</td>
+              <td>
+                <code>createHmrHub</code> 的 SSE / POST / 预检响应一律带{" "}
+                <code>no-store, no-cache, no-transform, must-revalidate, max-age=0</code> 与{" "}
+                <code>pragma</code> / <code>expires</code>——HMR 通道没有任何可复用性。
+              </td>
+            </tr>
+            <tr>
+              <td>模块重新导入</td>
+              <td>
+                无 bundler HMR 时按「页面会话时间戳 + 自增序」拼 <code>?kiko-hmr=…</code>
+                ；整页刷新后计数归零也不会撞上上一次会话缓存的 URL。
+              </td>
+            </tr>
+            <tr>
+              <td>开发服务器响应</td>
+              <td>
+                <code>withNoCache(response)</code> 给 HTML / 静态资源 / API 响应盖章；{" "}
+                <code>noCacheHeaders(extra)</code> 只取响应头。
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <CodeBlock src="./assets/snippets/hmr-cache.ts" lang="ts" />
+        <div class="note">
+          开发判定沿用 <code>@kikojs/dom</code> 的约定：
+          <code>process.env.NODE_ENV !== "production"</code> 即开发（未设置也算）， bundler
+          会把这个表达式静态替换成常量，浏览器 bundle 因此也能正确判定。 生产部署请显式设置{" "}
+          <code>NODE_ENV=production</code>。
         </div>
       </section>
 

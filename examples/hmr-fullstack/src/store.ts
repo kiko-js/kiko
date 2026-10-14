@@ -1,5 +1,6 @@
 import { createSignal } from "@kikojs/dom"
 import { computed } from "@kikojs/signal"
+import { devFetch } from "@kikojs/hmr/client"
 
 export interface Todo {
   id: number
@@ -23,8 +24,10 @@ export const todos = computed<Todo[]>(() => board.get()?.todos ?? [])
 export const runtime = computed(() => board.get()?.runtime ?? "…")
 export const evaluatedAt = computed(() => board.get()?.evaluatedAt ?? "…")
 
+// 开发期用 devFetch 代替 fetch：GET 自动带上时间戳 param（并声明 no-store），
+// 浏览器 / 代理不会把 `GET /api/board` 的旧响应还回来；生产构建里它等同于 fetch。
 async function request<T>(path: string, init?: { method: string; body: string }): Promise<T> {
-  const response = await fetch(path, {
+  const response = await devFetch(path, {
     method: init?.method ?? "GET",
     headers: init ? { "content-type": "application/json" } : undefined,
     body: init?.body,

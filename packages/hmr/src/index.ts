@@ -18,6 +18,18 @@ export {
 } from "./protocol"
 export { createHmrHub, type HmrHub, type HmrHubOptions, type HmrSink } from "./server"
 export {
+  DEV_CACHE_PARAM,
+  HMR_RELOAD_PARAM,
+  NO_CACHE_HEADERS,
+  appendQueryParam,
+  cacheBustUrl,
+  devFetch,
+  isDevMode,
+  noCacheHeaders,
+  withNoCache,
+  type CacheBustOptions,
+} from "./cache"
+export {
   connectHmr,
   ensureHmrClient,
   acceptHmrModule,

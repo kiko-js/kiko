@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http"
+import { noCacheHeaders } from "../cache"
 import { encodeHmrMessage, HMR_PROTOCOL_VERSION } from "../protocol"
 import { createHmrHub, type HmrHub, type HmrHubOptions, type HmrSink } from "../server"
 import { createPathWatcher, DEFAULT_HMR_INCLUDE, resolveWatchRoots } from "../watcher"
@@ -136,6 +137,8 @@ export function toNodeListener(
       if (!response.headersSent) {
         response.statusCode = 500
         response.setHeader("content-type", "text/plain; charset=utf-8")
+        // 端点响应（含错误）同样禁用缓存。
+        noCacheHeaders().forEach((value, name) => response.setHeader(name, value))
       }
       response.end(error instanceof Error ? error.message : String(error))
     })

@@ -5,14 +5,13 @@
  * 与 `db.ts` 一起被 watcher 监听：改这里保存后 `bun --hot` 重新求值，`/hmr`
  * 端点广播整页刷新。
  */
+import { withNoCache } from "@kikojs/hmr"
 import { addTodo, board, toggleTodo as toggle } from "./db"
 
 /** GET /api/board：整块状态（运行时版本 / 求值时间 / 待办列表）。 */
 export function getBoard(): Response {
-  return Response.json(board(), {
-    // 开发期让浏览器每次都真的回服务端，方便观察软重载。
-    headers: { "cache-control": "no-store" },
-  })
+  // 开发期让浏览器每次都真的回服务端，方便观察软重载。
+  return withNoCache(Response.json(board()))
 }
 
 /** POST /api/todos：新增一条待办，body 为 `{ title }`。 */

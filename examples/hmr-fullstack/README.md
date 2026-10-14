@@ -62,6 +62,10 @@ examples/hmr-fullstack/
   创建一次；否则每次保存都会叠一套监听。
 - `/api/*` 处理器接收标准 `Request`、返回标准 `Response`，不依赖 Bun 专有 API，方便
   换到别的 Fetch 宿主。
+- **缓存击穿（开发期）**：前端 GET 走 `devFetch`（`@kikojs/hmr/client`）——自动追加
+  `?kiko-dev=<时间戳>` 并声明 `cache: "no-store"`；`getBoard` 用 `withNoCache` 盖章；
+  `/hmr` 端点响应本身也带 `no-store`。生产构建（`NODE_ENV=production`）下 `devFetch`
+  等同于原生 `fetch`，不加参数、不改语义。
 - **入口 accept 边界（必需）**：Bun 的 HMR 图包含 monorepo 内经 tsconfig `paths`
   解析到项目根之外的框架源码（`../../packages/dom/src/*`），这些模块每次更新都会被
   判为「未接受」并把整页刷新冒泡到 HTML 入口——那样客户端热替换就退化成整页刷新、

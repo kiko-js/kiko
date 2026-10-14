@@ -67,6 +67,9 @@ describe("createHmrHub", () => {
     const response = await hub.handle(new Request("http://example.test/some/where"))
     expect(response.status).toBe(200)
     expect(response.headers.get("content-type")).toContain("text/event-stream")
+    // 端点响应不可缓存：代理 / 浏览器缓存住一次就再也收不到更新。
+    expect(response.headers.get("cache-control")).toContain("no-store")
+    expect(response.headers.get("pragma")).toBe("no-cache")
 
     const reader = response.body!.getReader()
     const decoder = new TextDecoder()
@@ -96,16 +99,26 @@ describe("createHmrHub", () => {
       new Request("http://example.test/hmr", { method: "POST", body: '{"type":"pong"}' }),
     )
     expect(ok.status).toBe(204)
+    expect(ok.headers.get("cache-control")).toContain("no-store")
     const bad = await hub.handle(
       new Request("http://example.test/hmr", { method: "POST", body: "nope" }),
     )
     expect(bad.status).toBe(400)
+    expect(bad.headers.get("cache-control")).toContain("no-store")
     expect(received).toEqual([{ type: "pong" }])
+
+    const preflight = await hub.handle(
+      new Request("http://example.test/hmr", { method: "OPTIONS" }),
+    )
+    expect(preflight.status).toBe(204)
+    expect(preflight.headers.get("cache-control")).toContain("no-store")
+    expect(preflight.headers.get("allow")).toBe("GET, POST, OPTIONS")
 
     const notAllowed = await hub.handle(
       new Request("http://example.test/hmr", { method: "DELETE" }),
     )
     expect(notAllowed.status).toBe(405)
+    expect(notAllowed.headers.get("cache-control")).toContain("no-store")
     hub.close()
   })
 })

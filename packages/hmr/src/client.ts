@@ -1,3 +1,10 @@
+import {
+  appendQueryParam,
+  cacheBustUrl,
+  HMR_RELOAD_PARAM,
+  isDevMode,
+  type CacheBustOptions,
+} from "./cache"
 import { getHmrRegistry, type KikoHmrRegistry } from "./contract"
 import {
   decodeHmrMessage,
@@ -54,6 +61,14 @@ export interface HmrClientOptions {
   minReconnectDelayMs?: number
   /** 重连退避上限（毫秒）；默认 5000。 */
   maxReconnectDelayMs?: number
+  /**
+   * 端点连接（SSE / WebSocket 升级前都是 GET）携带时间戳 param 绕开缓存，
+   * 且 SSE 下的客户端消息 POST 声明 `cache: "no-store"`；每次重连换新时间戳。
+   * 默认 `isDevMode()`。
+   */
+  cacheBust?: boolean
+  /** cache-buster 时间戳来源（测试 / 自定义时钟）；默认 `Date.now`。 */
+  stamp?: () => number
   /** 注入 EventSource 构造（测试 / 非浏览器运行时）。 */
   createEventSource?(url: string): HmrEventSourceLike
   /** 注入 WebSocket 构造（测试 / 非浏览器运行时）。 */
@@ -117,6 +132,10 @@ export function connectHmr(options: HmrClientOptions = {}): HmrClient {
   const reconnect = options.reconnect ?? true
   const minDelay = options.minReconnectDelayMs ?? 500
   const maxDelay = options.maxReconnectDelayMs ?? 5000
+  const cacheBust = options.cacheBust ?? isDevMode()
+  const bustOptions: CacheBustOptions = { dev: cacheBust, stamp: options.stamp }
+  // 每次（重）连接都取一次时间戳：代理 / 浏览器缓存里的旧连接 URL 不会被复用。
+  const bust = (target: string): string => cacheBustUrl(target, bustOptions)
 
   const listeners = new Map<string, Set<(message: HmrServerMessage) => void>>()
   let active: "sse" | "ws" | null = null
@@ -184,7 +203,7 @@ export function connectHmr(options: HmrClientOptions = {}): HmrClient {
     if (closed) return
     const create = options.createEventSource ?? defaultEventSource
     try {
-      source = create(url)
+      source = create(bust(url))
     } catch {
       setStatus("disconnected")
       scheduleReconnect()
@@ -210,7 +229,7 @@ export function connectHmr(options: HmrClientOptions = {}): HmrClient {
     const create = options.createWebSocket ?? defaultWebSocket
     let opened = false
     try {
-      socket = create(toWebSocketUrl(url))
+      socket = create(bust(toWebSocketUrl(url)))
     } catch {
       fallbackToSse()
       return
@@ -258,12 +277,13 @@ export function connectHmr(options: HmrClientOptions = {}): HmrClient {
       }
       return
     }
-    // SSE 是单向通道：客户端消息走 POST。
+    // SSE 是单向通道：客户端消息走 POST（POST 本身不可缓存，声明 no-store 即可）。
     const fetchFn = (globalThis as { fetch?: typeof fetch }).fetch
     void fetchFn?.(url, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: payload,
+      ...(cacheBust ? { cache: "no-store" } : {}),
     }).catch(() => {})
   }
 
@@ -336,16 +356,14 @@ export interface HmrAppliedClient {
 
 const CLIENT_SYMBOL: unique symbol = Symbol.for("kiko:hmr:client")
 
-function bustUrl(url: string, stamp: number): string {
-  const separator = url.includes("?") ? "&" : "?"
-  return `${url}${separator}kiko-hmr=${stamp}`
-}
-
 function createAppliedClient(options: HmrApplyOptions): HmrAppliedClient {
   const registry = options.registry !== undefined ? options.registry : (getHmrRegistry() ?? null)
   const modules = new Map<string, HmrModuleOptions>()
   const load =
     options.loadModule ?? ((url: string): Promise<unknown> => import(/* @vite-ignore */ url))
+  // 模块重新导入必须绕开缓存：URL 里带上「本次页面会话 + 第几次更新」的时间戳。
+  // 只按自增计数会在整页刷新后从 1 重新开始，命中上一次会话缓存的旧模块。
+  const session = Date.now()
   let counter = 0
 
   const applyModule = async (moduleId: string): Promise<void> => {
@@ -359,7 +377,8 @@ function createAppliedClient(options: HmrApplyOptions): HmrAppliedClient {
       return
     }
     try {
-      const mod = await load(bustUrl(entry.url, ++counter))
+      const target = appendQueryParam(entry.url, HMR_RELOAD_PARAM, `${session}-${++counter}`)
+      const mod = await load(target)
       registry.moduleUpdated(moduleId, mod)
     } catch (error) {
       options.onError?.(error, moduleId)
@@ -430,3 +449,18 @@ export function acceptHmrModule(moduleId: string, options?: HmrModuleOptions): H
 export function resetHmrClient(): void {
   delete (globalThis as Record<symbol, unknown>)[CLIENT_SYMBOL]
 }
+
+// 浏览器侧 `@kikojs/hmr/client` 同时给出开发期缓存击穿工具，前端代码不必为了
+// `devFetch` / `withNoCache` 再引一个入口。
+export {
+  DEV_CACHE_PARAM,
+  HMR_RELOAD_PARAM,
+  NO_CACHE_HEADERS,
+  appendQueryParam,
+  cacheBustUrl,
+  devFetch,
+  isDevMode,
+  noCacheHeaders,
+  withNoCache,
+  type CacheBustOptions,
+} from "./cache"
