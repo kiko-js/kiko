@@ -19,15 +19,21 @@ export {
 export { createHmrHub, type HmrHub, type HmrHubOptions, type HmrSink } from "./server"
 export {
   DEV_CACHE_PARAM,
+  DEV_HASHED_ASSET,
   HMR_RELOAD_PARAM,
   NO_CACHE_HEADERS,
   appendQueryParam,
   cacheBustUrl,
+  devCacheHeaders,
+  devCacheKind,
   devFetch,
   isDevMode,
   noCacheHeaders,
+  withDevCache,
   withNoCache,
   type CacheBustOptions,
+  type DevCacheKind,
+  type DevCacheOptions,
 } from "./cache"
 export {
   connectHmr,

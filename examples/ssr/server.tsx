@@ -1,5 +1,6 @@
 /** @jsxImportSource @kikojs/dom */
 import { renderToPage, renderToStream, withSSRScope } from "@kikojs/dom/server"
+import { withDevCache } from "@kikojs/hmr"
 import { App } from "./src/App"
 
 const PORT = Number(process.env.PORT || "3000")
@@ -37,9 +38,14 @@ Bun.serve({
 
     if (url.pathname === "/client.js") {
       const file = Bun.file(new URL("./dist/client.js", import.meta.url))
-      return new Response(file, {
-        headers: { "content-type": "text/javascript" },
-      })
+      // 未带内容 hash 的开发产物：no-cache 回源校验（有 etag 时走 304），
+      // 避免重启 dev 后浏览器仍用旧 bundle。
+      return withDevCache(
+        new Response(file, {
+          headers: { "content-type": "text/javascript" },
+        }),
+        { url: url.pathname },
+      )
     }
 
     // 字符串模式：一句话渲染 + 信号状态嵌入。renderToPage 内部包了
@@ -54,9 +60,13 @@ Bun.serve({
     //   const { html, stateScript } = await renderToPage(() => <App session={session} />)
     if (url.pathname === "/") {
       const { html, stateScript } = await renderToPage(() => <App />)
-      return new Response(pageHead() + html + pageTail(stateScript), {
-        headers: { "content-type": "text/html; charset=utf-8" },
-      })
+      // HTML 导航响应 no-store：shell 里的水合标记与资源引用必须每次新鲜。
+      return withDevCache(
+        new Response(pageHead() + html + pageTail(stateScript), {
+          headers: { "content-type": "text/html; charset=utf-8" },
+        }),
+        { url: url.pathname },
+      )
     }
     // 流式不嵌入信号状态：hydrate() 找不到 kiko-state 脚本块时
     // 自动按客户端初始值水合。
@@ -85,9 +95,12 @@ Bun.serve({
             content.cancel(reason)
           },
         })
-        return new Response(shell, {
-          headers: { "content-type": "text/html; charset=utf-8" },
-        })
+        return withDevCache(
+          new Response(shell, {
+            headers: { "content-type": "text/html; charset=utf-8" },
+          }),
+          { url: url.pathname },
+        )
       })
     }
 

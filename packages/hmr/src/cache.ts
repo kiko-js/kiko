@@ -179,3 +179,108 @@ export function withNoCache(response: Response, extra?: HeadersInit): Response {
     headers,
   })
 }
+
+/* ------------------------------------------------------------------ *
+ * 开发服务器静态资源的缓存策略（html / js / css ...）。
+ * ------------------------------------------------------------------ */
+
+/**
+ * 开发服务器的三种缓存策略：
+ *
+ * - `no-store`：HTML（导航响应）——不落盘、不复用，彻底避免旧壳 + 新资源的错配；
+ * - `revalidate`：未带内容 hash 的应用代码 / 未 hash 的 vendor（js / css / json）——
+ *   每次都回源校验，服务端给了 `etag` / `last-modified` 时命中 304，既不会拿到
+ *   旧文件、也不用重下未变化的文件；
+ * - `immutable`：文件名里带内容 hash 的资源——内容变了文件名就变，可以放心长缓存。
+ */
+export type DevCacheKind = "no-store" | "revalidate" | "immutable"
+
+/**
+ * 默认的「内容 hash 文件名」模式：`. ` / `-` 分隔的 ≥8 位十六进制段 + 扩展名。
+ * 覆盖 `index-00000000111d3582.js`（Bun）、`vendor.a1b2c3d4e5.css`、
+ * `app-9f8e7d6c.js` 等；`my-component.js` 这类普通命名不会被误判。
+ */
+export const DEV_HASHED_ASSET = /(?:^|[.-])[0-9a-f]{8,}(?=\.[a-z0-9]+$)/i
+
+const REVALIDATE_HEADERS: Readonly<Record<string, string>> = {
+  "cache-control": "no-cache, must-revalidate, max-age=0",
+  pragma: "no-cache",
+  expires: "0",
+}
+
+const IMMUTABLE_HEADERS: Readonly<Record<string, string>> = {
+  "cache-control": "public, max-age=31536000, immutable",
+}
+
+export interface DevCacheOptions {
+  /** 资源 URL（用于文件名 hash 判定）；缺省时退回 `response.url`。 */
+  url?: string | Request | URL
+  /** 显式指定策略，跳过自动判定。 */
+  kind?: DevCacheKind
+  /** 自定义「带内容 hash」的文件名模式；默认 `DEV_HASHED_ASSET`。 */
+  hashed?: RegExp
+  /**
+   * 是否只在开发模式生效：默认按 `isDevMode()`；传 `true` 强制生效，
+   * 传 `false` 原样透传（可用于把同一份处理器部署到生产）。
+   */
+  dev?: boolean
+  /** 额外响应头；缓存相关头由策略决定，不会被 `headers` 覆盖。 */
+  headers?: HeadersInit
+}
+
+function pathOf(url: string): string {
+  const end = url.search(/[?#]/)
+  return end === -1 ? url : url.slice(0, end)
+}
+
+/** 按响应类型 + URL 判定开发期缓存策略（不修改响应）。 */
+export function devCacheKind(response: Response, options: DevCacheOptions = {}): DevCacheKind {
+  if (options.kind) return options.kind
+  // HTML 导航响应最严格：旧 HTML 引用旧资源，是开发期最典型的「改了没生效」。
+  const contentType = response.headers.get("content-type") ?? ""
+  if (contentType.includes("html")) return "no-store"
+  const url =
+    typeof options.url === "string" ? options.url : options.url ? urlOf(options.url) : response.url
+  if (url && (options.hashed ?? DEV_HASHED_ASSET).test(pathOf(url))) return "immutable"
+  return "revalidate"
+}
+
+/** 只取该响应应带的缓存头（`options.headers` 先写入，缓存头始终生效）。 */
+export function devCacheHeaders(response: Response, options: DevCacheOptions = {}): Headers {
+  const kind = devCacheKind(response, options)
+  const base =
+    kind === "no-store"
+      ? NO_CACHE_HEADERS
+      : kind === "immutable"
+        ? IMMUTABLE_HEADERS
+        : REVALIDATE_HEADERS
+  const headers = new Headers(options.headers)
+  for (const name of Object.keys(base)) headers.set(name, base[name]!)
+  return headers
+}
+
+/**
+ * 给开发服务器返回的 HTML / JS / CSS 盖上合适的缓存头：
+ * HTML `no-store`、未 hash 的资源 `no-cache`（回源校验）、带内容 hash 的
+ * 资源 `immutable`。生产模式（或 `dev: false`）原样返回，可用于同一份处理器。
+ *
+ * ```ts
+ * Bun.serve({
+ *   fetch: async request => withDevCache(await renderSomePage(), { url: request.url }),
+ * })
+ * ```
+ */
+export function withDevCache(response: Response, options: DevCacheOptions = {}): Response {
+  const dev = options.dev ?? isDevMode()
+  // 101 Switching Protocols 无法用 Response 构造器重建（WebSocket 升级）。
+  if (!dev || response.status === 101) return response
+  const headers = new Headers(response.headers)
+  // 先清掉原响应上的缓存头，避免旧的 expires / pragma 与本次策略打架。
+  for (const name of ["cache-control", "pragma", "expires"]) headers.delete(name)
+  devCacheHeaders(response, options).forEach((value, name) => headers.set(name, value))
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  })
+}

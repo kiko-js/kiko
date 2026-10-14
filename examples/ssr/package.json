@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@kikojs/dom": "workspace:*",
+    "@kikojs/hmr": "workspace:*",
     "@kikojs/signal": "workspace:*"
   }
 }

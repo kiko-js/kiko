@@ -81,8 +81,8 @@ render(
               <td>
                 通用核心：协议、服务端 Hub（<code>createHmrHub</code>）、客户端（
                 <code>connectHmr</code> / <code>ensureHmrClient</code>）、开发期缓存击穿工具（
-                <code>devFetch</code> / <code>withNoCache</code>）与注册表运行时。浏览器 / SSR
-                安全。
+                <code>devFetch</code> / <code>withDevCache</code> / <code>withNoCache</code>
+                ）与注册表 运行时。浏览器 / SSR 安全。
               </td>
             </tr>
             <tr>
@@ -417,11 +417,81 @@ render(
       <section id="cache" class="api-section">
         <h2>缓存击穿（dev cache bypass）</h2>
         <p>
-          开发时「改了代码，浏览器拿到的还是旧的」通常不是 HMR 没工作，而是 缓存：前端 GET
-          命中浏览器 / 代理缓存，或端点通知后按同一个 URL 重新 <code>import()</code>{" "}
-          拿到缓存里的旧模块。开发期统一用
-          <strong>时间戳 param</strong> 绕开，生产构建一律透传。
+          开发时「改了代码，浏览器拿到的还是旧的」通常不是 HMR 没工作，而是 缓存：开发服务器 返回的
+          HTML / JS / CSS 命中了浏览器或反向代理缓存，前端 GET 拿到旧响应，或端点通知后 按同一个 URL
+          重新 <code>import()</code> 拿到缓存里的旧模块。开发期统一用
+          <strong>时间戳 param</strong> 与<strong>按资源类型分级的缓存头</strong>绕开，生产构建
+          一律透传。
         </p>
+        <h3>开发服务器静态资源</h3>
+        <p>
+          <code>
+            withDevCache(response, {"{"} url {"}"})
+          </code>{" "}
+          按资源类型自动选择策略——
+          <strong>内容变没变靠文件名和回源校验判断，而不是靠浏览器猜</strong>：
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>资源</th>
+              <th>策略</th>
+              <th>响应头</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>HTML 导航响应</td>
+              <td>
+                <code>no-store</code>
+              </td>
+              <td>不落盘、不复用：旧壳引用旧资源是开发期最典型的「改了没生效」。</td>
+            </tr>
+            <tr>
+              <td>未带内容 hash 的 JS / CSS / vendor</td>
+              <td>
+                <code>revalidate</code>
+              </td>
+              <td>
+                <code>no-cache, must-revalidate, max-age=0</code>：每次都回源校验， 服务端给了{" "}
+                <code>etag</code> / <code>last-modified</code> 就命中 304——
+                拿不到旧文件，也不用重下没变的 vendor。
+              </td>
+            </tr>
+            <tr>
+              <td>
+                文件名带内容 hash（<code>app-9f8e7d6c.js</code>、
+                <code>index-00000000111d3582.js</code>）
+              </td>
+              <td>
+                <code>immutable</code>
+              </td>
+              <td>
+                <code>public, max-age=31536000, immutable</code>：内容变了文件名就变，
+                可以放心长缓存。
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <p>
+          判定用 <code>DEV_HASHED_ASSET</code>（<code>.</code> / <code>-</code> 分隔的 ≥8
+          位十六进制段 + 扩展名），<code>my-component.js</code> 这类普通命名不会被误判；可用{" "}
+          <code>hashed</code> 传自定义模式，或 <code>kind</code> 显式指定{" "}
+          <code>"no-store" | "revalidate" | "immutable"</code>。<code>dev: false</code>（或{" "}
+          <code>NODE_ENV=production</code>）时原样透传，同一份处理器 可以直接用于生产。
+        </p>
+        <div class="note">
+          <strong>Bun 内置 dev server 的例外：</strong>
+          <code>
+            Bun.serve({"{"} routes: {"{"} "/*": html {"}"} {"}"})
+          </code>{" "}
+          的 HTML 与其 <code>/_bun/*</code> 资源由 Bun 直接返回，用户代码无法改写这些响应头（Bun
+          只给
+          <code>etag</code>，浏览器按协商缓存处理）。需要完全控制时，用自己的 <code>fetch</code>{" "}
+          返回这些资源（见 <code>examples/ssr</code>），或把静态 / vendor 目录交给自己的路由并用{" "}
+          <code>withDevCache</code>；纯 API 响应则用 <code>withNoCache</code>。
+        </div>
+        <h3>前端请求与 HMR 通道</h3>
         <table>
           <thead>
             <tr>
@@ -461,13 +531,6 @@ render(
               <td>
                 无 bundler HMR 时按「页面会话时间戳 + 自增序」拼 <code>?kiko-hmr=…</code>
                 ；整页刷新后计数归零也不会撞上上一次会话缓存的 URL。
-              </td>
-            </tr>
-            <tr>
-              <td>开发服务器响应</td>
-              <td>
-                <code>withNoCache(response)</code> 给 HTML / 静态资源 / API 响应盖章；{" "}
-                <code>noCacheHeaders(extra)</code> 只取响应头。
               </td>
             </tr>
           </tbody>

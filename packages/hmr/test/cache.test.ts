@@ -3,10 +3,14 @@ import {
   appendQueryParam,
   cacheBustUrl,
   DEV_CACHE_PARAM,
+  DEV_HASHED_ASSET,
+  devCacheHeaders,
+  devCacheKind,
   devFetch,
   isDevMode,
   NO_CACHE_HEADERS,
   noCacheHeaders,
+  withDevCache,
   withNoCache,
 } from "../src/cache"
 
@@ -172,5 +176,82 @@ describe("noCacheHeaders / withNoCache", () => {
     const response = withNoCache(new Response("ok"), { "x-dev": "1" })
     expect(response.headers.get("x-dev")).toBe("1")
     expect(response.headers.get("cache-control")).toContain("no-store")
+  })
+})
+
+describe("withDevCache (dev static assets)", () => {
+  const html = (): Response =>
+    new Response("<html></html>", { headers: { "content-type": "text/html; charset=utf-8" } })
+  const js = (): Response =>
+    new Response("export {}", { headers: { "content-type": "text/javascript" } })
+  const css = (): Response => new Response("a{}", { headers: { "content-type": "text/css" } })
+
+  it("never stores HTML navigations", () => {
+    expect(devCacheKind(html(), { url: "/" })).toBe("no-store")
+    // 即使文件名像 hash，HTML 也不长缓存。
+    expect(devCacheKind(html(), { url: "/index-9f8e7d6c.html" })).toBe("no-store")
+    const response = withDevCache(html(), { url: "/" })
+    expect(response.headers.get("cache-control")).toContain("no-store")
+    expect(response.headers.get("pragma")).toBe("no-cache")
+  })
+
+  it("revalidates unhashed app assets and vendor", () => {
+    expect(devCacheKind(js(), { url: "/src/app.tsx" })).toBe("revalidate")
+    expect(devCacheKind(css(), { url: "/styles/site.css" })).toBe("revalidate")
+    expect(devCacheKind(js(), { url: "/node_modules/lit/index.js" })).toBe("revalidate")
+    // 普通连字符命名不会被误判成内容 hash。
+    expect(devCacheKind(js(), { url: "/src/my-component.js" })).toBe("revalidate")
+    const response = withDevCache(js(), { url: "/src/app.tsx" })
+    expect(response.headers.get("cache-control")).toBe("no-cache, must-revalidate, max-age=0")
+  })
+
+  it("long-caches content-hashed assets", () => {
+    expect(devCacheKind(js(), { url: "/_bun/client/index-00000000111d3582.js" })).toBe("immutable")
+    expect(devCacheKind(css(), { url: "/vendor.a1b2c3d4e5.css" })).toBe("immutable")
+    expect(devCacheKind(js(), { url: "/app-9f8e7d6c.js?x=1" })).toBe("immutable")
+    const response = withDevCache(js(), { url: "/app-9f8e7d6c.js" })
+    expect(response.headers.get("cache-control")).toBe("public, max-age=31536000, immutable")
+    // immutable 不该继承 no-cache 时代的 pragma / expires。
+    expect(response.headers.get("pragma")).toBeNull()
+    expect(response.headers.get("expires")).toBeNull()
+  })
+
+  it("honors explicit kind, url forms and custom hash patterns", () => {
+    expect(devCacheKind(js(), { url: "/src/app.js", kind: "no-store" })).toBe("no-store")
+    expect(devCacheKind(js(), { url: new Request("http://x/app-0123456789.js") })).toBe("immutable")
+    expect(devCacheKind(js(), { url: "/legacy/app-DiwrgTda.js" })).toBe("revalidate")
+    expect(
+      devCacheKind(js(), {
+        url: "/legacy/app-DiwrgTda.js",
+        hashed: /-[A-Za-z0-9_]{8}\.[a-z0-9]+$/,
+      }),
+    ).toBe("immutable")
+  })
+
+  it("drops stale cache headers before applying the policy", () => {
+    const stale = new Response("x", {
+      headers: {
+        "content-type": "text/javascript",
+        "cache-control": "public, max-age=600",
+        expires: "Wed, 21 Oct 2030 07:28:00 GMT",
+      },
+    })
+    const response = withDevCache(stale, { url: "/src/app.js" })
+    expect(response.headers.get("cache-control")).toBe("no-cache, must-revalidate, max-age=0")
+    expect(response.headers.get("expires")).toBe("0")
+    expect(response.headers.get("content-type")).toBe("text/javascript")
+  })
+
+  it("passes through outside development", () => {
+    const response = js()
+    expect(withDevCache(response, { url: "/src/app.js", dev: false })).toBe(response)
+    expect(devCacheHeaders(response, { url: "/src/app.js" }).get("cache-control")).toContain(
+      "no-cache",
+    )
+  })
+
+  it("exposes the default hash pattern", () => {
+    expect(DEV_HASHED_ASSET.test("/assets/main-0123456789abcdef.js")).toBe(true)
+    expect(DEV_HASHED_ASSET.test("/assets/main.js")).toBe(false)
   })
 })
