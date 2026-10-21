@@ -269,6 +269,16 @@ section > p {
   margin: 22px 0;
 }
 
+/* Horizontal scroll areas (code blocks / tables) sit on dark surfaces:
+   keep their scrollbar subtle but discoverable, and don't chain the scroll
+   into the page on touch devices. */
+.code-block,
+table {
+  scrollbar-width: thin;
+  scrollbar-color: #3a4256 transparent;
+  overscroll-behavior-x: contain;
+}
+
 .code-block pre {
   margin: 0;
   padding: 18px 22px;
@@ -299,9 +309,20 @@ section > p {
 
 .api-grid {
   display: grid;
-  grid-template-columns: 240px 1fr;
+  /* minmax(0, 1fr) instead of 1fr: a flexible track's default minimum is
+     min-content, so one long code line / wide table would stretch the whole
+     page past the viewport. Long content must scroll inside its own box. */
+  grid-template-columns: 240px minmax(0, 1fr);
   gap: 32px;
   align-items: start;
+}
+
+/* Same reason one level down: the grid item itself defaults to min-width:
+   auto (min-content), which would keep it wider than its track. */
+.api-grid > div {
+  min-width: 0;
+  /* Prevent long URLs / inline code from spilling out of the column. */
+  overflow-wrap: break-word;
 }
 
 .toc {
@@ -365,7 +386,12 @@ section > p {
 }
 
 table {
+  /* API tables are the widest fixed-content blocks: on narrow screens the
+     table scrolls horizontally instead of stretching the page. Keep the
+     full-width layout on desktop (display: block still lets it fill 100%). */
+  display: block;
   width: 100%;
+  overflow-x: auto;
   border-collapse: collapse;
   margin: 16px 0;
   font-size: 0.95rem;
@@ -397,7 +423,7 @@ footer {
 
 @media (max-width: 800px) {
   .api-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .toc {
